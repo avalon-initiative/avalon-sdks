@@ -109,6 +109,7 @@ describe('rollback error mapping', () => {
     vi.stubGlobal('fetch', mockFetch({ error: 'msg', code }, status))
     const err = await testSession().reverseRollbackEvent('e', SINCE).catch((e) => e)
     expect(err).toBeInstanceOf(cls)
+    expect((err as { code?: string }).code).toBe(code)
     expect((err as Error).message).toContain(code)
   })
 })

@@ -38,7 +38,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             return await ReadJsonAsync<Avalon.Sdk.Generated.RecognitionResponse>(response, ct).ConfigureAwait(false);
         }
@@ -60,7 +60,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             var body = await ReadJsonAsync<RevokeRecognitionResultResponse>(response, ct).ConfigureAwait(false);
             return body.Revoked;

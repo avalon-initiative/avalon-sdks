@@ -154,7 +154,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             var friendships = await ReadJsonAsync<List<Avalon.Sdk.Generated.FriendshipResponse>>(response, ct).ConfigureAwait(false)
                 ?? new List<Avalon.Sdk.Generated.FriendshipResponse>();
@@ -198,7 +198,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             var presences = await ReadJsonAsync<List<Avalon.Sdk.Generated.PresenceResponse>>(response, ct).ConfigureAwait(false)
                 ?? new List<Avalon.Sdk.Generated.PresenceResponse>();
@@ -215,7 +215,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
         }
 
@@ -347,7 +347,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             var body = await ReadJsonAsync<Avalon.Sdk.Generated.PresenceResponse>(response, ct).ConfigureAwait(false);
             return ToDomainPresence(body);

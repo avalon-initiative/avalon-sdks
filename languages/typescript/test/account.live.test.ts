@@ -313,5 +313,6 @@ maybeDescribe('AccountSession rollback live round trip', () => {
     const err = await session.rollbackCandidates(new Date(Date.now() - 3600_000).toISOString()).catch((e) => e)
     expect(err).toBeInstanceOf(ConflictError)
     expect((err as Error).message).toContain('ROLLBACK_NO_COMPLETED_RECOVERY')
+    expect((err as { code?: string }).code).toBe('ROLLBACK_NO_COMPLETED_RECOVERY')
   })
 })

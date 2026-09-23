@@ -2,7 +2,13 @@
 // a real avalon-server can produce, protocol-level rather than a raw
 // fetch Response a caller would have to know HTTP to interpret.
 
-export class AvalonSdkError extends Error {}
+export class AvalonSdkError extends Error {
+  /** The server's stable, machine-readable error code (for example
+   * `ROLLBACK_NOT_REVERSIBLE`), when the failing response carried one.
+   * Branch on this rather than on the error class when several distinct
+   * failures share one HTTP status. */
+  code?: string
+}
 
 /** The session token itself was rejected (expired, unknown, malformed). */
 export class UnauthorizedError extends AvalonSdkError {
@@ -112,6 +118,27 @@ export class NoLocalSigningKeyError extends AvalonSdkError {
   }
 }
 
+function errorForStatus(status: number, message: string): AvalonSdkError {
+  switch (status) {
+    case 401:
+      return new UnauthorizedError()
+    case 403:
+      return new CapabilityNotGrantedError(message)
+    case 404:
+      return new NotFoundError(message)
+    case 409:
+      return new ConflictError(message)
+    case 400:
+    case 422:
+      return new RejectedError(message)
+    default:
+      if (status >= 500) {
+        return new UnavailableError(message)
+      }
+      return new ProtocolError(message)
+  }
+}
+
 /** Translates a non-success `Response` into the matching typed error,
  * mirroring `crate::http::map_error_response`. Reads the body once as
  * `{ error?: string, code?: string }`, falling back to status text. */
@@ -127,22 +154,9 @@ export async function mapErrorResponse(response: Response): Promise<AvalonSdkErr
   }
   const message = code ?? serverMessage ?? response.statusText ?? `HTTP ${response.status}`
 
-  switch (response.status) {
-    case 401:
-      return new UnauthorizedError()
-    case 403:
-      return new CapabilityNotGrantedError(message)
-    case 404:
-      return new NotFoundError(message)
-    case 409:
-      return new ConflictError(message)
-    case 400:
-    case 422:
-      return new RejectedError(message)
-    default:
-      if (response.status >= 500) {
-        return new UnavailableError(message)
-      }
-      return new ProtocolError(message)
+  const error = errorForStatus(response.status, message)
+  if (code !== undefined) {
+    error.code = code
   }
+  return error
 }
