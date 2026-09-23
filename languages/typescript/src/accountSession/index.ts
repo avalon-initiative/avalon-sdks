@@ -15,8 +15,10 @@ import './guildAdmin.js'
 import './integrations.js'
 import './realtime.js'
 import './achievements.js'
+import './rollback.js'
 
 export type { Passkey } from './passkeys.js'
+export type { RollbackCandidate, RollbackCandidates } from './rollback.js'
 export type { Device, DeviceGrant } from './devices.js'
 export type { GuardianSettings, RecoveryRequest, GuardianRequest, GuardianOf } from './recovery.js'
 export type {
