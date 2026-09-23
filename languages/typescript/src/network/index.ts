@@ -1,4 +1,4 @@
-export { getBundledTrustAnchors, findTrustAnchor, fetchTrustAnchors, resolveTrustAnchors, TRUST_ANCHORS_URL } from './trustAnchors.js'
+export { fetchTrustAnchors, TRUST_ANCHORS_URL } from './trustAnchors.js'
 export type { TrustAnchorEntry } from './trustAnchors.js'
 
 export { signingMessage, unixSecondsFromRfc3339 } from './sthMessage.js'

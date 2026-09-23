@@ -41,11 +41,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The single canonical trust-anchor list, embedded rather than hand-copied — mirrors
-         languages/rust/src/network.rs's include_str! of the same file. LogicalName is set
-         explicitly rather than relied on to be inferred, since the file lives outside this
-         project's own directory tree. -->
-    <EmbeddedResource Include="../../../docs/trusted-networks.json" LogicalName="Avalon.Sdk.trusted-networks.json" />
   </ItemGroup>
 
 </Project>

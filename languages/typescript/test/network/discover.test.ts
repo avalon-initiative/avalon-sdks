@@ -62,7 +62,7 @@ describe('discoverAmong', () => {
     expect(result.entry).toEqual(entry)
   })
 
-  it('reports no-candidates for a target with no matching bundled entry', async () => {
+  it('reports no-candidates for a target with no matching entry', async () => {
     await expect(discoverAmong([], { kind: 'network-id', networkId: 'avalon-nowhere' })).rejects.toThrow(
       DiscoveryFailedError,
     )

@@ -94,17 +94,10 @@ public class NetworkTests
     }
 
     [Fact]
-    public async Task ResolveAsync_FallsBackToBundledOnFailure()
+    public async Task FetchAsync_ThrowsOnAFailingResponse()
     {
         using var http = new HttpClient(new StubHandler(HttpStatusCode.InternalServerError, ""));
-        Assert.Same(TrustAnchors.Bundled, await TrustAnchors.ResolveAsync(http, "http://x"));
-    }
-
-    [Fact]
-    public void BundledTrustAnchors_ParsesTheRealCheckedInFile()
-    {
-        var anchors = TrustAnchors.Bundled;
-        Assert.Contains(anchors, a => a.NetworkId == "avalon-dev-local");
+        await Assert.ThrowsAsync<HttpRequestException>(() => TrustAnchors.FetchAsync(http, "http://x"));
     }
 
     [Fact]
@@ -223,10 +216,10 @@ public class NetworkTests
     {
         var signingKey = GenerateKey();
         var sth = SignedSth(signingKey, "avalon-test");
-        var handler = new StubHttpMessageHandler().Enqueue(HttpStatusCode.NotFound, "{}").Enqueue(SthJson(sth));
+        var handler = new StubHttpMessageHandler().Enqueue("{\"networks\":[]}").Enqueue(SthJson(sth));
         var client = new AvalonClient(new AvalonConfig("https://example.invalid", "test-integrator"), handler.ToHttpClient());
 
-        // No bundled trust anchor for "avalon-test" in this build, so the real end-to-end path
+        // "avalon-test" has no entry in the published list, so the real end-to-end path
         // (fetch -> deserialize -> evaluate) still correctly reports unknown rather than erroring.
         var status = await client.VerifyNetworkAsync();
 

@@ -205,8 +205,7 @@ mod tests {
             .await;
     }
 
-    /// This crate's own build only bundles `avalon-dev-local` as a pinned
-    /// trust anchor (see `docs/trusted-networks.json`), so
+    /// The mocked network's `network_id` has no published trust anchor, so
     /// `AvalonClient::verify_network` reports any other `network_id` —
     /// including one whose STH is genuinely well-formed and self-
     /// consistent, as mounted here — as `UnknownNetwork`. Registration
