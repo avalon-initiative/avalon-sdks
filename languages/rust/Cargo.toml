@@ -62,6 +62,6 @@ wiremock.workspace = true
 # (0.8.x) — typify's TypeSpace API takes schemars 0.8's Schema type, and a
 # newer schemars major here would silently be a different, incompatible
 # type.
-schemars = "0.8"
+schemars = "1.2"
 serde_json.workspace = true
 typify = "0.8.0"
