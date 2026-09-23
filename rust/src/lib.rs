@@ -65,6 +65,7 @@ pub mod integrators;
 pub mod issuer_registration;
 pub mod managed_hosting;
 pub mod network;
+pub mod nodes;
 pub mod recovery;
 pub mod registry;
 pub mod schema;
