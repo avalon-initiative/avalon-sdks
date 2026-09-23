@@ -18,7 +18,7 @@ use std::sync::OnceLock;
 use ed25519_dalek::VerifyingKey;
 use serde::Deserialize;
 
-use crate::{AvalonClient, SdkError};
+use crate::{AvalonClient, AvalonConfig, SdkError};
 
 const TRUSTED_NETWORKS_JSON: &str = include_str!("../../../docs/trusted-networks.json");
 
@@ -336,6 +336,45 @@ pub fn check_target_network<'a>(
     }
 }
 
+/// Fetches `GET /ledger/sth/latest` from `server_url` and evaluates it
+/// against [`bundled_trust_anchors`] — the shared fetch-then-evaluate path
+/// behind both [`AvalonClient::verify_network`] (a known server) and
+/// [`discover`] (candidate servers with no known-good one yet).
+async fn fetch_network_trust_status(
+    anchors: &[TrustAnchorEntry],
+    http: &reqwest::Client,
+    retry: &crate::RetryConfig,
+    server_url: &str,
+) -> NetworkTrustStatus {
+    let response = match crate::http::send(http, retry, true, |c| {
+        c.get(format!("{server_url}/ledger/sth/latest"))
+    })
+    .await
+    {
+        Ok(response) => response,
+        Err(err) => {
+            return NetworkTrustStatus::Unreachable {
+                detail: err.to_string(),
+            }
+        }
+    };
+    if !response.status().is_success() {
+        let err: SdkError = crate::http::map_error_response(response).await;
+        return NetworkTrustStatus::Unreachable {
+            detail: err.to_string(),
+        };
+    }
+    let wire: SignedTreeHeadWire = match response.json().await {
+        Ok(wire) => wire,
+        Err(err) => {
+            return NetworkTrustStatus::Unreachable {
+                detail: err.to_string(),
+            }
+        }
+    };
+    evaluate_network_trust(anchors, wire.into())
+}
+
 impl AvalonClient {
     /// Fetches `GET /ledger/sth/latest` from this client's configured
     /// server and verifies it against [`bundled_trust_anchors`] — the
@@ -348,33 +387,135 @@ impl AvalonClient {
     /// network" is a question with an answer even when that answer is "no
     /// signal at all."
     pub async fn verify_network(&self) -> NetworkTrustStatus {
-        let response = match crate::http::send(&self.http, &self.config.retry, true, |c| {
-            c.get(format!("{}/ledger/sth/latest", self.config.server_url))
-        })
+        fetch_network_trust_status(
+            bundled_trust_anchors(),
+            &self.http,
+            &self.config.retry,
+            &self.config.server_url,
+        )
         .await
-        {
-            Ok(response) => response,
-            Err(err) => {
-                return NetworkTrustStatus::Unreachable {
-                    detail: err.to_string(),
-                }
-            }
+    }
+}
+
+/// Everything [`AvalonClient::connect`] needs besides the server URL
+/// itself, since discovery is what supplies that field.
+pub struct DiscoveryConfig {
+    /// This integrator's own registered credential key id — see
+    /// [`crate::AvalonConfig::integrator_credential_key_id`].
+    pub integrator_credential_key_id: String,
+    /// See [`crate::AvalonConfig::integrator_slug`].
+    pub integrator_slug: Option<String>,
+    /// See [`crate::AvalonConfig::signing_key`].
+    pub signing_key: Option<[u8; 32]>,
+    /// See [`crate::AvalonConfig::retry`].
+    pub retry: crate::RetryConfig,
+}
+
+/// Why [`discover`]/[`AvalonClient::connect`] couldn't resolve `target` to
+/// a live, verified server.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum DiscoveryError {
+    /// No bundled trust anchor matches `target` at all, so there was
+    /// nothing to even attempt a connection to.
+    #[error("no bundled trust anchor matches target network {target}")]
+    NoCandidates {
+        /// The target that had no matching bundled entry.
+        target: String,
+    },
+    /// At least one candidate URL was tried, but none of them verified as
+    /// `target` — carries every attempt's outcome so a caller can surface
+    /// something more useful than "it didn't work."
+    #[error("no candidate server for target network {target} verified: {attempts:?}")]
+    NoneVerified {
+        /// The target none of the candidates satisfied.
+        target: String,
+        /// `(candidate URL, human-readable outcome)` for every URL tried.
+        attempts: Vec<(String, String)>,
+    },
+}
+
+/// Resolves `target` to a live, independently-verified `(server_url,
+/// entry)` with no server URL supplied up front — the zero-URL bootstrap
+/// case (#91): a caller who only knows which network they want to join,
+/// not which of its nodes to talk to.
+///
+/// Candidates come only from [`bundled_trust_anchors`]' own `server_url`/
+/// `seed_nodes` fields for every entry matching `target` — never anywhere
+/// else, so discovery can't be tricked into contacting an unpinned host.
+/// Each candidate is fetched and verified exactly like
+/// [`AvalonClient::verify_network`] would; the first one whose STH
+/// verifies against `target`'s own matching entry wins. Entries are tried
+/// in [`bundled_trust_anchors`]' order, and each entry's `server_url`
+/// before its `seed_nodes`, so results are deterministic across runs of
+/// the same SDK build.
+pub async fn discover(
+    target: &TargetNetwork,
+    retry: &crate::RetryConfig,
+) -> Result<(String, TrustAnchorEntry), DiscoveryError> {
+    discover_among(bundled_trust_anchors(), target, retry).await
+}
+
+/// [`discover`]'s actual logic, taking `anchors` explicitly rather than
+/// always reading [`bundled_trust_anchors`] — split out the same way
+/// [`evaluate_network_trust`] is, so tests can supply a mock server's own
+/// key instead of needing to forge a signature for a real bundled entry.
+async fn discover_among(
+    anchors: &[TrustAnchorEntry],
+    target: &TargetNetwork,
+    retry: &crate::RetryConfig,
+) -> Result<(String, TrustAnchorEntry), DiscoveryError> {
+    let http = reqwest::Client::new();
+    let mut attempts = Vec::new();
+    let mut tried_any = false;
+
+    for entry in anchors {
+        let entry_matches = match target {
+            TargetNetwork::NetworkId(expected) => &entry.network_id == expected,
+            TargetNetwork::Env(tier) => tier.matches(entry.environment),
         };
-        if !response.status().is_success() {
-            let err: SdkError = crate::http::map_error_response(response).await;
-            return NetworkTrustStatus::Unreachable {
-                detail: err.to_string(),
-            };
+        if !entry_matches {
+            continue;
         }
-        let wire: SignedTreeHeadWire = match response.json().await {
-            Ok(wire) => wire,
-            Err(err) => {
-                return NetworkTrustStatus::Unreachable {
-                    detail: err.to_string(),
-                }
+        let candidates = entry.server_url.iter().chain(entry.seed_nodes.iter());
+        for candidate in candidates {
+            tried_any = true;
+            let status = fetch_network_trust_status(anchors, &http, retry, candidate).await;
+            match check_target_network(&status, target) {
+                Ok(verified_entry) => return Ok((candidate.clone(), verified_entry.clone())),
+                Err(err) => attempts.push((candidate.clone(), err.to_string())),
             }
-        };
-        evaluate_network_trust(bundled_trust_anchors(), wire.into())
+        }
+    }
+
+    if !tried_any {
+        return Err(DiscoveryError::NoCandidates {
+            target: target.to_string(),
+        });
+    }
+    Err(DiscoveryError::NoneVerified {
+        target: target.to_string(),
+        attempts,
+    })
+}
+
+impl AvalonClient {
+    /// Builds and returns a client with no server URL supplied up front —
+    /// resolves `target` to a live, verified server via [`discover`], then
+    /// constructs exactly as [`AvalonClient::new`] would with the
+    /// discovered URL. See [`discover`] for how candidates are chosen and
+    /// verified.
+    pub async fn connect(
+        target: TargetNetwork,
+        config: DiscoveryConfig,
+    ) -> Result<Self, DiscoveryError> {
+        let (server_url, _entry) = discover(&target, &config.retry).await?;
+        Ok(Self::new(AvalonConfig {
+            server_url,
+            integrator_credential_key_id: config.integrator_credential_key_id,
+            integrator_slug: config.integrator_slug,
+            signing_key: config.signing_key,
+            retry: config.retry,
+        }))
     }
 }
 
@@ -607,5 +748,78 @@ mod tests {
             check_target_network(&mismatch, &target),
             Err(NetworkTargetError::Unverified { .. })
         ));
+    }
+
+    async fn mock_sth_server(signing_key: &SigningKey, network_id: &str) -> MockServer {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ledger/sth/latest"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "tree_size": 42,
+                "root_hash": "ab".repeat(32),
+                "network_id": network_id,
+                "signing_key_id": "test-key",
+                "signature": signed_sth(signing_key, network_id).signature,
+                "created_at": "1970-01-01T00:00:00Z",
+            })))
+            .mount(&server)
+            .await;
+        server
+    }
+
+    #[tokio::test]
+    async fn discover_finds_the_first_verified_seed_node() {
+        let signing_key = SigningKey::generate(&mut rand::rng());
+        let dead = "http://127.0.0.1:1".to_string();
+        let live = mock_sth_server(&signing_key, "avalon-test").await;
+        let mut entry = anchor(
+            "avalon-test",
+            hex::encode(signing_key.verifying_key().to_bytes()),
+        );
+        entry.seed_nodes = vec![dead, live.uri()];
+
+        let target = TargetNetwork::NetworkId("avalon-test".to_string());
+        let retry = RetryConfig {
+            max_retries: 0,
+            base_delay: std::time::Duration::from_millis(1),
+            request_timeout: std::time::Duration::from_secs(5),
+        };
+        let (server_url, resolved) = discover_among(std::slice::from_ref(&entry), &target, &retry)
+            .await
+            .expect("the live seed node should verify");
+        assert_eq!(server_url, live.uri());
+        assert_eq!(resolved, entry);
+    }
+
+    #[tokio::test]
+    async fn discover_reports_no_candidates_for_an_unpinned_target() {
+        let target = TargetNetwork::NetworkId("avalon-nowhere".to_string());
+        let retry = RetryConfig::default();
+        let err = discover_among(&[], &target, &retry).await.unwrap_err();
+        assert!(matches!(err, DiscoveryError::NoCandidates { .. }));
+    }
+
+    #[tokio::test]
+    async fn discover_reports_none_verified_when_every_candidate_fails() {
+        let signing_key = SigningKey::generate(&mut rand::rng());
+        // Pinned entry's key won't match this server's forged STH.
+        let impostor_key = SigningKey::generate(&mut rand::rng());
+        let live = mock_sth_server(&impostor_key, "avalon-test").await;
+        let mut entry = anchor(
+            "avalon-test",
+            hex::encode(signing_key.verifying_key().to_bytes()),
+        );
+        entry.seed_nodes = vec![live.uri()];
+
+        let target = TargetNetwork::NetworkId("avalon-test".to_string());
+        let retry = RetryConfig {
+            max_retries: 0,
+            base_delay: std::time::Duration::from_millis(1),
+            request_timeout: std::time::Duration::from_secs(5),
+        };
+        let err = discover_among(std::slice::from_ref(&entry), &target, &retry)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DiscoveryError::NoneVerified { .. }));
     }
 }
