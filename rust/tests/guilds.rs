@@ -11,7 +11,7 @@
 //! Unlike `tests/social.rs` (which seeds friendships directly via SQL),
 //! guild fixtures here are created through the real HTTP API
 //! (`POST /guilds`): creating a guild atomically makes the creator its
-//! owner (a real `guild_members` row) and seeds a default `general`
+//! owner (a real `indexer_guild_members` row) and seeds a default `general`
 //! channel (`crates/server/src/guilds.rs::create_guild`), which is exactly
 //! the flow this test wants to exercise the SDK against — a real
 //! #20/#21/#22 guild, not a hand-seeded row.
@@ -235,11 +235,11 @@ async fn subscribe_messages_receives_a_message_pushed_by_another_member() {
     let tag = format!("W{}", &Uuid::new_v4().simple().to_string()[..4]);
     let guild_id = create_guild(&http, &base, &alice_token, &tag).await;
 
-    // Bob needs a real guild_members row to send — seeded directly, same
-    // as `crates/server/tests/guild_channels.rs::seed_membership`, since
-    // there's no invite-flow helper in this test file.
+    // Bob needs a real indexer_guild_members row to send — seeded directly,
+    // same as `crates/server/tests/guild_channels.rs::seed_membership`,
+    // since there's no invite-flow helper in this test file.
     sqlx::query(
-        "INSERT INTO guild_members (guild_id, identity_id, role_index, joined_at) \
+        "INSERT INTO indexer_guild_members (guild_id, identity_id, role_index, joined_at) \
          VALUES ($1, $2, 2, now())",
     )
     .bind(guild_id)
