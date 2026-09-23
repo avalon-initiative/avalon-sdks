@@ -9,7 +9,7 @@
 //! server is.
 //!
 //! `docs/trusted-networks.json` is the single canonical trust-anchor list
-//! (embedded directly via [`include_str!`] below, never hand-copied —
+//! (fetched at runtime from [`TRUST_ANCHORS_URL`], with a copy embedded via [`include_str!`] as the offline fallback —
 //! the same non-duplication invariant `apps/hub/src/network/trustAnchors.ts`
 //! keeps via its own build-time mirror).
 
@@ -91,6 +91,34 @@ pub fn bundled_trust_anchors() -> &'static [TrustAnchorEntry] {
             file.networks
         })
         .as_slice()
+}
+
+/// Where the canonical trust-anchor list is published.
+pub const TRUST_ANCHORS_URL: &str =
+    "https://raw.githubusercontent.com/avalon-initiative/avalon-protocol/main/docs/trusted-networks.json";
+
+/// Fetches and parses the published trust-anchor list from `url`.
+pub async fn fetch_trust_anchors(
+    http: &reqwest::Client,
+    url: &str,
+) -> Result<Vec<TrustAnchorEntry>, reqwest::Error> {
+    let file: TrustedNetworksFile = http
+        .get(url)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    Ok(file.networks)
+}
+
+/// The published list when reachable, otherwise the bundled copy.
+pub async fn resolve_trust_anchors(http: &reqwest::Client) -> Vec<TrustAnchorEntry> {
+    match fetch_trust_anchors(http, TRUST_ANCHORS_URL).await {
+        Ok(anchors) if !anchors.is_empty() => anchors,
+        _ => bundled_trust_anchors().to_vec(),
+    }
 }
 
 /// `GET /ledger/sth/latest`'s wire shape — mirrors
@@ -387,8 +415,9 @@ impl AvalonClient {
     /// network" is a question with an answer even when that answer is "no
     /// signal at all."
     pub async fn verify_network(&self) -> NetworkTrustStatus {
+        let anchors = resolve_trust_anchors(&self.http).await;
         fetch_network_trust_status(
-            bundled_trust_anchors(),
+            &anchors,
             &self.http,
             &self.config.retry,
             &self.config.server_url,
@@ -452,7 +481,8 @@ pub async fn discover(
     target: &TargetNetwork,
     retry: &crate::RetryConfig,
 ) -> Result<(String, TrustAnchorEntry), DiscoveryError> {
-    discover_among(bundled_trust_anchors(), target, retry).await
+    let anchors = resolve_trust_anchors(&reqwest::Client::new()).await;
+    discover_among(&anchors, target, retry).await
 }
 
 /// [`discover`]'s actual logic, taking `anchors` explicitly rather than
@@ -653,6 +683,33 @@ mod tests {
                 claimed_network_id: "avalon-test".to_string(),
             }
         );
+    }
+
+    #[tokio::test]
+    async fn fetch_trust_anchors_parses_the_published_file() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/trusted-networks.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(TRUSTED_NETWORKS_JSON))
+            .mount(&server)
+            .await;
+        let url = format!("{}/trusted-networks.json", server.uri());
+        let anchors = fetch_trust_anchors(&reqwest::Client::new(), &url)
+            .await
+            .unwrap();
+        assert_eq!(anchors, bundled_trust_anchors());
+    }
+
+    #[tokio::test]
+    async fn fetch_trust_anchors_errors_on_a_failing_response() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+        assert!(fetch_trust_anchors(&reqwest::Client::new(), &server.uri())
+            .await
+            .is_err());
     }
 
     #[tokio::test]
