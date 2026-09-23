@@ -8183,12 +8183,12 @@ export interface operations {
     };
     list_rollback_candidates: {
         parameters: {
-            query?: never;
-            header?: never;
-            path: {
+            query: {
                 /** @description RFC 3339 timestamp at which the owner believes the compromise began. */
                 since: string;
             };
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -8477,4 +8477,4 @@ export interface operations {
 }
 
 // Issue #735: the info.version this file's types were generated from.
-export const OPENAPI_SCHEMA_VERSION = "0.3.0" as const
+export const OPENAPI_SCHEMA_VERSION = "0.3.1" as const
