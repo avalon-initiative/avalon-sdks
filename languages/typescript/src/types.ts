@@ -73,11 +73,10 @@ export interface DeviceRowWire {
 }
 
 /** `GET /ledger/sth/latest`'s wire response, field-for-field — matches
- * `crates/server/src/settlement.rs::SignedTreeHeadResponse`. Hub's own
- * `apps/hub/src/network/verifyNetwork.ts` reconstructs
- * `crates/chain/src/sth.rs::signing_message` from `tree_size`/`root_hash`/
- * `network_id`/`created_at` itself — this type only carries the shape,
- * verification stays Hub's own logic. */
+ * `crates/server/src/settlement.rs::SignedTreeHeadResponse`. See
+ * `./network/sthMessage.js` for reconstructing the signing message this
+ * type's signature covers, and `./network/verifyNetwork.js`/
+ * `AvalonClient.verifyNetwork` for verifying it. */
 export interface SignedTreeHeadResponse {
   tree_size: number
   // Lowercase hex-encoded RFC 6962 Merkle Tree Hash.

@@ -5,9 +5,9 @@ import { request } from './http.js'
 import type { SignedTreeHeadResponse } from './types.js'
 
 /** `GET /ledger/sth/latest` — the network's current Signed Tree Head.
- * Verification of the returned signature/root hash is Hub's own logic
- * (`apps/hub/src/network/verifyNetwork.ts`), not this SDK's —
- * this just fetches the wire shape. */
+ * This just fetches the wire shape; see `./network/verifyNetwork.js` and
+ * `AvalonClient.verifyNetwork` for verifying the returned signature/root
+ * hash against a pinned trust anchor. */
 export function getLatestSth(serverUrl: string): Promise<SignedTreeHeadResponse> {
   return request<SignedTreeHeadResponse>(serverUrl, '/ledger/sth/latest')
 }

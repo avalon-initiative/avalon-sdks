@@ -97,6 +97,27 @@ export { getLatestSth } from './ledger.js'
 export { getNodeStatus } from './nodeStatus.js'
 
 export {
+  getBundledTrustAnchors,
+  findTrustAnchor,
+  verifyTreeHead,
+  evaluateNetworkTrust,
+  fetchNetworkTrustStatus,
+  checkTargetNetwork,
+  NetworkTargetMismatchError,
+  discover,
+  discoverAmong,
+  DiscoveryFailedError,
+} from './network/index.js'
+export type {
+  TrustAnchorEntry,
+  NetworkTrustStatus,
+  TargetNetwork,
+  TargetNetworkTier,
+  NetworkTargetError,
+  DiscoveryError,
+} from './network/index.js'
+
+export {
   listAchievementDefinitions,
   listMilestoneDefinitions,
   getIntegrator,

@@ -33,6 +33,10 @@ import { generateMnemonicSigningKey } from './crypto/mnemonic.js'
 import { authenticate as authenticateIntegrator, type AuthenticateOptions, type IntegratorSession } from './integratorSession.js'
 import { getNodeStatus } from './nodeStatus.js'
 import type { NodeStatusResponse } from './types.js'
+import { getBundledTrustAnchors } from './network/trustAnchors.js'
+import { fetchNetworkTrustStatus, type NetworkTrustStatus } from './network/verifyNetwork.js'
+import { discover } from './network/discover.js'
+import type { TargetNetwork } from './network/targetNetwork.js'
 
 export interface AvalonClientConfig {
   serverUrl: string
@@ -229,6 +233,29 @@ export class AvalonClient {
    * node runs. */
   async status(): Promise<NodeStatusResponse> {
     return getNodeStatus(this.serverUrl)
+  }
+
+  /** Fetches `GET /ledger/sth/latest` from this client's configured
+   * `serverUrl` and verifies it against the bundled trust-anchor list —
+   * the check an integrator should run before registering an issuer or
+   * submitting any write, so a call never lands on a server merely
+   * claiming to be the network it targets.
+   *
+   * Never throws: an unreachable/unparseable server resolves to
+   * `{ kind: 'unreachable' }`, since "is this the real network" is a
+   * question with an answer even when that answer is "no signal at all." */
+  async verifyNetwork(): Promise<NetworkTrustStatus> {
+    return fetchNetworkTrustStatus(getBundledTrustAnchors(), this.serverUrl)
+  }
+
+  /** Builds and returns a client with no server URL supplied up front —
+   * resolves `target` to a live, verified server via `discover`, then
+   * constructs exactly as `new AvalonClient(...)` would with the
+   * discovered URL. See `discover` for how candidates are chosen and
+   * verified. */
+  static async connect(target: TargetNetwork): Promise<AvalonClient> {
+    const { serverUrl } = await discover(target)
+    return new AvalonClient({ serverUrl })
   }
 }
 

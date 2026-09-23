@@ -20,8 +20,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:live": "AVALON_SDK_LIVE=1 vitest run --config vitest.live.config.ts",
-    "generate": "node scripts/generate-types.mjs",
-    "generate:check": "node scripts/generate-types.mjs && git diff --exit-code src/generated.ts"
+    "generate": "node scripts/generate-types.mjs && node scripts/generate-trust-anchors.mjs",
+    "generate:check": "node scripts/generate-types.mjs && node scripts/generate-trust-anchors.mjs && git diff --exit-code src/generated.ts src/generated/trustedNetworks.json"
   },
   "dependencies": {
     "@noble/curves": "^1.6.0",
