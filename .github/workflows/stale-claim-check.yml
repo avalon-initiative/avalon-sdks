@@ -1,0 +1,12 @@
+name: Stale Claim Check
+
+on:
+  schedule:
+    - cron: "0 12 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  call:
+    permissions:
+      issues: write
+    uses: avalon-initiative/.github/.github/workflows/stale-claim-check.yml@main

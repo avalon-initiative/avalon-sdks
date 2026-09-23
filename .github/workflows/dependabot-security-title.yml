@@ -1,0 +1,12 @@
+name: Dependabot Security Title
+
+on:
+  pull_request_target:
+    types: [opened]
+
+jobs:
+  call:
+    permissions:
+      pull-requests: write
+      issues: write
+    uses: avalon-initiative/.github/.github/workflows/dependabot-security-title.yml@main

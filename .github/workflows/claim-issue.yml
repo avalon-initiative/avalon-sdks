@@ -1,0 +1,11 @@
+name: Claim Issue
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  call:
+    permissions:
+      issues: write
+    uses: avalon-initiative/.github/.github/workflows/claim-issue.yml@main
