@@ -107,6 +107,40 @@ namespace Avalon.Sdk
         /// <summary>Parsed once from the embedded docs/trusted-networks.json and cached.</summary>
         public static IReadOnlyList<TrustAnchorEntry> Bundled => Cached.Value;
 
+        /// <summary>Where the canonical trust-anchor list is published.</summary>
+        public const string PublishedUrl =
+            "https://raw.githubusercontent.com/avalon-initiative/avalon-protocol/main/docs/trusted-networks.json";
+
+        /// <summary>Fetches and parses the published trust-anchor list from <paramref name="url"/>.</summary>
+        public static async Task<IReadOnlyList<TrustAnchorEntry>> FetchAsync(
+            HttpClient http, string url = PublishedUrl, CancellationToken ct = default)
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(5));
+            using var response = await http.GetAsync(url, timeout.Token).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            var file = JsonSerializer.Deserialize<TrustedNetworksFile>(json, ParseOptions)
+                ?? throw new InvalidOperationException("trust-anchor list must match TrustedNetworksFile");
+            return file.Networks;
+        }
+
+        /// <summary>The published list when reachable, otherwise <see cref="Bundled"/>.</summary>
+        public static async Task<IReadOnlyList<TrustAnchorEntry>> ResolveAsync(
+            HttpClient http, string url = PublishedUrl, CancellationToken ct = default)
+        {
+            try
+            {
+                var anchors = await FetchAsync(http, url, ct).ConfigureAwait(false);
+                if (anchors.Count > 0) return anchors;
+            }
+            catch (Exception) when (!ct.IsCancellationRequested)
+            {
+                // fall through to the bundled copy
+            }
+            return Bundled;
+        }
+
         private static List<TrustAnchorEntry> Load()
         {
             var assembly = Assembly.GetExecutingAssembly();
@@ -407,8 +441,10 @@ namespace Avalon.Sdk
         /// Never throws: an unreachable/unparseable server is itself
         /// <see cref="NetworkTrustStatusKind.Unreachable"/>, since "is this the real network" is
         /// a question with an answer even when that answer is "no signal at all."</summary>
-        public Task<NetworkTrustStatus> VerifyNetworkAsync(CancellationToken ct = default) =>
-            FetchNetworkTrustStatusAsync(TrustAnchors.Bundled, _http, _config.ServerUrl, ct);
+        public async Task<NetworkTrustStatus> VerifyNetworkAsync(CancellationToken ct = default) =>
+            await FetchNetworkTrustStatusAsync(
+                await TrustAnchors.ResolveAsync(_http, ct: ct).ConfigureAwait(false),
+                _http, _config.ServerUrl, ct).ConfigureAwait(false);
 
         /// <summary>The check a declared <see cref="TargetNetwork"/> exists for: it only ever
         /// proceeds against a server whose <see cref="NetworkTrustStatus"/> is
@@ -454,9 +490,13 @@ namespace Avalon.Sdk
         /// tried in <see cref="TrustAnchors.Bundled"/>'s order, and each entry's ServerUrl
         /// before its SeedNodes, so results are deterministic across runs of the same SDK
         /// build.</summary>
-        public static Task<(string ServerUrl, TrustAnchorEntry Entry)> DiscoverAsync(
-            TargetNetwork target, HttpClient? httpClient = null, CancellationToken ct = default) =>
-            DiscoverAmongAsync(TrustAnchors.Bundled, target, httpClient ?? new HttpClient(), ct);
+        public static async Task<(string ServerUrl, TrustAnchorEntry Entry)> DiscoverAsync(
+            TargetNetwork target, HttpClient? httpClient = null, CancellationToken ct = default)
+        {
+            var http = httpClient ?? new HttpClient();
+            var anchors = await TrustAnchors.ResolveAsync(http, ct: ct).ConfigureAwait(false);
+            return await DiscoverAmongAsync(anchors, target, http, ct).ConfigureAwait(false);
+        }
 
         /// <summary>Builds and returns a client with no server URL supplied up front — resolves
         /// <paramref name="target"/> to a live, verified server via <see cref="DiscoverAsync"/>,

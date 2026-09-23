@@ -33,7 +33,7 @@ import { generateMnemonicSigningKey } from './crypto/mnemonic.js'
 import { authenticate as authenticateIntegrator, type AuthenticateOptions, type IntegratorSession } from './integratorSession.js'
 import { getNodeStatus } from './nodeStatus.js'
 import type { NodeStatusResponse } from './types.js'
-import { getBundledTrustAnchors } from './network/trustAnchors.js'
+import { resolveTrustAnchors } from './network/trustAnchors.js'
 import { fetchNetworkTrustStatus, type NetworkTrustStatus } from './network/verifyNetwork.js'
 import { discover } from './network/discover.js'
 import type { TargetNetwork } from './network/targetNetwork.js'
@@ -245,7 +245,7 @@ export class AvalonClient {
    * `{ kind: 'unreachable' }`, since "is this the real network" is a
    * question with an answer even when that answer is "no signal at all." */
   async verifyNetwork(): Promise<NetworkTrustStatus> {
-    return fetchNetworkTrustStatus(getBundledTrustAnchors(), this.serverUrl)
+    return fetchNetworkTrustStatus(await resolveTrustAnchors(), this.serverUrl)
   }
 
   /** Builds and returns a client with no server URL supplied up front —

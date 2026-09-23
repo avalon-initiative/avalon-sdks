@@ -1,6 +1,6 @@
 // Zero-URL bootstrap: a caller who only knows which network they want to
 // join, not which of its nodes to talk to.
-import { getBundledTrustAnchors } from './trustAnchors.js'
+import { resolveTrustAnchors } from './trustAnchors.js'
 import type { TrustAnchorEntry } from './trustAnchors.js'
 import { fetchNetworkTrustStatus } from './verifyNetwork.js'
 import { checkTargetNetwork, NetworkTargetMismatchError, type TargetNetwork } from './targetNetwork.js'
@@ -87,6 +87,6 @@ export async function discoverAmong(
  * entry's `server_url` before its `seed_nodes`, so results are
  * deterministic across runs of the same SDK build.
  */
-export function discover(target: TargetNetwork): Promise<{ serverUrl: string; entry: TrustAnchorEntry }> {
-  return discoverAmong(getBundledTrustAnchors(), target)
+export async function discover(target: TargetNetwork): Promise<{ serverUrl: string; entry: TrustAnchorEntry }> {
+  return discoverAmong(await resolveTrustAnchors(), target)
 }

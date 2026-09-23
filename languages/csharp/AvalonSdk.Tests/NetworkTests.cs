@@ -73,6 +73,33 @@ public class NetworkTests
 
     private static string SthJson(SignedTreeHeadWire wire) => JsonSerializer.Serialize(wire);
 
+    private sealed class StubHandler : HttpMessageHandler
+    {
+        private readonly HttpStatusCode _status;
+        private readonly string _body;
+
+        public StubHandler(HttpStatusCode status, string body) { _status = status; _body = body; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, System.Threading.CancellationToken ct) =>
+            Task.FromResult(new HttpResponseMessage(_status) { Content = new StringContent(_body) });
+    }
+
+    [Fact]
+    public async Task FetchAsync_ParsesThePublishedFile()
+    {
+        var json = "{\"networks\":[{\"label\":\"n\",\"network_id\":\"n\",\"verify_key\":\"ab\",\"signing_key_id\":\"k\",\"environment\":\"dev\"}]}";
+        using var http = new HttpClient(new StubHandler(HttpStatusCode.OK, json));
+        var anchors = await TrustAnchors.FetchAsync(http, "http://x");
+        Assert.Equal("n", Assert.Single(anchors).NetworkId);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_FallsBackToBundledOnFailure()
+    {
+        using var http = new HttpClient(new StubHandler(HttpStatusCode.InternalServerError, ""));
+        Assert.Same(TrustAnchors.Bundled, await TrustAnchors.ResolveAsync(http, "http://x"));
+    }
+
     [Fact]
     public void BundledTrustAnchors_ParsesTheRealCheckedInFile()
     {
@@ -196,7 +223,7 @@ public class NetworkTests
     {
         var signingKey = GenerateKey();
         var sth = SignedSth(signingKey, "avalon-test");
-        var handler = new StubHttpMessageHandler().Enqueue(SthJson(sth));
+        var handler = new StubHttpMessageHandler().Enqueue(HttpStatusCode.NotFound, "{}").Enqueue(SthJson(sth));
         var client = new AvalonClient(new AvalonConfig("https://example.invalid", "test-integrator"), handler.ToHttpClient());
 
         // No bundled trust anchor for "avalon-test" in this build, so the real end-to-end path

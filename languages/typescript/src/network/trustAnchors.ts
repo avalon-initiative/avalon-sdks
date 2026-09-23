@@ -1,5 +1,6 @@
 // The bundled copy of `docs/trusted-networks.json` — the one canonical
-// trust-anchor list (integrity comes from it being a normal, PR-reviewed,
+// trust-anchor list, used as the offline fallback when the published copy
+// can't be fetched (integrity comes from it being a normal, PR-reviewed,
 // git-tracked file). `scripts/generate-trust-anchors.mjs` mirrors it into
 // `src/generated/trustedNetworks.json` on every `npm run generate` so this
 // module can import it as a plain, in-`src` JSON module without hand-
@@ -50,4 +51,33 @@ export function getBundledTrustAnchors(): TrustAnchorEntry[] {
 /** The pinned entry for `networkId`, if this build knows about that network. */
 export function findTrustAnchor(networkId: string): TrustAnchorEntry | undefined {
   return parsed.networks.find((entry) => entry.network_id === networkId)
+}
+
+/** Where the canonical trust-anchor list is published. */
+export const TRUST_ANCHORS_URL =
+  'https://raw.githubusercontent.com/avalon-initiative/avalon-protocol/main/docs/trusted-networks.json'
+
+/** Fetches and parses the published trust-anchor list from `url`. */
+export async function fetchTrustAnchors(
+  url: string = TRUST_ANCHORS_URL,
+  fetchImpl: typeof fetch = fetch,
+): Promise<TrustAnchorEntry[]> {
+  const response = await fetchImpl(url, { signal: AbortSignal.timeout(5000) })
+  if (!response.ok) throw new Error(`trust-anchor fetch failed: ${response.status}`)
+  const file = (await response.json()) as TrustedNetworksFile
+  return file.networks
+}
+
+/** The published list when reachable, otherwise the bundled copy. */
+export async function resolveTrustAnchors(
+  url: string = TRUST_ANCHORS_URL,
+  fetchImpl: typeof fetch = fetch,
+): Promise<TrustAnchorEntry[]> {
+  try {
+    const anchors = await fetchTrustAnchors(url, fetchImpl)
+    if (anchors.length > 0) return anchors
+  } catch {
+    // fall through to the bundled copy
+  }
+  return getBundledTrustAnchors()
 }
