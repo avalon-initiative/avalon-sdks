@@ -6,3 +6,7 @@ Cargo.lock.bak
 # .NET (csharp/)
 csharp/**/bin/
 csharp/**/obj/
+
+# Node (typescript/)
+typescript/node_modules/
+typescript/dist/
