@@ -14,6 +14,8 @@ export type {
   Device,
   DeviceGrant,
   GuardianSettings,
+  RollbackCandidate,
+  RollbackCandidates,
   RecoveryRequest,
   GuardianRequest,
   GuardianOf,
