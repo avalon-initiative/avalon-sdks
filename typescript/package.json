@@ -1,5 +1,5 @@
 {
-  "name": "@avalon-initiative/sdk",
+  "name": "@avalon-initiative/protocol-sdk",
   "version": "0.1.0",
   "description": "TypeScript reference SDK for Avalon Protocol (issue #701): AccountSession (first-party account operations, auto-signed) and IntegratorSession (capability-gated integrator access). Moved here from avalon-protocol's bindings/ts by issue #775.",
   "type": "module",
