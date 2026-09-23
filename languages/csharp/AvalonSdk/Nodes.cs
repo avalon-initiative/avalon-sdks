@@ -1,4 +1,4 @@
-// GET /nodes/status — public, unauthenticated. Issue #91.
+// GET /nodes/status — public, unauthenticated.
 
 using System.Collections.Generic;
 using System.Net.Http;

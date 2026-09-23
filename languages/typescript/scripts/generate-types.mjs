@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// Generates src/generated.ts from ../docs/generated/openapi.json (#723,
-// path adjusted by #775's move into avalon-sdks)
+// Generates src/generated.ts from the repo root's docs/generated/openapi.json
 // via openapi-typescript's programmatic API rather than its CLI, because
 // the real spec has real operationId collisions across tags
 // (list_messages/send_message for chat vs. guild channels,
@@ -19,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import openapiTS, { astToString } from "openapi-typescript";
 
 const SCHEMA_PATH = fileURLToPath(
-  new URL("../../docs/generated/openapi.json", import.meta.url),
+  new URL("../../../docs/generated/openapi.json", import.meta.url),
 );
 const OUT_PATH = fileURLToPath(new URL("../src/generated.ts", import.meta.url));
 const METHODS = ["get", "post", "put", "patch", "delete"];

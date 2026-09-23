@@ -1,8 +1,7 @@
-// TypeScript reference SDK for Avalon Protocol, moved here from
-// avalon-protocol's bindings/ts by issue #775. Self-contained: no
-// dependency on packages/api-client, apps/hub, or apps/mobile-hub in that
-// repo. See avalon-protocol's docs/projects/sdks/architecture/sdk.md for
-// the full surface.
+// TypeScript reference SDK for Avalon Protocol. Self-contained: no
+// dependency on avalon-protocol's own apps/packages workspace. See
+// avalon-protocol's docs/projects/sdks/architecture/sdk.md for the full
+// surface.
 export { AvalonClient } from './client.js'
 export type { AvalonClientConfig } from './client.js'
 

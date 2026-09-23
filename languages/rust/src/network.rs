@@ -20,7 +20,7 @@ use serde::Deserialize;
 
 use crate::{AvalonClient, SdkError};
 
-const TRUSTED_NETWORKS_JSON: &str = include_str!("../../docs/trusted-networks.json");
+const TRUSTED_NETWORKS_JSON: &str = include_str!("../../../docs/trusted-networks.json");
 
 /// Which deployment tier a [`TrustAnchorEntry`] pins, matching
 /// `docs/trusted-networks.json`'s `environment` field and

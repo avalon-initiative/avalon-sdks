@@ -9,7 +9,7 @@ import { OPENAPI_SCHEMA_VERSION } from '../src/index.js'
 // change to that generation step breaking the link, not routine drift.
 describe('OPENAPI_SCHEMA_VERSION', () => {
   it('matches docs/generated/openapi.json info.version', () => {
-    const schemaPath = fileURLToPath(new URL('../../docs/generated/openapi.json', import.meta.url))
+    const schemaPath = fileURLToPath(new URL('../../../docs/generated/openapi.json', import.meta.url))
     const schema = JSON.parse(readFileSync(schemaPath, 'utf8'))
     expect(OPENAPI_SCHEMA_VERSION).toBe(schema.info.version)
   })

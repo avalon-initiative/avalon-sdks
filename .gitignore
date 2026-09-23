@@ -3,10 +3,10 @@
 Cargo.lock.bak
 .env
 
-# .NET (csharp/)
-csharp/**/bin/
-csharp/**/obj/
+# .NET (languages/csharp/)
+languages/csharp/**/bin/
+languages/csharp/**/obj/
 
-# Node (typescript/)
-typescript/node_modules/
-typescript/dist/
+# Node (languages/typescript/)
+languages/typescript/node_modules/
+languages/typescript/dist/

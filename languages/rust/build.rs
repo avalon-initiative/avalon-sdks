@@ -184,7 +184,7 @@ fn strip_date_time_format(value: &mut serde_json::Value) {
 }
 
 fn main() {
-    let openapi_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../docs/generated/openapi.json");
+    let openapi_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/generated/openapi.json");
     println!("cargo:rerun-if-changed={}", openapi_path.display());
 
     let raw = fs::read_to_string(&openapi_path)

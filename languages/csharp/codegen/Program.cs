@@ -1,8 +1,5 @@
-// Issue #725: regenerates AvalonSdk/Generated.cs from docs/generated/openapi.json.
-// Run via `dotnet run --project csharp/codegen` from this repo's root (moved
-// here from avalon-protocol's bindings/csharp by issue #775 — see that
-// repo's own Makefile history for the make csharp-sdk-types targets this
-// used to be wired into there).
+// Regenerates AvalonSdk/Generated.cs from docs/generated/openapi.json.
+// Run via `dotnet run --project csharp/codegen` from this repo's root.
 //
 // Tool choice: NSwag's CSharpClientGenerator (DTO-only mode — GenerateClientClasses
 // and GenerateClientInterfaces both false, so only request/response POCOs come out,
@@ -39,9 +36,9 @@ using NSwag.CodeGeneration.CSharp;
 string ThisDirectory([System.Runtime.CompilerServices.CallerFilePath] string path = "") =>
     System.IO.Path.GetDirectoryName(path)!;
 
-var repoRoot = System.IO.Path.GetFullPath(System.IO.Path.Combine(ThisDirectory(), "..", ".."));
+var repoRoot = System.IO.Path.GetFullPath(System.IO.Path.Combine(ThisDirectory(), "..", "..", ".."));
 var schemaPath = System.IO.Path.Combine(repoRoot, "docs", "generated", "openapi.json");
-var outPath = System.IO.Path.Combine(repoRoot, "csharp", "AvalonSdk", "Generated.cs");
+var outPath = System.IO.Path.Combine(repoRoot, "languages", "csharp", "AvalonSdk", "Generated.cs");
 
 var schemaJson = ExcludeUnrepresentableSchemas(System.IO.File.ReadAllText(schemaPath));
 var doc = await OpenApiDocument.FromJsonAsync(schemaJson);

@@ -39,10 +39,11 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 fn vectors_dir() -> PathBuf {
-    // rust/ -> avalon-sdks repo root -> conformance/vectors
+    // languages/rust/ -> languages/ -> avalon-sdks repo root -> conformance/vectors
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .expect("rust/ sits one level under the avalon-sdks repo root")
+        .and_then(Path::parent)
+        .expect("languages/rust/ sits two levels under the avalon-sdks repo root")
         .join("conformance/vectors")
 }
 

@@ -1,4 +1,4 @@
-//! Node status/capability reporting (issue #91).
+//! Node status/capability reporting.
 
 use serde::Deserialize;
 

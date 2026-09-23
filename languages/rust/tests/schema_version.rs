@@ -6,7 +6,7 @@
 #[test]
 fn schema_version_matches_openapi_json() {
     let openapi_path =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../docs/generated/openapi.json");
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/generated/openapi.json");
     let raw = std::fs::read_to_string(&openapi_path)
         .unwrap_or_else(|e| panic!("reading {}: {e}", openapi_path.display()));
     let doc: serde_json::Value =

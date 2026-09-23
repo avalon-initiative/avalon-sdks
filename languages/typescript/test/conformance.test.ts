@@ -23,7 +23,7 @@ import { revocationSigningBytes } from '../src/integratorAccount.js'
 import { sign, verify } from '../src/crypto/signing.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const VECTORS_DIR = path.resolve(__dirname, '../../conformance/vectors')
+const VECTORS_DIR = path.resolve(__dirname, '../../../conformance/vectors')
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function loadVector(name: string): any {
