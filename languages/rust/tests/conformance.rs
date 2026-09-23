@@ -20,8 +20,7 @@
 //!
 //! Issue #775 physically moved this crate into `avalon-sdks` — this repo's
 //! `conformance/vectors/` is a vendored copy of `avalon-protocol`'s, kept in
-//! sync by hand (same convention as `docs/generated/openapi.json` and
-//! `docs/trusted-networks.json` below), not a live link across repos.
+//! sync by hand (same convention as `docs/generated/openapi.json`), not a live link across repos.
 //!
 //! When a vector's `supportedIn` doesn't list `"rust"`, this file asserts
 //! nothing false: it prints an explicit, named skip rather than faking a

@@ -99,11 +99,8 @@ export { getLatestSth } from './ledger.js'
 export { getNodeStatus } from './nodeStatus.js'
 
 export {
-  getBundledTrustAnchors,
   fetchTrustAnchors,
-  resolveTrustAnchors,
   TRUST_ANCHORS_URL,
-  findTrustAnchor,
   verifyTreeHead,
   evaluateNetworkTrust,
   fetchNetworkTrustStatus,

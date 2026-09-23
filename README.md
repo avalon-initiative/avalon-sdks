@@ -19,28 +19,16 @@ API, one directory per language under `languages/`.
 
 **Status:** all three official SDKs' real source lives here.
 
-**Known follow-ups, not yet done:**
-- `docs/trusted-networks.json` below is a hand-copied duplicate of
-  `avalon-protocol`'s canonical file, and it's **already drifted** once in
-  practice. Decided direction: every language here should fetch trust
-  anchors at runtime from a stable URL `avalon-protocol` publishes,
-  instead of a baked-in compiled copy — not implemented yet.
-
 ## Vendored files
 
-This repo has no live link back to `avalon-protocol` — three files are
-checked-in copies, kept in sync by hand whenever the upstream schema or
-trust-anchor list changes:
+This repo has no live link back to `avalon-protocol` — two sets of files are
+checked-in copies, kept in sync by hand whenever the upstream schema changes:
 
 - `docs/generated/openapi.json` — `avalon-protocol`'s
   `docs/generated/openapi.json` (`make openapi` there). Each language's
   own codegen (`languages/rust/build.rs`, `languages/csharp/codegen`,
   `languages/typescript/scripts/generate-types.mjs`) generates its SDK's
   wire types from this same copy.
-- `docs/trusted-networks.json` — `avalon-protocol`'s
-  `docs/trusted-networks.json`. `languages/rust/src/network.rs` embeds it
-  via `include_str!` — see the "known follow-ups" note above, this is the
-  file that's already drifted once.
 - `conformance/vectors/` — `avalon-protocol`'s `conformance/vectors/`.
   Each language's own conformance suite
   (`languages/rust/tests/conformance.rs`,
@@ -90,3 +78,12 @@ Bump `version` in `languages/typescript/package.json` first for anything
 beyond the very first publish — GitHub Packages refuses to overwrite an
 existing version. There's no CI-driven publish yet; every release is
 manual.
+
+## Trust anchors
+
+There is no trust-anchor file in this repo. Each SDK fetches `avalon-protocol`'s
+`docs/trusted-networks.json` at runtime from a single URL constant
+(`TRUST_ANCHORS_URL` in Rust/TypeScript, `TrustAnchors.PublishedUrl` in C#); if
+it can't be fetched, network verification and discovery fail rather than fall
+back to a stale copy. A fork running its own network repoints that constant at
+its own repo.

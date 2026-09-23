@@ -8,19 +8,15 @@
 //! network's pinned `verify_key` actually establishes which network a
 //! server is.
 //!
-//! `docs/trusted-networks.json` is the single canonical trust-anchor list
-//! (fetched at runtime from [`TRUST_ANCHORS_URL`], with a copy embedded via [`include_str!`] as the offline fallback —
+//! `docs/trusted-networks.json` in `avalon-protocol` is the single canonical
+//! trust-anchor list, fetched at runtime from [`TRUST_ANCHORS_URL`] — no copy
 //! the same non-duplication invariant `apps/hub/src/network/trustAnchors.ts`
 //! keeps via its own build-time mirror).
-
-use std::sync::OnceLock;
 
 use ed25519_dalek::VerifyingKey;
 use serde::Deserialize;
 
 use crate::{AvalonClient, AvalonConfig, SdkError};
-
-const TRUSTED_NETWORKS_JSON: &str = include_str!("../../../docs/trusted-networks.json");
 
 /// Which deployment tier a [`TrustAnchorEntry`] pins, matching
 /// `docs/trusted-networks.json`'s `environment` field and
@@ -79,20 +75,6 @@ struct TrustedNetworksFile {
     networks: Vec<TrustAnchorEntry>,
 }
 
-/// Every network this SDK build was bundled with a pinned key for —
-/// parsed once from the embedded `docs/trusted-networks.json` and cached.
-pub fn bundled_trust_anchors() -> &'static [TrustAnchorEntry] {
-    static ANCHORS: OnceLock<Vec<TrustAnchorEntry>> = OnceLock::new();
-    ANCHORS
-        .get_or_init(|| {
-            let file: TrustedNetworksFile = serde_json::from_str(TRUSTED_NETWORKS_JSON).expect(
-                "docs/trusted-networks.json must be valid JSON matching TrustedNetworksFile",
-            );
-            file.networks
-        })
-        .as_slice()
-}
-
 /// Where the canonical trust-anchor list is published.
 pub const TRUST_ANCHORS_URL: &str =
     "https://raw.githubusercontent.com/avalon-initiative/avalon-protocol/main/docs/trusted-networks.json";
@@ -111,14 +93,6 @@ pub async fn fetch_trust_anchors(
         .json()
         .await?;
     Ok(file.networks)
-}
-
-/// The published list when reachable, otherwise the bundled copy.
-pub async fn resolve_trust_anchors(http: &reqwest::Client) -> Vec<TrustAnchorEntry> {
-    match fetch_trust_anchors(http, TRUST_ANCHORS_URL).await {
-        Ok(anchors) if !anchors.is_empty() => anchors,
-        _ => bundled_trust_anchors().to_vec(),
-    }
 }
 
 /// `GET /ledger/sth/latest`'s wire shape — mirrors
@@ -172,7 +146,7 @@ pub enum NetworkTrustStatus {
         /// The `network_id` the server's STH claimed.
         claimed_network_id: String,
     },
-    /// The claimed `network_id` isn't in the bundled trust-anchor list at
+    /// The claimed `network_id` isn't in the published trust-anchor list at
     /// all.
     UnknownNetwork {
         /// The `network_id` the server's STH claimed.
@@ -365,7 +339,7 @@ pub fn check_target_network<'a>(
 }
 
 /// Fetches `GET /ledger/sth/latest` from `server_url` and evaluates it
-/// against [`bundled_trust_anchors`] — the shared fetch-then-evaluate path
+/// against the published trust-anchor list — the shared fetch-then-evaluate path
 /// behind both [`AvalonClient::verify_network`] (a known server) and
 /// [`discover`] (candidate servers with no known-good one yet).
 async fn fetch_network_trust_status(
@@ -405,7 +379,7 @@ async fn fetch_network_trust_status(
 
 impl AvalonClient {
     /// Fetches `GET /ledger/sth/latest` from this client's configured
-    /// server and verifies it against [`bundled_trust_anchors`] — the
+    /// server and verifies it against the published trust-anchor list — the
     /// check an integrator should run before registering an issuer or
     /// submitting any write (#479/#480), so a call never lands on a
     /// server merely claiming to be the network it targets.
@@ -415,7 +389,18 @@ impl AvalonClient {
     /// network" is a question with an answer even when that answer is "no
     /// signal at all."
     pub async fn verify_network(&self) -> NetworkTrustStatus {
-        let anchors = resolve_trust_anchors(&self.http).await;
+        self.verify_network_with(TRUST_ANCHORS_URL).await
+    }
+
+    async fn verify_network_with(&self, anchors_url: &str) -> NetworkTrustStatus {
+        let anchors = match fetch_trust_anchors(&self.http, anchors_url).await {
+            Ok(anchors) => anchors,
+            Err(err) => {
+                return NetworkTrustStatus::Unreachable {
+                    detail: format!("trust-anchor list unavailable: {err}"),
+                }
+            }
+        };
         fetch_network_trust_status(
             &anchors,
             &self.http,
@@ -444,12 +429,19 @@ pub struct DiscoveryConfig {
 /// a live, verified server.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DiscoveryError {
-    /// No bundled trust anchor matches `target` at all, so there was
+    /// No published trust anchor matches `target` at all, so there was
     /// nothing to even attempt a connection to.
-    #[error("no bundled trust anchor matches target network {target}")]
+    #[error("no published trust anchor matches target network {target}")]
     NoCandidates {
-        /// The target that had no matching bundled entry.
+        /// The target that had no matching entry.
         target: String,
+    },
+    /// The published trust-anchor list couldn't be fetched, so there was
+    /// nothing to resolve `target` against.
+    #[error("trust-anchor list unavailable: {detail}")]
+    TrustAnchorsUnavailable {
+        /// Why the fetch failed.
+        detail: String,
     },
     /// At least one candidate URL was tried, but none of them verified as
     /// `target` — carries every attempt's outcome so a caller can surface
@@ -468,27 +460,39 @@ pub enum DiscoveryError {
 /// case (#91): a caller who only knows which network they want to join,
 /// not which of its nodes to talk to.
 ///
-/// Candidates come only from [`bundled_trust_anchors`]' own `server_url`/
+/// Candidates come only from the published trust-anchor list' own `server_url`/
 /// `seed_nodes` fields for every entry matching `target` — never anywhere
 /// else, so discovery can't be tricked into contacting an unpinned host.
 /// Each candidate is fetched and verified exactly like
 /// [`AvalonClient::verify_network`] would; the first one whose STH
 /// verifies against `target`'s own matching entry wins. Entries are tried
-/// in [`bundled_trust_anchors`]' order, and each entry's `server_url`
+/// in the published trust-anchor list' order, and each entry's `server_url`
 /// before its `seed_nodes`, so results are deterministic across runs of
 /// the same SDK build.
 pub async fn discover(
     target: &TargetNetwork,
     retry: &crate::RetryConfig,
 ) -> Result<(String, TrustAnchorEntry), DiscoveryError> {
-    let anchors = resolve_trust_anchors(&reqwest::Client::new()).await;
+    discover_from(TRUST_ANCHORS_URL, target, retry).await
+}
+
+async fn discover_from(
+    anchors_url: &str,
+    target: &TargetNetwork,
+    retry: &crate::RetryConfig,
+) -> Result<(String, TrustAnchorEntry), DiscoveryError> {
+    let anchors = fetch_trust_anchors(&reqwest::Client::new(), anchors_url)
+        .await
+        .map_err(|err| DiscoveryError::TrustAnchorsUnavailable {
+            detail: err.to_string(),
+        })?;
     discover_among(&anchors, target, retry).await
 }
 
 /// [`discover`]'s actual logic, taking `anchors` explicitly rather than
-/// always reading [`bundled_trust_anchors`] — split out the same way
+/// always fetching the published list — split out the same way
 /// [`evaluate_network_trust`] is, so tests can supply a mock server's own
-/// key instead of needing to forge a signature for a real bundled entry.
+/// key instead of needing to forge a signature for a real published entry.
 async fn discover_among(
     anchors: &[TrustAnchorEntry],
     target: &TargetNetwork,
@@ -572,6 +576,16 @@ mod tests {
         }
     }
 
+    fn anchors_json() -> serde_json::Value {
+        serde_json::json!({"networks": [{
+            "label": "avalon-dev-local",
+            "network_id": "avalon-dev-local",
+            "verify_key": "ab".repeat(32),
+            "signing_key_id": "k",
+            "environment": "local-dev",
+        }]})
+    }
+
     fn signed_sth(signing_key: &SigningKey, network_id: &str) -> crate::sth::SignedTreeHead {
         crate::sth::sign_tree_head(
             signing_key,
@@ -581,15 +595,6 @@ mod tests {
             network_id,
             OffsetDateTime::UNIX_EPOCH,
         )
-    }
-
-    #[test]
-    fn bundled_trust_anchors_parses_the_real_checked_in_file() {
-        // The embedded `docs/trusted-networks.json` must always at least
-        // parse — a broken build artifact would otherwise only surface at
-        // `verify_network` call time in production.
-        let anchors = bundled_trust_anchors();
-        assert!(anchors.iter().any(|a| a.network_id == "avalon-dev-local"));
     }
 
     #[test]
@@ -672,11 +677,18 @@ mod tests {
             .mount(&server)
             .await;
 
+        Mock::given(method("GET"))
+            .and(path("/trusted-networks.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(anchors_json()))
+            .mount(&server)
+            .await;
+
         let client = client_for(server.uri());
-        // No bundled trust anchor for "avalon-test" in this build, so the
-        // real end-to-end path (fetch -> deserialize -> evaluate) still
-        // correctly reports unknown rather than erroring.
-        let status = client.verify_network().await;
+        // "avalon-test" has no entry in the published list, so the full path
+        // (fetch anchors -> fetch STH -> evaluate) reports unknown.
+        let status = client
+            .verify_network_with(&format!("{}/trusted-networks.json", server.uri()))
+            .await;
         assert_eq!(
             status,
             NetworkTrustStatus::UnknownNetwork {
@@ -690,14 +702,32 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/trusted-networks.json"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(TRUSTED_NETWORKS_JSON))
+            .respond_with(ResponseTemplate::new(200).set_body_json(anchors_json()))
             .mount(&server)
             .await;
         let url = format!("{}/trusted-networks.json", server.uri());
         let anchors = fetch_trust_anchors(&reqwest::Client::new(), &url)
             .await
             .unwrap();
-        assert_eq!(anchors, bundled_trust_anchors());
+        assert_eq!(anchors.len(), 1);
+        assert_eq!(anchors[0].network_id, "avalon-dev-local");
+    }
+
+    #[tokio::test]
+    async fn discover_reports_unavailable_anchors_when_the_list_cannot_be_fetched() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        let target = TargetNetwork::NetworkId("avalon-dev-local".to_string());
+        let err = discover_from(&server.uri(), &target, &RetryConfig::default())
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            DiscoveryError::TrustAnchorsUnavailable { .. }
+        ));
     }
 
     #[tokio::test]
@@ -714,8 +744,13 @@ mod tests {
 
     #[tokio::test]
     async fn verify_network_reports_unreachable_when_the_server_is_down() {
+        let anchors = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(anchors_json()))
+            .mount(&anchors)
+            .await;
         let client = client_for("http://127.0.0.1:1".to_string());
-        let status = client.verify_network().await;
+        let status = client.verify_network_with(&anchors.uri()).await;
         assert!(matches!(status, NetworkTrustStatus::Unreachable { .. }));
     }
 

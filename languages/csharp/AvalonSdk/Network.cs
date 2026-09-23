@@ -5,15 +5,13 @@
 // (GET /ledger/sth/latest) that verifies against the claimed network's
 // pinned verify_key actually establishes which network a server is.
 //
-// docs/trusted-networks.json is the single canonical trust-anchor list,
-// embedded at build time rather than hand-copied.
+// docs/trusted-networks.json is the single canonical trust-anchor list
+// in avalon-protocol, fetched at runtime from TrustAnchors.PublishedUrl.
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Reflection;
 using System.Runtime.Serialization;
 using System.Text;
 using System.Text.Json;
@@ -93,19 +91,14 @@ namespace Avalon.Sdk
         public List<TrustAnchorEntry> Networks { get; set; } = new List<TrustAnchorEntry>();
     }
 
-    /// <summary>Every network this SDK build was bundled with a pinned key for.</summary>
+    /// <summary>The published trust-anchor list. A fork running its own network repoints
+    /// <see cref="PublishedUrl"/> at its own repo.</summary>
     public static class TrustAnchors
     {
         private static readonly JsonSerializerOptions ParseOptions = new JsonSerializerOptions
         {
             Converters = { new EnumMemberJsonConverterFactory() },
         };
-
-        private static readonly Lazy<IReadOnlyList<TrustAnchorEntry>> Cached =
-            new Lazy<IReadOnlyList<TrustAnchorEntry>>(Load);
-
-        /// <summary>Parsed once from the embedded docs/trusted-networks.json and cached.</summary>
-        public static IReadOnlyList<TrustAnchorEntry> Bundled => Cached.Value;
 
         /// <summary>Where the canonical trust-anchor list is published.</summary>
         public const string PublishedUrl =
@@ -122,36 +115,6 @@ namespace Avalon.Sdk
             var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
             var file = JsonSerializer.Deserialize<TrustedNetworksFile>(json, ParseOptions)
                 ?? throw new InvalidOperationException("trust-anchor list must match TrustedNetworksFile");
-            return file.Networks;
-        }
-
-        /// <summary>The published list when reachable, otherwise <see cref="Bundled"/>.</summary>
-        public static async Task<IReadOnlyList<TrustAnchorEntry>> ResolveAsync(
-            HttpClient http, string url = PublishedUrl, CancellationToken ct = default)
-        {
-            try
-            {
-                var anchors = await FetchAsync(http, url, ct).ConfigureAwait(false);
-                if (anchors.Count > 0) return anchors;
-            }
-            catch (Exception) when (!ct.IsCancellationRequested)
-            {
-                // fall through to the bundled copy
-            }
-            return Bundled;
-        }
-
-        private static List<TrustAnchorEntry> Load()
-        {
-            var assembly = Assembly.GetExecutingAssembly();
-            using var stream = assembly.GetManifestResourceStream("Avalon.Sdk.trusted-networks.json")
-                ?? throw new InvalidOperationException(
-                    "embedded resource Avalon.Sdk.trusted-networks.json not found");
-            using var reader = new StreamReader(stream, Encoding.UTF8);
-            var json = reader.ReadToEnd();
-            var file = JsonSerializer.Deserialize<TrustedNetworksFile>(json, ParseOptions)
-                ?? throw new InvalidOperationException(
-                    "docs/trusted-networks.json must be valid JSON matching TrustedNetworksFile");
             return file.Networks;
         }
     }
@@ -191,7 +154,7 @@ namespace Avalon.Sdk
         /// to <see cref="UnknownNetwork"/>.</summary>
         Mismatch,
 
-        /// <summary>The claimed network_id isn't in the bundled trust-anchor list at all.</summary>
+        /// <summary>The claimed network_id isn't in the published trust-anchor list at all.</summary>
         UnknownNetwork,
 
         /// <summary>Fetching or parsing the server's latest Signed Tree Head itself failed.</summary>
@@ -366,9 +329,12 @@ namespace Avalon.Sdk
     /// couldn't resolve a target to a live, verified server.</summary>
     public enum DiscoveryErrorKind
     {
-        /// <summary>No bundled trust anchor matches the target at all, so there was nothing to
+        /// <summary>No published trust anchor matches the target at all, so there was nothing to
         /// even attempt a connection to.</summary>
         NoCandidates,
+
+        /// <summary>The published trust-anchor list couldn't be fetched.</summary>
+        AnchorsUnavailable,
 
         /// <summary>At least one candidate URL was tried, but none of them verified as the
         /// target.</summary>
@@ -396,8 +362,15 @@ namespace Avalon.Sdk
 
         internal static DiscoveryException NoCandidates(string target) =>
             new DiscoveryException(
-                $"no bundled trust anchor matches target network {target}",
+                $"no published trust anchor matches target network {target}",
                 DiscoveryErrorKind.NoCandidates,
+                target,
+                Array.Empty<(string, string)>());
+
+        internal static DiscoveryException AnchorsUnavailable(string target, string reason) =>
+            new DiscoveryException(
+                $"trust-anchor list unavailable: {reason}",
+                DiscoveryErrorKind.AnchorsUnavailable,
                 target,
                 Array.Empty<(string, string)>());
 
@@ -434,17 +407,26 @@ namespace Avalon.Sdk
     public sealed partial class AvalonClient
     {
         /// <summary>Fetches GET /ledger/sth/latest from this client's configured server and
-        /// verifies it against <see cref="TrustAnchors.Bundled"/> — the check an integrator
+        /// verifies it against the published trust-anchor list — the check an integrator
         /// should run before registering an issuer or submitting any write, so a call never
         /// lands on a server merely claiming to be the network it targets.
         ///
         /// Never throws: an unreachable/unparseable server is itself
         /// <see cref="NetworkTrustStatusKind.Unreachable"/>, since "is this the real network" is
         /// a question with an answer even when that answer is "no signal at all."</summary>
-        public async Task<NetworkTrustStatus> VerifyNetworkAsync(CancellationToken ct = default) =>
-            await FetchNetworkTrustStatusAsync(
-                await TrustAnchors.ResolveAsync(_http, ct: ct).ConfigureAwait(false),
-                _http, _config.ServerUrl, ct).ConfigureAwait(false);
+        public async Task<NetworkTrustStatus> VerifyNetworkAsync(CancellationToken ct = default)
+        {
+            IReadOnlyList<TrustAnchorEntry> anchors;
+            try
+            {
+                anchors = await TrustAnchors.FetchAsync(_http, ct: ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                return NetworkTrustStatus.Unreachable($"trust-anchor list unavailable: {ex.Message}");
+            }
+            return await FetchNetworkTrustStatusAsync(anchors, _http, _config.ServerUrl, ct).ConfigureAwait(false);
+        }
 
         /// <summary>The check a declared <see cref="TargetNetwork"/> exists for: it only ever
         /// proceeds against a server whose <see cref="NetworkTrustStatus"/> is
@@ -482,19 +464,27 @@ namespace Avalon.Sdk
         /// (server URL, entry) with no server URL supplied up front — a caller who only knows
         /// which network they want to join, not which of its nodes to talk to.
         ///
-        /// Candidates come only from <see cref="TrustAnchors.Bundled"/>'s own ServerUrl/
+        /// Candidates come only from the published trust-anchor list's own ServerUrl/
         /// SeedNodes fields for every entry matching <paramref name="target"/> — never anywhere
         /// else, so discovery can't be tricked into contacting an unpinned host. Each candidate
         /// is fetched and verified exactly like <see cref="VerifyNetworkAsync"/> would; the
         /// first one whose STH verifies against target's own matching entry wins. Entries are
-        /// tried in <see cref="TrustAnchors.Bundled"/>'s order, and each entry's ServerUrl
+        /// tried in the published trust-anchor list's order, and each entry's ServerUrl
         /// before its SeedNodes, so results are deterministic across runs of the same SDK
         /// build.</summary>
         public static async Task<(string ServerUrl, TrustAnchorEntry Entry)> DiscoverAsync(
             TargetNetwork target, HttpClient? httpClient = null, CancellationToken ct = default)
         {
             var http = httpClient ?? new HttpClient();
-            var anchors = await TrustAnchors.ResolveAsync(http, ct: ct).ConfigureAwait(false);
+            IReadOnlyList<TrustAnchorEntry> anchors;
+            try
+            {
+                anchors = await TrustAnchors.FetchAsync(http, ct: ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                throw DiscoveryException.AnchorsUnavailable(target.ToString(), ex.Message);
+            }
             return await DiscoverAmongAsync(anchors, target, http, ct).ConfigureAwait(false);
         }
 
@@ -513,9 +503,9 @@ namespace Avalon.Sdk
         }
 
         /// <summary>[`DiscoverAsync`]'s actual logic, taking <paramref name="anchors"/>
-        /// explicitly rather than always reading <see cref="TrustAnchors.Bundled"/> — split out
+        /// explicitly rather than always fetching the published list — split out
         /// so tests can supply a mock server's own key instead of needing to forge a signature
-        /// for a real bundled entry.</summary>
+        /// for a real published entry.</summary>
         internal static async Task<(string, TrustAnchorEntry)> DiscoverAmongAsync(
             IReadOnlyList<TrustAnchorEntry> anchors, TargetNetwork target, HttpClient http, CancellationToken ct)
         {
