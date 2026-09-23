@@ -875,5 +875,6 @@ public class LiveTests
             () => session.GetRollbackCandidatesAsync("2026-01-01T00:00:00Z"));
 
         Assert.Equal(System.Net.HttpStatusCode.Conflict, ex.StatusCode);
+        Assert.Equal("ROLLBACK_NO_COMPLETED_RECOVERY", ex.Code);
     }
 }

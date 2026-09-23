@@ -196,7 +196,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             return await ReadJsonAsync<Avalon.Sdk.Generated.IntegratorChallengeResponse>(response, ct).ConfigureAwait(false);
         }
@@ -216,7 +216,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             var page = await ReadJsonAsync<ListMyAchievementsResponse>(response, ct).ConfigureAwait(false);
             return page.Achievements;
@@ -270,7 +270,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             var body = await ReadJsonAsync<Avalon.Sdk.Generated.AttestationResponse>(response, ct).ConfigureAwait(false);
             return body.Id;
@@ -290,7 +290,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             return await ReadJsonAsync<VerifiedAttestation>(response, ct).ConfigureAwait(false);
         }
@@ -330,7 +330,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             return await ReadJsonAsync<Avalon.Sdk.Generated.RevocationResponse>(response, ct).ConfigureAwait(false);
         }
@@ -368,7 +368,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             return await ReadJsonAsync<Avalon.Sdk.Generated.AchievementDefinitionResponse>(response, ct).ConfigureAwait(false);
         }
@@ -398,7 +398,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             return await ReadJsonAsync<Avalon.Sdk.Generated.AchievementDefinitionResponse>(response, ct).ConfigureAwait(false);
         }
@@ -428,7 +428,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             return await ReadJsonAsync<Avalon.Sdk.Generated.AchievementDefinitionResponse>(response, ct).ConfigureAwait(false);
         }
@@ -457,7 +457,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             return await ReadJsonAsync<Avalon.Sdk.Generated.AchievementDefinitionResponse>(response, ct).ConfigureAwait(false);
         }
@@ -524,7 +524,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             var body = await ReadJsonAsync<Avalon.Sdk.Generated.AttestationResponse>(response, ct).ConfigureAwait(false);
             return body.Id;
@@ -649,7 +649,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             var body = await ReadJsonAsync<BulkIssueResultsResponse>(response, ct).ConfigureAwait(false);
             return body.Results;
@@ -674,7 +674,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             var body = await ReadJsonAsync<BulkIssueResultsResponse>(response, ct).ConfigureAwait(false);
             return body.Results;

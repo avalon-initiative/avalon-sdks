@@ -94,7 +94,7 @@ namespace Avalon.Sdk
                 using var response = await _client.Http.SendAsync(request, ct).ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
                 {
-                    throw Session.ServerError(response.StatusCode);
+                    throw await Session.ServerErrorAsync(response).ConfigureAwait(false);
                 }
                 var body = await Session.ReadJsonAsync<Avalon.Sdk.Generated.PollPairingResponse>(response, ct).ConfigureAwait(false);
 
@@ -134,7 +134,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw Session.ServerError(response.StatusCode);
+                throw await Session.ServerErrorAsync(response).ConfigureAwait(false);
             }
             var body = await Session.ReadJsonAsync<Avalon.Sdk.Generated.StartPairingResponse>(response, ct).ConfigureAwait(false);
 

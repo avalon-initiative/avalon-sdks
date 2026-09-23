@@ -44,7 +44,7 @@ namespace Avalon.Sdk
             using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw Session.ServerError(response.StatusCode);
+                throw await Session.ServerErrorAsync(response).ConfigureAwait(false);
             }
             return await Session.ReadJsonAsync<NodeStatus>(response, ct).ConfigureAwait(false);
         }

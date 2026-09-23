@@ -81,6 +81,7 @@ public class RollbackTests
         var ex = await Assert.ThrowsAsync<AvalonRequestException>(() => session.GetRollbackCandidatesAsync(Since));
 
         Assert.Equal(status, ex.StatusCode);
+        Assert.Equal(code, ex.Code);
     }
 
     [Theory]
@@ -96,5 +97,6 @@ public class RollbackTests
         var ex = await Assert.ThrowsAsync<AvalonRequestException>(() => session.ReverseRollbackEventAsync(Guid.NewGuid(), Since));
 
         Assert.Equal(status, ex.StatusCode);
+        Assert.Equal(code, ex.Code);
     }
 }

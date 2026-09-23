@@ -251,7 +251,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             return await ReadJsonAsync<T>(response, ct).ConfigureAwait(false);
         }
@@ -375,7 +375,7 @@ namespace Avalon.Sdk
             using var response = await _session.Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw Session.ServerError(response.StatusCode);
+                throw await Session.ServerErrorAsync(response).ConfigureAwait(false);
             }
             var message = await Session.ReadJsonAsync<Avalon.Sdk.Generated.MessageResponse>(response, ct).ConfigureAwait(false);
             return Session.MessageResponseToGuildMessage(message!);

@@ -38,12 +38,25 @@ namespace Avalon.Sdk
     public sealed class AvalonRequestException : Exception
     {
         public AvalonRequestException(System.Net.HttpStatusCode statusCode)
-            : base("avalon-server returned " + statusCode)
+            : this(statusCode, null)
+        {
+        }
+
+        public AvalonRequestException(System.Net.HttpStatusCode statusCode, string? code)
+            : base("avalon-server returned " + statusCode + (code == null ? string.Empty : " (" + code + ")"))
         {
             StatusCode = statusCode;
+            Code = code;
         }
 
         public System.Net.HttpStatusCode StatusCode { get; }
+
+        /// <summary>
+        /// The server's stable, machine-readable error code (for example
+        /// <c>ROLLBACK_NOT_REVERSIBLE</c>), or <c>null</c> when the response carried none. Branch on this
+        /// rather than on the HTTP status when several distinct failures share one status.
+        /// </summary>
+        public string? Code { get; }
     }
 
     /// <summary>
@@ -269,6 +282,31 @@ namespace Avalon.Sdk
 
         /// <summary>Translates a non-success HTTP response into the matching exception.</summary>
         internal static Exception ServerError(System.Net.HttpStatusCode status) => new AvalonRequestException(status);
+
+        /// <summary>Like <see cref="ServerError(System.Net.HttpStatusCode)"/>, but also reads the
+        /// server's stable <c>code</c> from the JSON error body when there is one.</summary>
+        internal static async System.Threading.Tasks.Task<Exception> ServerErrorAsync(System.Net.Http.HttpResponseMessage response)
+        {
+            string? code = null;
+            try
+            {
+                var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                using (var doc = System.Text.Json.JsonDocument.Parse(body))
+                {
+                    if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
+                        && doc.RootElement.TryGetProperty("code", out var codeElement)
+                        && codeElement.ValueKind == System.Text.Json.JsonValueKind.String)
+                    {
+                        code = codeElement.GetString();
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Non-JSON or empty body: the status alone is all there is to report.
+            }
+            return new AvalonRequestException(response.StatusCode, code);
+        }
 
         /// <summary>GET /identities/{id}/locations — every shard
         /// base URL this identity has any durable history on, resolved over the DHT identity

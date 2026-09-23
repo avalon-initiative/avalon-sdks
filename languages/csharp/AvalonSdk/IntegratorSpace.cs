@@ -44,7 +44,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             return await ReadJsonAsync<Avalon.Sdk.Generated.IntegratorSchemaVersionResponse>(response, ct).ConfigureAwait(false);
         }
@@ -91,7 +91,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             return await ReadJsonAsync<Avalon.Sdk.Generated.IntegratorSchemaMappingResponse>(response, ct).ConfigureAwait(false);
         }
@@ -131,7 +131,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             return await ReadJsonAsync<Avalon.Sdk.Generated.IntegratorDataInstanceResponse>(response, ct).ConfigureAwait(false);
         }
@@ -156,7 +156,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
         }
 
