@@ -1,8 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
-    "rust",
-    "rust/schema-derive",
+    "languages/rust",
+    "languages/rust/schema-derive",
 ]
 
 [workspace.package]

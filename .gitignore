@@ -2,3 +2,11 @@
 **/target
 Cargo.lock.bak
 .env
+
+# .NET (languages/csharp/)
+languages/csharp/**/bin/
+languages/csharp/**/obj/
+
+# Node (languages/typescript/)
+languages/typescript/node_modules/
+languages/typescript/dist/
