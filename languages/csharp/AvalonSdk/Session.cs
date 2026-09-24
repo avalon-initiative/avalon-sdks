@@ -43,11 +43,26 @@ namespace Avalon.Sdk
         }
 
         public AvalonRequestException(System.Net.HttpStatusCode statusCode, string? code)
+            : this(statusCode, code, null)
+        {
+        }
+
+        public AvalonRequestException(System.Net.HttpStatusCode statusCode, string? code, TimeSpan? retryAfter)
             : base("avalon-server returned " + statusCode + (code == null ? string.Empty : " (" + code + ")"))
         {
             StatusCode = statusCode;
             Code = code;
+            RetryAfter = retryAfter;
         }
+
+        /// <summary>
+        /// The server-requested delay from a numeric <c>Retry-After</c> header (sent with 429),
+        /// or <c>null</c> when absent or in the HTTP-date form.
+        /// </summary>
+        public TimeSpan? RetryAfter { get; }
+
+        /// <summary>True for HTTP 429 (a server rate limit).</summary>
+        public bool IsRateLimited => StatusCode == (System.Net.HttpStatusCode)429;
 
         public System.Net.HttpStatusCode StatusCode { get; }
 
@@ -305,7 +320,27 @@ namespace Avalon.Sdk
             {
                 // Non-JSON or empty body: the status alone is all there is to report.
             }
-            return new AvalonRequestException(response.StatusCode, code);
+            return new AvalonRequestException(response.StatusCode, code, ParseRetryAfter(response));
+        }
+
+        /// <summary>Parses <c>Retry-After</c> as integer delta-seconds; the HTTP-date form and
+        /// non-numeric values yield <c>null</c>.</summary>
+        internal static TimeSpan? ParseRetryAfter(System.Net.Http.HttpResponseMessage response)
+        {
+            if (response.Headers.TryGetValues("Retry-After", out var values))
+            {
+                foreach (var value in values)
+                {
+                    var trimmed = value.Trim();
+                    if (trimmed.Length > 0 && trimmed.All(c => c >= (char)48 && c <= (char)57)
+                        && long.TryParse(trimmed, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var seconds)
+                        && seconds <= (long)TimeSpan.MaxValue.TotalSeconds)
+                    {
+                        return TimeSpan.FromSeconds(seconds);
+                    }
+                }
+            }
+            return null;
         }
 
         /// <summary>GET /identities/{id}/locations — every shard
