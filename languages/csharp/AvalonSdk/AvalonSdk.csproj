@@ -13,6 +13,9 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Avalon.Sdk</RootNamespace>
     <PackageId>Avalon.Sdk</PackageId>
+    <Version>0.1.0</Version>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/avalon-initiative/avalon-sdks</RepositoryUrl>
     <Description>Flagship external SDK for integrating a game with Avalon Protocol. Targets game engines (Unity, and anything else on a netstandard2.1-compatible runtime) as the primary developer-facing surface — see docs/stakeholders/Proposal.md §24.</Description>
   </PropertyGroup>
 
