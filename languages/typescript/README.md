@@ -7,7 +7,7 @@ integrator access) against a real `avalon-server`.
 
 Full design docs, guides, and the shared cross-language architecture
 reference live in `avalon-protocol`'s
-[`docs/projects/sdks/typescript/`](https://github.com/LunarVagabond/avalon-protocol/tree/main/docs/projects/sdks/typescript) —
+[`docs/projects/sdks/typescript/`](https://github.com/avalon-initiative/avalon-protocol/tree/main/docs/projects/sdks/typescript) —
 this README is just the npm package landing page.
 
 ## Install
@@ -57,7 +57,7 @@ const integratorSession = await client.authenticate({
   security boundary — the server enforces the same check independently).
 - Typed errors, all subclasses of `AvalonSdkError`, carrying the HTTP `status` and, on 429 (`RateLimitedError`), `retryAfterSeconds` from a numeric `Retry-After`.
 
-See the [full architecture doc](https://github.com/LunarVagabond/avalon-protocol/blob/main/docs/projects/sdks/architecture/sdk.md)
+See the [full architecture doc](https://github.com/avalon-initiative/avalon-protocol/blob/main/docs/projects/sdks/architecture/sdk.md)
 for the design that applies across every language's SDK, not just this
 one.
 
