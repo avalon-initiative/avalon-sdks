@@ -191,9 +191,32 @@ where
                     detail,
                 });
             }
+            Err(SdkError::RateLimited { retry_after }) if attempt < retry.max_retries => {
+                attempt += 1;
+                match retry_after {
+                    Some(delay) => tokio::time::sleep(delay.min(MAX_RETRY_AFTER_WAIT)).await,
+                    None => backoff_sleep(retry, attempt).await,
+                }
+            }
             Err(other) => return Err(other),
         }
     }
+}
+
+/// Upper bound on how long `retry_write` honors a server `Retry-After`.
+const MAX_RETRY_AFTER_WAIT: Duration = Duration::from_secs(30);
+
+/// `Retry-After` as integer delta-seconds; the HTTP-date form and anything
+/// non-numeric yield `None`.
+fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
+    let secs = headers
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse::<u64>()
+        .ok()?;
+    Some(Duration::from_secs(secs))
 }
 
 /// The default non-success -> [`SdkError`] mapping, for any call site with
@@ -210,6 +233,7 @@ where
 /// identifier, not prose that's free to reword.
 pub(crate) async fn map_error_response(response: Response) -> SdkError {
     let status = response.status();
+    let retry_after = parse_retry_after(response.headers());
     let body: Option<ErrorBody> = response.json().await.ok();
     let message = match &body {
         Some(ErrorBody {
@@ -226,17 +250,8 @@ pub(crate) async fn map_error_response(response: Response) -> SdkError {
         StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => {
             SdkError::Rejected { reason: message }
         }
-        // Rate-limited or any server-side failure, whether or not it's one
-        // of the narrower 502/503/504 class `send` itself auto-retries
-        // (see this module's own doc comment) — the request was fine, the
-        // server just couldn't answer it right now. `retried: 0` here
-        // specifically means "not retried inside this one call," not
-        // "this can't be retried" — a caller layering its own retry on
-        // top (`crate::submission`'s journal, most notably) still should.
-        StatusCode::TOO_MANY_REQUESTS => SdkError::Unavailable {
-            retried: 0,
-            detail: message,
-        },
+        StatusCode::TOO_MANY_REQUESTS => SdkError::RateLimited { retry_after },
+        // Any server-side failure; `retried: 0` means not retried inside this one call.
         _ if status.is_server_error() => SdkError::Unavailable {
             retried: 0,
             detail: message,
@@ -305,6 +320,78 @@ mod tests {
             map_error_response(response).await,
             SdkError::Unauthorized
         ));
+    }
+
+    async fn map_429(retry_after: Option<&str>) -> SdkError {
+        let server = MockServer::start().await;
+        let mut template = ResponseTemplate::new(429)
+            .set_body_json(serde_json::json!({"error": "slow down", "code": "RATE_LIMITED"}));
+        if let Some(value) = retry_after {
+            template = template.insert_header("Retry-After", value);
+        }
+        Mock::given(method("GET"))
+            .and(path("/x"))
+            .respond_with(template)
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::new();
+        let response = client
+            .get(format!("{}/x", server.uri()))
+            .send()
+            .await
+            .unwrap();
+        map_error_response(response).await
+    }
+
+    #[tokio::test]
+    async fn maps_429_with_retry_after_seconds() {
+        let err = map_429(Some("7")).await;
+        assert!(matches!(
+            err,
+            SdkError::RateLimited { retry_after: Some(d) } if d == Duration::from_secs(7)
+        ));
+        assert_eq!(err.retry_after(), Some(Duration::from_secs(7)));
+        assert_eq!(err.http_status(), Some(429));
+    }
+
+    #[tokio::test]
+    async fn maps_429_without_retry_after() {
+        assert!(matches!(
+            map_429(None).await,
+            SdkError::RateLimited { retry_after: None }
+        ));
+    }
+
+    #[tokio::test]
+    async fn ignores_non_numeric_and_http_date_retry_after() {
+        for value in ["soon", "Wed, 21 Oct 2026 07:28:00 GMT", "-3", "1.5"] {
+            assert!(matches!(
+                map_429(Some(value)).await,
+                SdkError::RateLimited { retry_after: None }
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn other_statuses_carry_no_retry_after() {
+        assert_eq!(SdkError::Unauthorized.retry_after(), None);
+        assert!(matches!(map_503().await, SdkError::Unavailable { .. }));
+    }
+
+    async fn map_503() -> SdkError {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/x"))
+            .respond_with(ResponseTemplate::new(503).insert_header("Retry-After", "5"))
+            .mount(&server)
+            .await;
+        let client = reqwest::Client::new();
+        let response = client
+            .get(format!("{}/x", server.uri()))
+            .send()
+            .await
+            .unwrap();
+        map_error_response(response).await
     }
 
     #[tokio::test]

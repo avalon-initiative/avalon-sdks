@@ -144,6 +144,14 @@ pub enum SdkError {
         /// error's own `Display` text.
         detail: String,
     },
+    /// HTTP 429: the request was fine but a server rate limit rejected it.
+    /// `retry_after` is the `Retry-After` delay when the header was present
+    /// as integer seconds (the HTTP-date form is ignored).
+    #[error("rate limited by avalon-server (retry after {retry_after:?})")]
+    RateLimited {
+        /// The server-requested delay before retrying, if it sent one.
+        retry_after: Option<std::time::Duration>,
+    },
     /// The response didn't parse as the shape this call expected, or the
     /// transport failed in a way that isn't connectivity (see
     /// [`Self::Unavailable`] for that case) — a malformed/unexpected
@@ -192,6 +200,27 @@ pub enum SdkError {
     /// approved or denied.
     #[error("cross-node login expired before it was approved")]
     CrossNodeLoginExpired,
+}
+
+impl SdkError {
+    /// The server-requested retry delay, for [`Self::RateLimited`] responses
+    /// that carried a numeric `Retry-After`.
+    pub fn retry_after(&self) -> Option<std::time::Duration> {
+        match self {
+            Self::RateLimited { retry_after } => *retry_after,
+            _ => None,
+        }
+    }
+
+    /// The HTTP status behind this error where the variant pins one down
+    /// (`429` for [`Self::RateLimited`], `401` for [`Self::Unauthorized`]).
+    pub fn http_status(&self) -> Option<u16> {
+        match self {
+            Self::RateLimited { .. } => Some(429),
+            Self::Unauthorized => Some(401),
+            _ => None,
+        }
+    }
 }
 
 /// Everything an integrator supplies to construct an [`AvalonClient`] — the

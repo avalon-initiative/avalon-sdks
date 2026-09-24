@@ -55,7 +55,7 @@ const integratorSession = await client.authenticate({
 - `IntegratorSession` — capability-gated: every method checks its own
   required grant client-side before making a request (never the actual
   security boundary — the server enforces the same check independently).
-- Typed errors, all subclasses of `AvalonSdkError`.
+- Typed errors, all subclasses of `AvalonSdkError`, carrying the HTTP `status` and, on 429 (`RateLimitedError`), `retryAfterSeconds` from a numeric `Retry-After`.
 
 See the [full architecture doc](https://github.com/LunarVagabond/avalon-protocol/blob/main/docs/projects/sdks/architecture/sdk.md)
 for the design that applies across every language's SDK, not just this

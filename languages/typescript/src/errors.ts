@@ -8,6 +8,11 @@ export class AvalonSdkError extends Error {
    * Branch on this rather than on the error class when several distinct
    * failures share one HTTP status. */
   code?: string
+  /** The HTTP status of the failing response, when the error came from one. */
+  status?: number
+  /** Server-requested delay in seconds from a numeric `Retry-After` header
+   * (set on 429 responses); absent for the HTTP-date form or no header. */
+  retryAfterSeconds?: number
 }
 
 /** The session token itself was rejected (expired, unknown, malformed). */
@@ -71,6 +76,17 @@ export class ProtocolError extends AvalonSdkError {
   }
 }
 
+/** HTTP 429: a server rate limit rejected the request. Subclasses
+ * `ProtocolError`, which 429 previously surfaced as, so existing
+ * `instanceof ProtocolError` handling keeps working. */
+export class RateLimitedError extends ProtocolError {
+  constructor(message: string) {
+    super(message)
+    this.message = `rate limited: ${message}`
+    this.name = 'RateLimitedError'
+  }
+}
+
 /** The server rejected a conversation read/send with "not a participant" —
  * deliberately carries nothing beyond that: never reveal a
  * block, not even indirectly. */
@@ -128,6 +144,8 @@ function errorForStatus(status: number, message: string): AvalonSdkError {
       return new NotFoundError(message)
     case 409:
       return new ConflictError(message)
+    case 429:
+      return new RateLimitedError(message)
     case 400:
     case 422:
       return new RejectedError(message)
@@ -137,6 +155,15 @@ function errorForStatus(status: number, message: string): AvalonSdkError {
       }
       return new ProtocolError(message)
   }
+}
+
+/** Parses `Retry-After` as integer delta-seconds; the HTTP-date form and
+ * anything non-numeric yield `undefined`. */
+export function parseRetryAfter(value: string | null | undefined): number | undefined {
+  if (value == null || !/^\s*\d+\s*$/.test(value)) {
+    return undefined
+  }
+  return Number.parseInt(value, 10)
 }
 
 /** Translates a non-success `Response` into the matching typed error,
@@ -155,6 +182,11 @@ export async function mapErrorResponse(response: Response): Promise<AvalonSdkErr
   const message = code ?? serverMessage ?? response.statusText ?? `HTTP ${response.status}`
 
   const error = errorForStatus(response.status, message)
+  error.status = response.status
+  const retryAfter = parseRetryAfter(response.headers?.get('retry-after'))
+  if (retryAfter !== undefined) {
+    error.retryAfterSeconds = retryAfter
+  }
   if (code !== undefined) {
     error.code = code
   }
