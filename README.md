@@ -46,12 +46,20 @@ own test suites (all three languages) to confirm nothing broke.
 ## Development
 
 ```bash
+make check          # offline checks for all three SDKs + the route-coverage check (what CI runs)
+make check-rust     # fmt, clippy, tests
+make check-csharp   # build and tests
+make check-ts       # lint, type-check, tests, generated-types check
+make help           # everything else
+```
+
+Per-language commands, if you want them directly:
+
+```bash
 # Rust
 cargo build --workspace
 cargo test --workspace
 cargo test --workspace -- --ignored   # needs a running avalon-server + Postgres, see avalon-protocol's own README
-cargo clippy --workspace --all-targets -- -D warnings
-cargo fmt --all
 
 # C#
 cd languages/csharp && dotnet build AvalonSdk.sln && dotnet test AvalonSdk.sln
@@ -60,24 +68,36 @@ cd languages/csharp && dotnet build AvalonSdk.sln && dotnet test AvalonSdk.sln
 cd languages/typescript && npm install && npm run lint && npm test
 ```
 
-## Publishing (TypeScript)
+Live and integration tests need a running `avalon-server` and are never part of `make check` or CI.
 
-`languages/typescript/` publishes to GitHub Packages
-(`https://npm.pkg.github.com`), scoped `@avalon-initiative` — the scope
-has to match this org exactly, GitHub Packages enforces it. Needs a token
-with `write:packages` (e.g. `gh auth refresh -h github.com -s
-write:packages,read:packages`, then `export NODE_AUTH_TOKEN=$(gh auth
-token)`):
+## CI and releases
+
+Pull requests run the checks above in parallel jobs (`.github/workflows/ci.yml`); the aggregate
+`ci` job is the one required by the branch ruleset.
+
+Each SDK versions and releases independently, with its own tag prefix:
 
 ```bash
-cd languages/typescript
-npm publish
+make release-ts     VER=0.2.0 TITLE="Optional title"   # tag ts-v0.2.0-Optional-title
+make release-csharp VER=0.2.0 TITLE="Optional title"   # tag csharp-v0.2.0-Optional-title
+make release-rust   VER=0.2.0 TITLE="Optional title"   # tag rust-v0.2.0-Optional-title
+git push origin main --follow-tags
 ```
 
-Bump `version` in `languages/typescript/package.json` first for anything
-beyond the very first publish — GitHub Packages refuses to overwrite an
-existing version. There's no CI-driven publish yet; every release is
-manual.
+Each target runs that SDK's checks first and changes nothing if they fail, then bumps only that
+SDK's version files (`languages/typescript/package.json`, `AvalonSdk.csproj`, or the workspace
+`Cargo.toml`), commits, and creates the annotated tag. Pushing the tag starts the release workflow,
+which verifies the tag against the version files and that the commit is on `main`, reruns the
+checks, and then:
+
+| Tag | Publishes |
+|---|---|
+| `ts-v*` | `@avalon-initiative/protocol-sdk` to GitHub Packages (`https://npm.pkg.github.com`), plus a GitHub Release with the packed tarball |
+| `csharp-v*` | `Avalon.Sdk` to the GitHub Packages NuGet feed, plus a GitHub Release with the `.nupkg` |
+| `rust-v*` | a GitHub Release only; the crate is not on a registry yet (GitHub Packages has no cargo registry and the crate depends on its sibling `avalon-schema-derive` by path) |
+
+Published versions are immutable: ship a fix as a new version. Installing a GitHub Packages
+package needs a token with `read:packages`, even though the packages are public.
 
 ## Trust anchors
 
