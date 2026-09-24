@@ -297,16 +297,37 @@ public class ConformanceTests
     }
 
     [Fact]
-    public void SignedTreeHead_IsAKnownCSharpSdkGap()
+    public void SignedTreeHead_SigningMatchesSharedVectors()
     {
         using var doc = LoadVector("signed-tree-head.json");
         var root = doc.RootElement;
-        Assert.False(
-            SupportedIn(root, "csharp"),
-            "signed-tree-head.json now lists csharp in supportedIn, but this test only documents " +
-            "the gap — implement real STH signing/trust-anchor verification in AvalonSdk and real " +
-            "assertions here before flipping supportedIn");
-        var gap = root.GetProperty("notSupported").GetProperty("csharp").GetString();
-        Assert.False(string.IsNullOrWhiteSpace(gap), "notSupported.csharp must explain the gap");
+        Assert.True(SupportedIn(root, "csharp"), "signed-tree-head.json must list csharp in supportedIn");
+        var publicKeyHex = root.GetProperty("signingPublicKeyHex").GetString()!;
+
+        foreach (var vector in root.GetProperty("vectors").EnumerateArray())
+        {
+            var name = vector.GetProperty("name").GetString();
+            var input = vector.GetProperty("input");
+            var expected = vector.GetProperty("expected");
+            var treeSize = input.GetProperty("treeSize").GetInt64();
+            var rootHash = input.GetProperty("rootHashHex").GetString()!;
+            var networkId = input.GetProperty("networkId").GetString()!;
+            var createdAt = DateTimeOffset.FromUnixTimeSeconds(input.GetProperty("createdAtUnixSeconds").GetInt64());
+
+            var bytes = AvalonClient.SthSigningMessage(treeSize, rootHash, networkId, createdAt);
+            Assert.True(
+                expected.GetProperty("signingBytesHex").GetString() == ToLowerHex(bytes),
+                $"[{name}] signing bytes diverged from the shared vector");
+
+            var wire = new SignedTreeHeadWire
+            {
+                TreeSize = treeSize,
+                RootHash = rootHash,
+                NetworkId = networkId,
+                CreatedAt = createdAt,
+                Signature = expected.GetProperty("signatureHex").GetString()!,
+            };
+            Assert.True(AvalonClient.VerifyTreeHeadHex(publicKeyHex, wire), $"[{name}] vector signature does not verify");
+        }
     }
 }
