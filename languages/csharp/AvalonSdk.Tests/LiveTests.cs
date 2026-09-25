@@ -859,4 +859,22 @@ public class LiveTests
         Assert.NotEmpty(status.Roles);
         Assert.NotEmpty(status.ProtocolVersion);
     }
+
+    [Fact]
+    public async Task AccountSession_RollbackCandidates_WithoutCompletedRecovery_IsConflict()
+    {
+        if (ServerUrl is null || DatabaseUrl is null) return;
+
+        await using var conn = new NpgsqlConnection(DatabaseUrl);
+        await conn.OpenAsync();
+        var (_, token) = await SeedIdentitySessionAsync(conn, $"rollback-csharp-{Guid.NewGuid():N}");
+        var client = new AvalonClient(new AvalonConfig(ServerUrl!, "sdk-test"));
+        var session = await client.ResumeAccountSessionAsync(token);
+
+        var ex = await Assert.ThrowsAsync<AvalonRequestException>(
+            () => session.GetRollbackCandidatesAsync("2026-01-01T00:00:00Z"));
+
+        Assert.Equal(System.Net.HttpStatusCode.Conflict, ex.StatusCode);
+        Assert.Equal("ROLLBACK_NO_COMPLETED_RECOVERY", ex.Code);
+    }
 }

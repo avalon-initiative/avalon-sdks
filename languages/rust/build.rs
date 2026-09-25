@@ -80,6 +80,10 @@ const SCHEMA_NAMES: &[&str] = &[
     "UserCodeRequest",
     "ResolvePairingResponse",
     "CancelRecoveryRequest",
+    "RollbackCandidate",
+    "RollbackCandidatesResponse",
+    "ReverseEventRequest",
+    "ReverseEventResponse",
     "GuardianOfSummary",
     "GuardianRequestSummary",
     "GuardianSettingsResponse",
@@ -154,6 +158,27 @@ const SCHEMA_NAMES: &[&str] = &[
     "RoleBadge",
     "RoleBadgeIcon",
     "RoleBadgeColor",
+    "TopologyResponse",
+    "SelfView",
+    "Coordinate",
+    "Neighbor",
+    "KnownPeer",
+    "MirrorSource",
+    "OpenFinding",
+    "ObservedLatency",
+    "RoundTripStats",
+    "ShardHead",
+    "NodeResourceMetrics",
+    "CpuMetrics",
+    "MemoryMetrics",
+    "DiskMetrics",
+    "DbPoolMetrics",
+    "ProbeRequest",
+    "ProbeResponse",
+    "TraceRequest",
+    "TraceResponse",
+    "TraceHop",
+    "StopReason",
 ];
 
 /// Typify hardcodes `"format": "date-time"` to `chrono::DateTime<Utc>`,
@@ -184,7 +209,8 @@ fn strip_date_time_format(value: &mut serde_json::Value) {
 }
 
 fn main() {
-    let openapi_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/generated/openapi.json");
+    let openapi_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/generated/openapi.json");
     println!("cargo:rerun-if-changed={}", openapi_path.display());
 
     let raw = fs::read_to_string(&openapi_path)

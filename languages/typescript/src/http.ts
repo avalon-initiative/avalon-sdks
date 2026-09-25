@@ -3,7 +3,7 @@
 // browser/Node fetch caller is expected to apply its own retry policy at a
 // higher layer if it wants one; this keeps the wire layer simple and
 // dependency-free.
-import { mapErrorResponse } from './errors.js'
+import { mapErrorResponse, ProtocolError } from './errors.js'
 
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'
@@ -11,6 +11,8 @@ export interface RequestOptions {
   token?: string
   query?: Record<string, string>
   headers?: Record<string, string>
+  /** Aborts the in-flight request; the rejection is the platform's `AbortError`. */
+  signal?: AbortSignal
   /** AccountSession-only: called once on a 401 against
    * `token`, to mint a replacement bearer token to retry with. Returning
    * `null` (or omitting this entirely) leaves the 401 to propagate as-is —
@@ -46,7 +48,7 @@ export async function request<T>(serverUrl: string, path: string, options: Reque
   const method = options.method ?? 'GET'
   const requestBody = options.body !== undefined ? JSON.stringify(options.body) : undefined
 
-  let response = await fetch(buildUrl(serverUrl, path, options.query), { method, headers, body: requestBody })
+  let response = await fetch(buildUrl(serverUrl, path, options.query), { method, headers, body: requestBody, signal: options.signal })
 
   // Issue #525: exactly one retry, with a freshly-minted continuation
   // token in place of the stale bearer one — never persisted back into
@@ -61,6 +63,7 @@ export async function request<T>(serverUrl: string, path: string, options: Reque
         method,
         headers: { ...headers, authorization: `Bearer ${reconnectToken}` },
         body: requestBody,
+        signal: options.signal,
       })
     }
   }
@@ -73,5 +76,9 @@ export async function request<T>(serverUrl: string, path: string, options: Reque
   if (text.length === 0) {
     return undefined as T
   }
-  return JSON.parse(text) as T
+  try {
+    return JSON.parse(text) as T
+  } catch (error) {
+    throw new ProtocolError(error instanceof Error ? error.message : String(error))
+  }
 }

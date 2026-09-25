@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { request } from '../src/http.js'
-import { UnauthorizedError } from '../src/errors.js'
+import { AvalonSdkError, ProtocolError, RateLimitedError, UnauthorizedError, UnavailableError } from '../src/errors.js'
 
 const originalFetch = globalThis.fetch
 
@@ -71,5 +71,63 @@ describe('request 401 reconnect (issue #525)', () => {
       }),
     ).rejects.toThrow()
     expect(onUnauthorizedCalls).toBe(0)
+  })
+})
+
+const caught = async (): Promise<AvalonSdkError> => {
+  try {
+    await request('http://127.0.0.1:1', '/x')
+  } catch (e) {
+    return e as AvalonSdkError
+  }
+  throw new Error('expected request to throw')
+}
+
+describe('429 rate limiting', () => {
+  const rateLimited = (headers: Record<string, string>) =>
+    (async () =>
+      new Response(JSON.stringify({ error: 'slow down', code: 'RATE_LIMITED' }), {
+        status: 429,
+        headers,
+      })) as typeof fetch
+
+  it('maps 429 with a numeric Retry-After', async () => {
+    globalThis.fetch = rateLimited({ 'Retry-After': '7' })
+    const err = await caught()
+    expect(err).toBeInstanceOf(RateLimitedError)
+    expect(err).toBeInstanceOf(ProtocolError)
+    expect(err.status).toBe(429)
+    expect(err.retryAfterSeconds).toBe(7)
+    expect(err.code).toBe('RATE_LIMITED')
+  })
+
+  it('maps 429 without Retry-After', async () => {
+    globalThis.fetch = rateLimited({})
+    const err = await caught()
+    expect(err).toBeInstanceOf(RateLimitedError)
+    expect(err.status).toBe(429)
+    expect(err.retryAfterSeconds).toBeUndefined()
+  })
+
+  it('ignores non-numeric and HTTP-date Retry-After', async () => {
+    for (const value of ['soon', 'Wed, 21 Oct 2026 07:28:00 GMT', '-3', '1.5']) {
+      globalThis.fetch = rateLimited({ 'Retry-After': value })
+      const err = await caught()
+      expect(err).toBeInstanceOf(RateLimitedError)
+      expect(err.retryAfterSeconds).toBeUndefined()
+    }
+  })
+
+  it('leaves other statuses on their existing classes', async () => {
+    globalThis.fetch = (async () => new Response('', { status: 503, headers: { 'Retry-After': '5' } })) as typeof fetch
+    const unavailable = await caught()
+    expect(unavailable).toBeInstanceOf(UnavailableError)
+    expect(unavailable).not.toBeInstanceOf(RateLimitedError)
+    expect(unavailable.status).toBe(503)
+
+    globalThis.fetch = (async () => new Response('', { status: 401 })) as typeof fetch
+    const unauthorized = await caught()
+    expect(unauthorized).toBeInstanceOf(UnauthorizedError)
+    expect(unauthorized.status).toBe(401)
   })
 })

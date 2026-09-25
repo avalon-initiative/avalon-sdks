@@ -6,7 +6,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** `GET /attestations/{id}` (#33) — public, unauthenticated. */
+        /** `GET /attestations/{id}` — public, unauthenticated. */
         get: operations["get_attestation"];
         put?: never;
         post?: never;
@@ -26,7 +26,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * `POST /attestations/{id}/revoke` (#85). Only the attestation's original
+         * `POST /attestations/{id}/revoke`. Only the attestation's original
          *     issuer may revoke it — authenticated via the same challenge-response
          *     scheme every issuer-credentialed endpoint uses, plus (like issuance) an
          *     independently-checked embedded signature over
@@ -77,10 +77,9 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * `GET /auth/cross-node/lookup?user_code=...` — unauthenticated, epic
-         *     #623 issue #639's own gap: the Hub/mobile-hub approval screen has to
-         *     show real context (#642's decided phishing-context requirement)
-         *     *before* a human decides whether to approve, but `submit`/`deny` only
+         * `GET /auth/cross-node/lookup?user_code=...` — unauthenticated: the
+         *     Hub/hub-app approval screen has to
+         *     show real context before a human decides whether to approve, but `submit`/`deny` only
          *     ever take a `user_code` with no read path to go with it. Deliberately
          *     returns nothing beyond what's needed to render the prompt — never
          *     `request_code` (the polling device's own bearer credential, not the
@@ -363,7 +362,7 @@ export interface paths {
          *     block check. See the module doc comment's "Blocking, enforced on both
          *     read and write" section for why the rejection is indistinguishable from
          *     a non-participant's, on both this endpoint and [`list_messages`].
-         * @description **Idempotent when `client_entry_id` is set** (issue #111): inserts with
+         * @description **Idempotent when `client_entry_id` is set**: inserts with
          *     `ON CONFLICT (conversation_id, client_entry_id) DO NOTHING` against the
          *     partial unique index from migration `0037_conversation_message_idempotency`
          *     and, if that hit an existing row instead of inserting a new one, looks
@@ -405,11 +404,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Resolves a `display_name` handle (issue #128, updated by #510 to a
-         *     globally-unique, case-insensitive `display_name` — no discriminator) to
+         * Resolves a `display_name` handle (a globally-unique, case-insensitive
+         *     `display_name` — no discriminator) to
          *     an identity id for the "add friend" flow — exact match only, never
-         *     partial/fuzzy. Fuzzy name search is a separate, bigger question (issue
-         *     #129) with its own privacy tradeoffs, deliberately not folded in here.
+         *     partial/fuzzy. Fuzzy name search is a separate, bigger question
+         *     with its own privacy tradeoffs, deliberately not folded in here.
          *     Session-authenticated like every other route in this module, both so an
          *     anonymous caller can't use it to enumerate handles and so it matches
          *     this module's existing "no integrator-credential auth path" convention.
@@ -545,12 +544,12 @@ export interface paths {
         /**
          * `GET /guilds/{id}/channels` — a member sees every channel they hold
          *     `view` on (baseline: all of them, unless a role override says
-         *     otherwise — issue #458). A non-member of a
+         *     otherwise). A non-member of a
          *     [`crate::guilds::GuildResponse::public`] guild sees only `public`
          *     channels instead of being 403'd outright — same shape
-         *     `guild_events::list_events` already established for events (#448),
+         *     `guild_events::list_events` already established for events,
          *     extended to channels here since they had no non-member visibility
-         *     concept before this ticket. A non-member of a non-public guild is
+         *     concept before. A non-member of a non-public guild is
          *     still 403'd, unchanged. Lists both active and archived channels; the
          *     client distinguishes via `archived`.
          */
@@ -579,8 +578,8 @@ export interface paths {
         head?: never;
         /**
          * `PATCH /guilds/{id}/channels/{cid}` — rename, retopic, and/or toggle
-         *     announcement-only/public. Requires `manage_channels` (resource-aware,
-         *     issue #250). Renaming/retoggling an archived channel is allowed (it's
+         *     announcement-only/public. Requires `manage_channels` (resource-aware).
+         *     Renaming/retoggling an archived channel is allowed (it's
          *     still the same durable channel, just not accepting new posts).
          */
         patch: operations["update_channel"];
@@ -597,7 +596,7 @@ export interface paths {
         put?: never;
         /**
          * `POST /guilds/{id}/channels/{cid}/archive` — requires `manage_channels`
-         *     (resource-aware, issue #250). A soft flag (`archived_at`), not a
+         *     (resource-aware). A soft flag (`archived_at`), not a
          *     delete: history and past messages stay reachable, the channel simply
          *     stops accepting new posts (enforced in
          *     `crate::guild_messages::send_message`).
@@ -618,8 +617,8 @@ export interface paths {
         };
         /**
          * `GET /guilds/{id}/channels/{cid}/messages?before=&limit=` — newest
-         *     first, cursor-paginated. Requires `view_details` on this channel
-         *     (issue #458) — baseline for a member is exactly the old plain
+         *     first, cursor-paginated. Requires `view_details` on this channel —
+         *     baseline for a member is exactly the old plain
          *     membership gate (unchanged for a channel with no overrides), and a
          *     non-member of a `public` channel in a public guild can now read it
          *     too, same "public flag widens exposure" shape events already have.
@@ -651,7 +650,7 @@ export interface paths {
          * `GET /guilds/{id}/channels/{cid}/messages/archive?before=&limit=` — same
          *     newest-first, cursor-paginated shape as [`list_messages`], over
          *     `guild_messages_archive` instead of the live table. Requires
-         *     *current* `view_details` on the channel (issue #458), same gate
+         *     *current* `view_details` on the channel, same gate
          *     [`list_messages`] uses — see the module doc comment's "Archive read
          *     access" section for why this doesn't try to reconstruct membership as
          *     of when each message was originally sent.
@@ -699,10 +698,10 @@ export interface paths {
         };
         /**
          * `GET /guilds/{id}/events?from=&to=` — current members see every event.
-         *     A non-member of a [`crate::guilds::GuildResponse::public`] guild (issue
-         *     #448) sees only `public` events instead of being 403'd outright — the
+         *     A non-member of a [`crate::guilds::GuildResponse::public`] guild
+         *     sees only `public` events instead of being 403'd outright — the
          *     same "guild-level flag widens exposure of an otherwise-gated resource"
-         *     shape `list_members`'s roster override already established for #449,
+         *     shape `list_members`'s roster override already established,
          *     scoped per-event here since (unlike a roster) some events genuinely
          *     need to stay internal even in a public guild. A non-member of a
          *     non-public guild is still 403'd, unchanged. Optionally filtered to a
@@ -733,7 +732,7 @@ export interface paths {
         post?: never;
         /**
          * `DELETE /guilds/{id}/events/{eid}` — requires `event_manage` (resource-
-         *     aware, issue #250). A real hard delete: events aren't history (see
+         *     aware). A real hard delete: events aren't history (see
          *     module doc comment). Removes its RSVPs too, via the `ON DELETE CASCADE`
          *     FK on `guild_event_rsvps` (migration 0028) — nothing app-level to do
          *     here beyond deleting the event row itself.
@@ -743,7 +742,7 @@ export interface paths {
         head?: never;
         /**
          * `PATCH /guilds/{id}/events/{eid}` — reschedule/edit. Requires
-         *     `event_manage` (resource-aware, issue #250). Full replace of the mutable fields, same "resend the
+         *     `event_manage` (resource-aware). Full replace of the mutable fields, same "resend the
          *     whole thing" convention other guild PATCH endpoints use.
          */
         patch: operations["update_event"];
@@ -807,7 +806,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * `GET /guilds/{id}/favorite-integrators` (issue #207). Same "any authenticated
+         * `GET /guilds/{id}/favorite-integrators`. Same "any authenticated
          *     identity may read a guild's public metadata" visibility as `GET
          *     /guilds/{id}` itself (see that handler's doc comment) — the favorites
          *     list is exactly the curated subset of affinity data a guild has chosen
@@ -816,10 +815,10 @@ export interface paths {
          */
         get: operations["list_favorite_games"];
         /**
-         * `PUT /guilds/{id}/favorite-integrators` (issue #207). Gated by the same
-         *     `manage_guild`/owner permission as #206's breakdown-visibility toggle
+         * `PUT /guilds/{id}/favorite-integrators`. Gated by the same
+         *     `manage_guild`/owner permission as the breakdown-visibility toggle
          *     (via [`has_guild_permission`]) — reuses that check rather than inventing
-         *     a new one, per the ticket. Validates every id against the guild's real,
+         *     a new one. Validates every id against the guild's real,
          *     current affinity (see [`validate_favorite_game_ids`]) before writing
          *     anything; on success, replaces the stored list atomically (delete +
          *     reinsert, same "small enough this doesn't need per-row diffing" call
@@ -859,10 +858,9 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * `GET /guilds/{id}/integrator-breakdown` (issue #206, implementing decision
-         *     #160). Milestone-1 stand-in: a direct query over `guild_members` JOIN
-         *     `bindings` JOIN `integrators`, same precedent [`discover_guilds`] (#154)
-         *     already set, not #42's real indexer read model. Derived/computed on
+         * `GET /guilds/{id}/integrator-breakdown`. Milestone-1 stand-in: a direct query over `guild_members` JOIN
+         *     `bindings` JOIN `integrators`, same precedent [`discover_guilds`]
+         *     already set, not the real indexer read model. Derived/computed on
          *     every read — no protocol event, no durable table backs this (see the
          *     module doc comment).
          * @description Gated by [`can_view_game_breakdown`]: a `manage_guild` holder (or the
@@ -1268,7 +1266,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * `GET /identities/search?q=&limit=` (issue #205) — session-authenticated
+         * `GET /identities/search?q=&limit=` — session-authenticated
          *     open name/handle search, the opt-in counterpart to [`discover_people`]'s
          *     always-on scoped surfacing. Matches only identities with
          *     `discoverable = true` (see module doc comment); a non-opted-in identity
@@ -1295,7 +1293,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * `GET /identities/{id}/integrator-data` (#384) — public, unauthenticated (see
+         * `GET /identities/{id}/integrator-data` — public, unauthenticated (see
          *     module doc comment). Every current (non-superseded) instance published
          *     about `id`, across every integrator/schema, each filtered to only the fields
          *     its schema currently makes visible. A schema whose visibility metadata
@@ -1393,7 +1391,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * `GET /integrations?q=&sort=&limit=&cursor=` (issue #270). Public, unauthenticated
+         * `GET /integrations?q=&sort=&limit=&cursor=`. Public, unauthenticated
          *     — same visibility level [`get_integrator`] already uses. See the module doc
          *     comment for the pagination/sort design.
          */
@@ -1437,7 +1435,7 @@ export interface paths {
         /**
          * A public read of an integrator's registration — no credential fields, unlike
          *     [`IntegratorResponse`] (which only `register_integrator` itself ever returns, to the
-         *     registrant, once). This is what the Hub's consent view (#27) and
+         *     registrant, once). This is what the Hub's consent view and
          *     `connections.rs`'s `POST /integrations/{slug}/connect` (to validate approved
          *     capabilities against what the integrator actually declared) both read; same
          *     visibility level `crates/server/src/guilds.rs`'s `get_guild` uses — no
@@ -1479,7 +1477,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** `POST /integrations/{slug}/achievements/bulk-issue` (#495). */
+        /** `POST /integrations/{slug}/achievements/bulk-issue`. */
         post: operations["bulk_issue_achievements"];
         delete?: never;
         options?: never;
@@ -1513,7 +1511,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** `POST /integrations/{slug}/achievements/{key}/issue` (#32). */
+        /** `POST /integrations/{slug}/achievements/{key}/issue`. */
         post: operations["issue_achievement"];
         delete?: never;
         options?: never;
@@ -1547,8 +1545,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * `POST /integrations/{slug}/connect` — the consent flow (#27) and the endpoint
-         *     that establishes a `IntegratorBinding` (#83). Idempotent: reconnecting to a
+         * `POST /integrations/{slug}/connect` — the consent flow and the endpoint
+         *     that establishes a `IntegratorBinding`. Idempotent: reconnecting to a
          *     integrator the caller already has an active binding to does not create a
          *     second binding or emit a second `game.binding_established`, but it does
          *     still grant any newly-approved capabilities.
@@ -1592,10 +1590,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * `GET /integrations/{slug}/keys` (#90) — public, unauthenticated: an issuer's
+         * `GET /integrations/{slug}/keys` — public, unauthenticated: an issuer's
          *     full key history (any role, any status), the read side of
          *     [`add_issuer_key`]/[`revoke_issuer_key`]. Public keys are already public
-         *     by definition, and #90's design calls for the Hub to show an integrator's "key
+         *     by definition, and the design calls for the Hub to show an integrator's "key
          *     history and status" on its profile page — nothing here is sensitive the
          *     way the integrator's own root-key-authenticated endpoints are. Ordered oldest
          *     first so a viewer reads it as a timeline.
@@ -1603,7 +1601,7 @@ export interface paths {
         get: operations["list_issuer_keys"];
         put?: never;
         /**
-         * `POST /integrations/{slug}/keys` (#84, implementing #80's decided two-tier key
+         * `POST /integrations/{slug}/keys` (implementing the decided two-tier key
          *     model) — adds a new key to the issuer's key set. Requires the caller to
          *     authenticate as the named `slug` with a currently-valid **root** key
          *     ([`authenticate_integrator_root`]); an operational key, or a root key
@@ -1626,7 +1624,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * `POST /integrations/{slug}/keys/{key_id}/revoke` (#84) — revokes a key in the
+         * `POST /integrations/{slug}/keys/{key_id}/revoke` — revokes a key in the
          *     issuer's key set (root or operational; a root key can revoke itself, the
          *     same "any key genuinely under your control" trust already implied by
          *     authenticating as root at all). Same root-key-of-the-named-issuer
@@ -1699,10 +1697,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** `GET /integrations/{slug}/milestones` (#324/#325). */
+        /** `GET /integrations/{slug}/milestones`. */
         get: operations["list_milestone_definitions"];
         put?: never;
-        /** `POST /integrations/{slug}/milestones` (#324/#325). */
+        /** `POST /integrations/{slug}/milestones`. */
         post: operations["create_milestone_definition"];
         delete?: never;
         options?: never;
@@ -1719,7 +1717,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** `POST /integrations/{slug}/milestones/bulk-issue` (#495). */
+        /** `POST /integrations/{slug}/milestones/bulk-issue`. */
         post: operations["bulk_issue_milestones"];
         delete?: never;
         options?: never;
@@ -1740,7 +1738,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** `PATCH /integrations/{slug}/milestones/{key}` (#324/#325). */
+        /** `PATCH /integrations/{slug}/milestones/{key}`. */
         patch: operations["update_milestone_definition"];
         trace?: never;
     };
@@ -1753,7 +1751,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** `POST /integrations/{slug}/milestones/{key}/issue` (#32/#324/#325). */
+        /** `POST /integrations/{slug}/milestones/{key}/issue`. */
         post: operations["issue_milestone"];
         delete?: never;
         options?: never;
@@ -1929,10 +1927,10 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * `DELETE /integrations/{slug}/schemas/{version}/data/{subject}` (#533) —
+         * `DELETE /integrations/{slug}/schemas/{version}/data/{subject}` —
          *     append-only tombstone for the schema's current (non-superseded,
          *     non-deleted) instance belonging to `subject`, following
-         *     `docs/architecture/revocation.md`'s pattern: the original
+         *     `docs/projects/backend-server/architecture/revocation.md`'s pattern: the original
          *     `integrator_data_instances` row's `instance`/`published_at` are never
          *     touched, only `deleted_at`/`delete_reason_code`/`delete_reason` are
          *     set — the same "add a lifecycle marker, never mutate the substantive
@@ -1956,7 +1954,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * `POST /issuers/register` (#481) — explicit, self-service, never
+         * `POST /issuers/register` — explicit, self-service, never
          *     reviewed/approved on any tier (see module doc comment); the "gate" is
          *     which networks admit an unregistered key implicitly, not who may call
          *     this endpoint. Idempotent: registering an already-registered key
@@ -2016,16 +2014,16 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * `GET /me/achievements?integrator_id=&claim_kind=&before=&limit=` (#34,
-         *     paginated/filtered per #377) — bearer-authenticated as the reading
+         * `GET /me/achievements?integrator_id=&claim_kind=&before=&limit=` —
+         *     paginated/filtered, bearer-authenticated as the reading
          *     identity, returning that identity's own attestation history (every
          *     issuer, active and revoked alike): the identity reading its own
          *     record, not a per-consumer trust question, so no additional
          *     authorization beyond "this is genuinely you" is needed — matching
          *     `GET /attestations/{id}`'s own "authenticity/validity are facts, never
          *     gated behind a specific issuer's permission" posture. Also the read
-         *     path `crates/sdk/src/achievements.rs::Session::achievements` (#34) and
-         *     the Hub's achievements view (#35) are designed against.
+         *     path `crates/sdk/src/achievements.rs::Session::achievements` and
+         *     the Hub's achievements view are designed against.
          * @description The N+1 `build_attestation_response` had (one integrator-category, one
          *     integrator-status, one issuer-keys, one revocation query — *per row*)
          *     is fixed here by batching all four lookups across the whole page: a
@@ -2249,12 +2247,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * `GET /me/guild-announcements` (issue #280) — the most recent posts to
+         * `GET /me/guild-announcements` — the most recent posts to
          *     any announcement-only channel in any guild the caller currently belongs
          *     to, newest first. This is a plain read, not a notification/unread
          *     tracker: read/unread state is the Hub's own client-local concern (see
-         *     `docs/architecture/guilds.md`'s "Guild announcement alerts" section),
-         *     matching #22/#74/#253's "chat is operational-tier, not protocol
+         *     `docs/projects/backend-server/architecture/guilds.md`'s "Guild announcement alerts" section),
+         *     matching "chat is operational-tier, not protocol
          *     history" posture — there is nothing here to promote to durable state,
          *     so there is nothing here to track server-side either.
          * @description Scoped to *current* membership by construction: the `JOIN indexer_guild_members`
@@ -2283,10 +2281,10 @@ export interface paths {
         };
         /**
          * `GET /me/guild-invites` — every unresolved invite where the caller is
-         *     the invitee (issue #442). Without this, the only way an invitee learns
+         *     the invitee. Without this, the only way an invitee learns
          *     an invite exists at all is being told its raw id out of band by the
          *     sender — this is the "receiving end" listing `Guild.vue`'s invite flow
-         *     has been missing since #21, mirroring the shape
+         *     has been missing, mirroring the shape
          *     `recovery::guardian_requests` already established for the same "every
          *     active thing where the caller is on the receiving end" need.
          */
@@ -2453,8 +2451,8 @@ export interface paths {
         /**
          * `POST /me/passkeys/:id/revoke` — deletes one passkey. Revoking the
          *     identity's last remaining passkey requires a fresh signature from one of
-         *     the identity's registered `identity_signing_keys` (issue #704/#698 —
-         *     upgraded from the old client-side `?confirm=true` speed bump); revoking
+         *     the identity's registered `identity_signing_keys` (upgraded from the
+         *     old client-side `?confirm=true` speed bump); revoking
          *     one of several never does. The count check and the delete happen inside
          *     one transaction so a concurrent registration/revoke from another session
          *     can't race past the guard.
@@ -2496,7 +2494,7 @@ export interface paths {
         };
         /**
          * `GET /me/recovery/guardian-of` — every identity that currently names the
-         *     caller as one of their recovery guardians (issue #443's opt-out consent
+         *     caller as one of their recovery guardians (the opt-out consent
          *     model: a guardian can always see who's relying on them and self-remove
          *     via [`resign_guardian`] below, without the owner's cooperation — there is
          *     no accept step, matching `set_guardians`'s existing "active the moment
@@ -2524,7 +2522,7 @@ export interface paths {
         /**
          * `DELETE /me/recovery/guardian-of/{identity_id}` — a guardian removing
          *     themselves from someone else's guardian set, without that owner's
-         *     cooperation (issue #443). If this drops the owner's guardian count below
+         *     cooperation. If this drops the owner's guardian count below
          *     their configured threshold, the threshold is clamped down to the new
          *     count instead — the same "recovery must stay satisfiable" invariant
          *     [`validate_guardian_settings`] enforces on the owner's own writes, kept
@@ -2576,7 +2574,7 @@ export interface paths {
          * `PUT /me/recovery/guardians` — (re)configures the caller's guardian set
          *     and threshold in one call, requiring the caller's *current* session
          *     (`authenticate`) the whole invariant rests on. Every guardian must be a
-         *     current friend (issue #15's network-level primitive is deliberately the
+         *     current friend (the network-level primitive is deliberately the
          *     only pool this draws from — see the ticket) and not the caller
          *     themselves; the full set is validated together via
          *     [`validate_guardian_settings`] rather than incrementally, so a client
@@ -2612,6 +2610,111 @@ export interface paths {
         get: operations["my_recovery_status"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/rollback/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /me/rollback/candidates?since=` — events the caller authored in
+         *     `[since, latest completed recovery)` that a rollback could touch, each
+         *     marked reversible or not with a reason.
+         */
+        get: operations["list_rollback_candidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/rollback/{event_id}/reverse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /me/rollback/{event_id}/reverse` — appends the compensating event
+         *     for one eligible, reversible candidate atomically with its ledger entry.
+         *     Requires a fresh signature.
+         */
+        post: operations["reverse_event"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nodes/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Measure the round trip from this node to a known peer.
+         * @description Timings only; nothing the target returns is passed on. The target must be
+         *     in this node's peer table.
+         */
+        post: operations["probe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nodes/topology": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /nodes/topology`: this node's own view of its neighbors, known
+         *     peers, and mirror sources. Public and read-only.
+         */
+        get: operations["topology"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nodes/trace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trace the overlay route from this node to a target, hop by hop.
+         * @description Each node on the path reports itself, so the result is advisory and not a
+         *     verified fact about the path. Requests forwarded between nodes use the same
+         *     route with `visited` and `budget_ms` set.
+         */
+        post: operations["trace"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2676,7 +2779,7 @@ export interface paths {
         /**
          * `PUT /presence/:identity_id` — an integrator publishing presence on behalf of
          *     a user it's bound to. Authenticated via `crate::authz`'s
-         *     `Caller`/`require_capability` (issue #28): the caller must be
+         *     `Caller`/`require_capability`: the caller must be
          *     `Caller::Integrator` (a user session hitting this route is rejected — that
          *     endpoint is `PUT /me/presence` above), the path `identity_id` must
          *     match the identity the integrator claims to act for
@@ -2903,7 +3006,7 @@ export interface components {
              * @description Always populated — falls back to [`DEFAULT_ICON`] when the
              *     definition has neither `icon` nor `icon_url` set, so every reader
              *     (the Hub's `AvalonAchievementCard`) always has *something* to
-             *     render (issue #332's invariant), never a blank slot.
+             *     render, never a blank slot.
              */
             icon: string;
             /**
@@ -2933,9 +3036,9 @@ export interface components {
              */
             public_key: string;
             /**
-             * @description `"attestation"` (the default, omit for existing pre-#543 caller
+             * @description `"attestation"` (the default, omit for existing pre-existing caller
              *     behavior) or `"shard_settlement"` — see
-             *     `avalon_protocol::integrators::KeyPurpose`, issue #543.
+             *     `avalon_protocol::integrators::KeyPurpose`.
              */
             purpose?: string;
             /** @description `"root"` or `"operational"` — see `avalon_protocol::integrators::KeyRole`. */
@@ -2975,9 +3078,9 @@ export interface components {
             signature: string;
         };
         /**
-         * @description Issue #704: `POST /auth/device/approve` mints a brand-new, independently-
+         * @description `POST /auth/device/approve` mints a brand-new, independently-
          *     usable session for a different device off nothing but the approver's
-         *     ambient session today — #697/#698's signature-required tier closes that
+         *     ambient session, so a signature-required tier closes that
          *     gap. `signing_key_id`/`signature` are optional on the wire (so
          *     deserialization never fails outright) but enforced as required by
          *     [`require_fresh_signature`] below.
@@ -3003,7 +3106,7 @@ export interface components {
         };
         /**
          * @description One entry in an attestation's history — `"issued"` always, plus
-         *     `"revoked"` if a revocation entry exists (#85). Reinstatement/
+         *     `"revoked"` if a revocation entry exists. Reinstatement/
          *     supersession entries would append here too, once either exists.
          */
         AttestationHistoryEntry: {
@@ -3079,8 +3182,7 @@ export interface components {
             key: string;
         };
         /**
-         * @description One claim's own outcome — a bulk call is never all-or-nothing (#495's
-         *     own invariant): a claim referencing an unknown or retired definition
+         * @description One claim's own outcome — a bulk call is never all-or-nothing: a claim referencing an unknown or retired definition
          *     fails on its own, every other claim in the same call still succeeds.
          */
         BulkClaimResult: {
@@ -3102,14 +3204,13 @@ export interface components {
         };
         /**
          * @description `POST /integrations/{slug}/achievements/bulk-issue` /
-         *     `.../milestones/bulk-issue` (issue #495, implementing #492's decided
-         *     shape). One challenge-response proof that this integrator's key is
+         *     `.../milestones/bulk-issue`. One challenge-response proof that this integrator's key is
          *     making the call, plus **one** signature over
          *     [`bulk_attestation_signing_bytes`] of the whole ordered `claims` list —
          *     never a per-claim signature. Every claim still becomes its own ordinary
          *     attestation server-side, through the exact same write path
          *     [`issue_attestation`] uses per-item; this endpoint is purely an
-         *     API/transport-layer convenience over that, per #492's own invariant.
+         *     API/transport-layer convenience over that.
          */
         BulkIssueAttestationRequest: {
             claims: components["schemas"]["BulkClaimRequest"][];
@@ -3146,10 +3247,9 @@ export interface components {
             id: string;
             name: string;
             /**
-             * @description Issue #458. Non-member visibility baseline for this channel —
-             *     same meaning as `guild_events.public` (#448), just newly added
-             *     for channels, which had no non-member visibility concept before
-             *     this ticket at all.
+             * @description Non-member visibility baseline for this channel —
+             *     same meaning as `guild_events.public`, just newly added
+             *     for channels, which had no non-member visibility concept before.
              */
             public: boolean;
             topic?: string | null;
@@ -3209,7 +3309,7 @@ export interface components {
             body: string;
             /**
              * Format: uuid
-             * @description The submitting client's journal `EntryId` (issue #110/#111), when
+             * @description The submitting client's journal `EntryId`, when
              *     this request came from the SDK's deferred submission engine rather
              *     than a direct online send. Optional — a message sent directly online
              *     never sets this and never needs to dedupe against anything (see
@@ -3224,11 +3324,33 @@ export interface components {
              */
             client_entry_id?: string | null;
         };
+        /**
+         * @description A node's own network coordinate, as published in announce exchanges and
+         *     the topology read model.
+         */
+        Coordinate: {
+            /** Format: double */
+            error: number;
+            /** Format: double */
+            height: number;
+            vector: number[];
+        };
+        CpuMetrics: {
+            core_count?: number | null;
+            /** Format: double */
+            load_average_15m?: number | null;
+            /** Format: double */
+            load_average_1m?: number | null;
+            /** Format: double */
+            load_average_5m?: number | null;
+            /** Format: float */
+            usage_percent?: number | null;
+        };
         CreateAchievementDefinitionRequest: {
             description: string;
             /**
              * @description One of [`BUILTIN_ICONS`]; omitted/`null` falls back to
-             *     [`DEFAULT_ICON`] at read time (issue #332).
+             *     [`DEFAULT_ICON`] at read time.
              */
             icon?: string | null;
             /**
@@ -3286,7 +3408,7 @@ export interface components {
             tag: string;
         };
         CreateIntegratorRequest: {
-            /** @description `integrator` / `app` / `service` (#282); omitted means `integrator`. */
+            /** @description `integrator` / `app` / `service`; omitted means `integrator`. */
             category?: string | null;
             initial_key: components["schemas"]["InitialKeyRequest"];
             name: string;
@@ -3359,6 +3481,12 @@ export interface components {
              */
             signing_key_id: string;
         };
+        DbPoolMetrics: {
+            /** Format: int32 */
+            in_use?: number | null;
+            /** Format: int32 */
+            size?: number | null;
+        };
         DeleteInstanceRequest: {
             reason?: string | null;
             reason_code?: string;
@@ -3427,8 +3555,8 @@ export interface components {
         };
         DiscoverGuildSummary: {
             /**
-             * @description Issue #258: same already-public fields `GET /guilds/{id}` returns
-             *     (#153/#246) — `null` when unset, no new visibility exposure.
+             * @description Same already-public fields `GET /guilds/{id}` returns —
+             *     `null` when unset, no new visibility exposure.
              */
             banner?: string | null;
             /** Format: date-time */
@@ -3458,6 +3586,19 @@ export interface components {
         DiscoveryCandidate: {
             /** Format: uuid */
             identity_id: string;
+        };
+        /**
+         * @description One configured path's disk usage — `label` says which config value it
+         *     came from (`"node_storage"` / `"postgres_data"`), since a node may
+         *     report more than one and a dashboard client needs to tell them apart.
+         */
+        DiskMetrics: {
+            label: string;
+            mount_point?: string | null;
+            /** Format: int64 */
+            total_bytes?: number | null;
+            /** Format: int64 */
+            used_bytes?: number | null;
         };
         EventResponse: {
             /** Format: uuid */
@@ -3552,7 +3693,7 @@ export interface components {
          *     guild's current members hold an active [`IntegratorBinding`](avalon_protocol::integrators::IntegratorBinding)
          *     to it. Never includes an integrator with zero bound members — there's no
          *     "add" action here, only real binding data feeds this (see the module
-         *     doc comment and `docs/architecture/guilds.md`).
+         *     doc comment and `docs/projects/backend-server/architecture/guilds.md`).
          */
         GameBreakdownEntry: {
             /** Format: uuid */
@@ -3570,7 +3711,7 @@ export interface components {
              * @description No minimum-member threshold and no fixed cap — every integrator with at
              *     least one bound member appears, ordered by member count descending
              *     (ties broken alphabetically by name for a stable, readable order).
-             *     This is a display of real counts, not a system verdict, per #160.
+             *     This is a display of real counts, not a system verdict.
              */
             breakdown: components["schemas"]["GameBreakdownEntry"][];
             /** Format: uuid */
@@ -3586,7 +3727,7 @@ export interface components {
         };
         /**
          * @description The fixed, small controlled vocabulary `Profile::favorite_genres` draws
-         *     from (issue #155). Deliberately closed rather than free text — a bad
+         *     from. Deliberately closed rather than free text — a bad
          *     value here is more likely a real client bug than a schema drift, so it is
          *     rejected server-side, not silently dropped (same reasoning
          *     `GuildPermission` already established in `crates/protocol/src/guilds.rs`).
@@ -3654,7 +3795,7 @@ export interface components {
             status: string;
         };
         /**
-         * @description One entry in [`Guild::links`] (issue #153): a human label paired with the
+         * @description One entry in [`Guild::links`]: a human label paired with the
          *     URL it points at. Both fields are validated/capped server-side
          *     (`crates/server/src/guilds.rs`) — this type carries no invariant of its
          *     own beyond "these are the two fields a link has."
@@ -3663,7 +3804,7 @@ export interface components {
             label: string;
             url: string;
         };
-        /** @description Wire shape for one entry of `UpdateGuildRequest.links` (issue #153). */
+        /** @description Wire shape for one entry of `UpdateGuildRequest.links`. */
         GuildLinkRequest: {
             label: string;
             url: string;
@@ -3730,7 +3871,7 @@ export interface components {
             tag: string;
         };
         /**
-         * @description One event from the caller's own protocol history (issue #121) — "what
+         * @description One event from the caller's own protocol history — "what
          *     does the network know about me." `subject` is included since not every
          *     event an identity issues is *about* itself the same way (e.g.
          *     `friend.requested` is issued by the requester but its subject is the
@@ -3901,6 +4042,14 @@ export interface components {
             /** Format: date-time */
             registered_at: string;
         };
+        KnownPeer: {
+            base_url: string;
+            /** Format: date-time */
+            last_announced_at: string;
+            libp2p_peer_id?: string | null;
+            protocol_version: string;
+            roles: string[];
+        };
         ListIntegratorsResponse: {
             integrators: components["schemas"]["IntegratorSummary"][];
             /**
@@ -3933,12 +4082,11 @@ export interface components {
             /** Format: int64 */
             expires_in: number;
             /**
-             * @description Epic #623, issue #649, implementing #642's decided requirement:
-             *     whether this node — the one the identity is being asked to log
+             * @description Whether this node — the one the identity is being asked to log
              *     into — resolves to a real, registered integrator (or a known
              *     network anchor for the default shard). See
              *     [`resolve_requester_verification`]'s own doc comment for exactly
-             *     what "verified" means here. `#639`/`#640` render this as a visual
+             *     what "verified" means here. Rendered as a visual
              *     distinction, never a hard gate — an unverified requester still
              *     gets a prompt, just a clearly flagged one.
              */
@@ -3951,6 +4099,16 @@ export interface components {
              *     a generic not-found.
              */
             status: string;
+        };
+        MemoryMetrics: {
+            /** Format: int64 */
+            swap_total_bytes?: number | null;
+            /** Format: int64 */
+            swap_used_bytes?: number | null;
+            /** Format: int64 */
+            total_bytes?: number | null;
+            /** Format: int64 */
+            used_bytes?: number | null;
         };
         MessageResponse: {
             /** Format: uuid */
@@ -3977,6 +4135,28 @@ export interface components {
             /** Format: int64 */
             value: number;
         };
+        MirrorSource: {
+            /**
+             * Format: int64
+             * @description Observed tree size minus mirrored entries, never negative; `None`
+             *     until a tree head has been observed from the source.
+             */
+            lag_entries?: number | null;
+            /** Format: date-time */
+            last_mirrored_at: string | null;
+            /** Format: date-time */
+            last_observed_at: string | null;
+            /** Format: int64 */
+            mirrored_entries: number;
+            /**
+             * Format: int64
+             * @description Tree size of the latest signed tree head observed from the source.
+             */
+            observed_tree_size?: number | null;
+            open_equivocations: components["schemas"]["OpenFinding"][];
+            shard_id: string;
+            source_url: string;
+        };
         MyGrantsResponse: {
             capabilities: string[];
             /** Format: uuid */
@@ -4000,6 +4180,48 @@ export interface components {
             joined_at: string;
             /** Format: int32 */
             role_index: number;
+        };
+        Neighbor: {
+            base_url: string;
+            bootstrap: boolean;
+            coordinate?: null | components["schemas"]["Coordinate"];
+            /** Format: date-time */
+            last_announced_at: string | null;
+            latency?: null | components["schemas"]["ObservedLatency"];
+            libp2p_peer_id?: string | null;
+            protocol_version?: string | null;
+            /** @description Empty and `None` below when the peer has not yet appeared in the peer table. */
+            roles: string[];
+        };
+        /**
+         * @description The `resources` block itself — every field individually optional per
+         *     #517's acceptance criteria, so a client can render whatever a given
+         *     node/platform actually managed to report.
+         */
+        NodeResourceMetrics: {
+            cpu: components["schemas"]["CpuMetrics"];
+            db_pool: components["schemas"]["DbPoolMetrics"];
+            disks: components["schemas"]["DiskMetrics"][];
+            memory: components["schemas"]["MemoryMetrics"];
+            /**
+             * @description This process's open file descriptor count — the cheapest
+             *     cross-platform proxy `sysinfo` exposes for "how many
+             *     connections/handles is this node currently holding open," since
+             *     `sysinfo` has no direct portable socket-count API.
+             */
+            open_file_count?: number | null;
+            /** Format: int64 */
+            process_uptime_seconds?: number | null;
+        };
+        /** @description A round-trip measurement together with the node that took it. */
+        ObservedLatency: components["schemas"]["RoundTripStats"] & {
+            observed_by?: string | null;
+        };
+        OpenFinding: {
+            source_a: string;
+            source_b: string;
+            /** Format: int64 */
+            tree_size: number;
         };
         PasskeyResponse: {
             /** Format: date-time */
@@ -4051,16 +4273,41 @@ export interface components {
          * @enum {string}
          */
         PresenceStatus: "Online" | "Away" | "DoNotDisturb" | "Offline";
+        ProbeRequest: {
+            /**
+             * Format: int32
+             * @description Sequential samples to take, 1 to 3 (default 1).
+             */
+            samples?: number | null;
+            /** @description Base URL of a node in this node's peer table. */
+            target: string;
+        };
+        ProbeResponse: {
+            /** @description `timeout`, `unreachable` or `bad_status` when a sample failed. */
+            error?: string | null;
+            /** Format: double */
+            median_ms?: number | null;
+            /** Format: double */
+            min_ms?: number | null;
+            /** @description True when every requested sample completed. */
+            ok: boolean;
+            /**
+             * @description Round trip of each completed sample in milliseconds, in order. The
+             *     first sample includes connection setup.
+             */
+            samples_ms: number[];
+            target: string;
+        };
         ProfileResponse: {
             avatar_url?: string | null;
             /**
-             * @description Expanded self-described fields (issue #372) — same promised-durable
+             * @description Expanded self-described fields — same promised-durable
              *     tier and same public exposure level as `bio`/`favorite_genres`/
              *     `pronouns` above.
              */
             banner_url?: string | null;
             /**
-             * @description Small, user-optional self-description fields (issue #155) — same
+             * @description Small, user-optional self-description fields — same
              *     promised-durable tier and same public exposure level as
              *     `display_name`/`avatar_url` above (no capability gate, no integrator ever
              *     sees more of it than `GET /me`/`GET /identities/profiles` already
@@ -4077,9 +4324,9 @@ export interface components {
              */
             discoverable: boolean;
             /**
-             * @description Issue #510: this identity's globally-unique, case-insensitive
+             * @description This identity's globally-unique, case-insensitive
              *     handle in its own right — no separate `handle`/discriminator field
-             *     exists any more (issue #128's old scheme). Add-friend-by-handle
+             *     exists any more. Add-friend-by-handle
              *     resolves this field directly.
              */
             display_name: string;
@@ -4126,15 +4373,15 @@ export interface components {
             timezone?: string | null;
         };
         /**
-         * @description Another identity's full self-description profile — issue #403's decided
-         *     widening of #393's read-only profile card. Deliberately a **separate,
+         * @description Another identity's full self-description profile — a decided
+         *     widening of the read-only profile card. Deliberately a **separate,
          *     single-identity endpoint** rather than a widened `list_profiles`: the
          *     batch endpoint above stays exactly as narrow as it already is (any
          *     session can resolve arbitrarily many ids at once, so it only ever
          *     returns the least-sensitive public-face fields), while this endpoint
          *     exposes the same fields `GET /me` already does — `bio`/`favorite_genres`/
-         *     `pronouns` (#155) and `banner_url`/`status`/`links`/`timezone`/
-         *     `theme_color`/`location` (#372) — but only for one identity per request,
+         *     `pronouns` and `banner_url`/`status`/`links`/`timezone`/
+         *     `theme_color`/`location` — but only for one identity per request,
          *     matching a real profile-card view rather than a roster resolve. Omits
          *     `discoverable` and `presence_visibility`: both describe the *viewed*
          *     identity's own settings preferences, not something the viewer needs
@@ -4168,8 +4415,8 @@ export interface components {
          *     `display_name`/`avatar_url` already are: the least-sensitive public-face
          *     fields. This endpoint has no further visibility gating (any session can
          *     batch-resolve arbitrary identity ids), so `bio`/`favorite_genres`/
-         *     `pronouns` (#155) and `banner_url`/`status`/`links`/`timezone`/
-         *     `theme_color`/`location` (#372) are deliberately withheld here even
+         *     `pronouns` and `banner_url`/`status`/`links`/`timezone`/
+         *     `theme_color`/`location` are deliberately withheld here even
          *     though they're unauthenticated-readable on one's own `GET /me` — batch
          *     stranger lookup is a materially wider exposure than a single
          *     self-disclosed profile view, and widening it is a scoping decision for
@@ -4213,14 +4460,14 @@ export interface components {
         };
         PublishIntegratorSchemaVersionRequest: {
             /**
-             * @description `"public"` (default) or `"private"` — #381's schema-level opt-out.
-             *     Omitted entirely by a pre-#384 publisher, which keeps today's
+             * @description `"public"` (default) or `"private"` — schema-level opt-out.
+             *     Omitted entirely by a pre-existing publisher, which keeps today's
              *     fully-open behavior.
              */
             default_visibility?: string;
             /**
              * @description Field name -> `"public"`/`"private"`, overriding `default_visibility`
-             *     for that field specifically, in either direction (#381). Every key
+             *     for that field specifically, in either direction. Every key
              *     must name a real field of the parsed root message — see
              *     `proto_schema::validate_field_visibility_keys`.
              */
@@ -4371,6 +4618,24 @@ export interface components {
         ResolvePairingResponse: {
             status: string;
         };
+        ReverseEventRequest: {
+            /**
+             * @description Base64 Ed25519 signature over
+             *     `avalon:rollback.reverse:v1:<event_id>:<identity_id>:<since>`.
+             */
+            signature?: string | null;
+            /** Format: uuid */
+            signing_key_id?: string | null;
+            /**
+             * @description Same `since` value as the candidates listing (RFC 3339); part of the
+             *     signed message.
+             */
+            since: string;
+        };
+        ReverseEventResponse: {
+            /** Format: uuid */
+            reversal_event_id: string;
+        };
         RevocationResponse: {
             /** Format: uuid */
             attestation_id: string;
@@ -4419,15 +4684,15 @@ export interface components {
             recognized_slug: string;
         };
         /**
-         * @description A role's small, fixed visual identity (issue #152): an icon id from a
+         * @description A role's small, fixed visual identity: an icon id from a
          *     closed enum paired with a color id from a closed enum — deliberately
          *     not a free-form asset/upload, no user-supplied image hosting in scope
          *     for milestone 1. Shaped as icon+color today (rather than e.g. a single
          *     opaque badge id) so it can grow into a richer badge system later —
          *     more icons/colors, tiers, an uploaded custom asset as an additional
          *     variant — without a breaking change to callers that just want "an icon
-         *     and a color" out of a role (`packages/ui`'s planned `AvalonRoleBadge`,
-         *     #24, is the first such caller).
+         *     and a color" out of a role (the shared UI library's `AvalonRoleBadge`
+         *     is the first such caller).
          */
         RoleBadge: {
             color: components["schemas"]["RoleBadgeColor"];
@@ -4440,7 +4705,7 @@ export interface components {
          */
         RoleBadgeColor: "gray" | "red" | "orange" | "gold" | "green" | "blue" | "purple";
         /**
-         * @description Fixed milestone-1 vocabulary of role badge icons (issue #152). Not
+         * @description Fixed milestone-1 vocabulary of role badge icons. Not
          *     user-uploadable — a role's icon is chosen from this closed set, same
          *     "custom names allowed, custom permissions/values not yet" precedent
          *     [`GuildPermission`] already established for milestone 1.
@@ -4466,6 +4731,72 @@ export interface components {
             /** Format: int32 */
             name_index: number;
             permissions: string[];
+        };
+        RollbackCandidate: {
+            already_reversed: boolean;
+            /** Format: uuid */
+            event_id: string;
+            kind: string;
+            /** Format: date-time */
+            occurred_at: string;
+            /** @description Why the event cannot be reversed; `null` when reversible. */
+            reason?: string | null;
+            reversible: boolean;
+            summary: string;
+        };
+        RollbackCandidatesResponse: {
+            candidates: components["schemas"]["RollbackCandidate"][];
+            /** Format: date-time */
+            recovery_completed_at: string;
+            /** Format: uuid */
+            recovery_request_id: string;
+        };
+        /** @description Rolling round-trip statistics for one neighbor, as observed by this node. */
+        RoundTripStats: {
+            /**
+             * Format: int32
+             * @description Attempts in the last window (at most the window size).
+             */
+            attempts_recent: number;
+            /**
+             * Format: double
+             * @description Exponentially weighted moving average of successful round trips.
+             */
+            ewma_ms?: number | null;
+            /**
+             * Format: int32
+             * @description Failed attempts in the last window of attempts.
+             */
+            failed_recent: number;
+            /**
+             * Format: double
+             * @description Mean absolute deviation over the last successful round trips.
+             */
+            jitter_ms?: number | null;
+            /**
+             * Format: double
+             * @description Round trip of the most recent successful announce, in milliseconds.
+             */
+            last_ms?: number | null;
+            /** Format: date-time */
+            last_success_at: string | null;
+            /**
+             * Format: double
+             * @description Fraction of recent attempts that failed, 0.0 when none were made.
+             */
+            loss_ratio: number;
+            /** @description Always `"application_round_trip"`: announce request to parsed response. */
+            measurement: string;
+            /**
+             * Format: double
+             * @description Minimum over the last successful round trips.
+             */
+            min_ms?: number | null;
+            /**
+             * Format: int64
+             * @description Successful round trips recorded since the peer became active.
+             */
+            samples: number;
         };
         RsvpCounts: {
             /** Format: int64 */
@@ -4503,6 +4834,19 @@ export interface components {
             /** Format: uuid */
             identity_id: string;
         };
+        SelfView: {
+            base_url?: string | null;
+            /** @description This node's advisory network coordinate; see `network_coordinates`. */
+            coordinate: components["schemas"]["Coordinate"];
+            libp2p_peer_id?: string | null;
+            network_id: string;
+            protocol_version: string;
+            resources: components["schemas"]["NodeResourceMetrics"];
+            roles: string[];
+            /** @description Shards this node authors, with their latest signed tree head. */
+            shards: components["schemas"]["ShardHead"][];
+            stale: boolean;
+        };
         SendMessageRequest: {
             body: string;
         };
@@ -4529,7 +4873,7 @@ export interface components {
             /**
              * @description The full desired ordered list of pinned integrator ids — always a full
              *     replace, never a per-entry patch, same "resend the whole list"
-             *     convention `UpdateGuildRequest::links` already established for #153.
+             *     convention `UpdateGuildRequest::links` already established.
              *     Position in this array is the new display order.
              */
             integrator_ids: string[];
@@ -4564,6 +4908,13 @@ export interface components {
              */
             signing_key_id?: string | null;
         };
+        ShardHead: {
+            shard_id: string;
+            /** Format: date-time */
+            sth_created_at: string;
+            /** Format: int64 */
+            tree_size: number;
+        };
         StartCrossNodeLoginResponse: {
             /** Format: int64 */
             expires_in: number;
@@ -4582,6 +4933,8 @@ export interface components {
             user_code: string;
             verification_uri: string;
         };
+        /** @enum {string} */
+        StopReason: "ttl" | "no_route" | "loop" | "timeout" | "target_unreachable";
         SubmitGrantRequest: {
             grant: components["schemas"]["CrossNodeLoginGrant"];
             /**
@@ -4600,6 +4953,76 @@ export interface components {
              *     `device_pairing::approve_pairing`, not returned here directly.
              */
             token?: string | null;
+        };
+        TopologyResponse: {
+            /** Format: date-time */
+            generated_at: string;
+            known: components["schemas"]["KnownPeer"][];
+            /** @description Peer table entries that are not active neighbors, before `limit`. */
+            known_total: number;
+            mirrors: components["schemas"]["MirrorSource"][];
+            neighbors: components["schemas"]["Neighbor"][];
+            self: components["schemas"]["SelfView"];
+        };
+        /** @description One node on the path, as that node reports itself. */
+        TraceHop: {
+            base_url: string;
+            /** Format: int32 */
+            index: number;
+            /**
+             * Format: double
+             * @description Time this node spent before forwarding (or in total, at the last hop),
+             *     on its own clock.
+             */
+            processing_ms: number;
+            protocol_version: string;
+            roles: string[];
+            /**
+             * Format: double
+             * @description Leg to the next hop: this node's round trip to it minus the time the
+             *     next hop reports for itself, so it approximates network transit. When
+             *     the next hop did not answer, the time this node waited. Absent at the
+             *     last hop.
+             */
+            to_next_ms?: number | null;
+        };
+        TraceRequest: {
+            /**
+             * Format: int64
+             * @description Set by forwarding nodes: remaining time budget in milliseconds.
+             */
+            budget_ms?: number | null;
+            /** @description Base URL of the node to trace to. */
+            target: string;
+            /** Format: uuid */
+            trace_id?: string | null;
+            /**
+             * Format: int32
+             * @description Forwards still allowed, 0 to 16 (default 12). Clients use 1 to 16;
+             *     a hop that receives 0 does not forward.
+             */
+            ttl?: number | null;
+            /** @description Set by forwarding nodes: base URLs already on the path. */
+            visited?: string[] | null;
+        };
+        TraceResponse: {
+            /**
+             * @description Why routing stopped, when `stopped_reason` is `no_route` or
+             *     `target_unreachable`.
+             */
+            detail?: string | null;
+            /** @description Ordered path, first node to last, all self-reported. */
+            hops: components["schemas"]["TraceHop"][];
+            reached: boolean;
+            stopped_reason?: null | components["schemas"]["StopReason"];
+            target: string;
+            /**
+             * Format: double
+             * @description Time from receipt to response at the node that answered, on its own clock.
+             */
+            total_ms: number;
+            /** Format: uuid */
+            trace_id: string;
         };
         TransferOwnershipRequest: {
             signature?: string | null;
@@ -4657,7 +5080,7 @@ export interface components {
             /** Format: date-time */
             ends_at?: string | null;
             /**
-             * @description Issue #448. Full replace like the rest of this request — always
+             * @description Full replace like the rest of this request — always
              *     resent, not three-state.
              */
             public?: boolean;
@@ -4679,19 +5102,19 @@ export interface components {
         };
         UpdateGuildRequest: {
             /**
-             * @description Issue #153. Same three-state convention as `motd`, same
+             * @description Same three-state convention as `motd`, same
              *     `http`/`https`-URL validation as a profile's `avatar_url`.
              */
             banner?: string | null;
             description?: string | null;
             /**
-             * @description Issue #206. Omitted leaves it untouched. Controls only whether the
+             * @description Omitted leaves it untouched. Controls only whether the
              *     integrator affinity breakdown is shown on this guild's *public* profile —
              *     a `manage_guild` holder can always see it internally either way.
              */
             game_breakdown_public?: boolean | null;
             /**
-             * @description Issue #246. Same three-state convention as `banner`, same
+             * @description Same three-state convention as `banner`, same
              *     `http`/`https`-URL validation.
              */
             icon?: string | null;
@@ -4699,33 +5122,33 @@ export interface components {
              * @description "invite_only" or "open" (see [`JoinPolicy`]) — omitted leaves it
              *     untouched. `Open` lets any authenticated identity join instantly via
              *     `POST /guilds/{id}/join` (`can_join_directly`/`join_guild`), bypassing
-             *     the invite (#21) and join-request/approval (#242) flows entirely.
+             *     the invite and join-request/approval flows entirely.
              */
             join_policy?: string | null;
             /**
-             * @description Issue #153. Two states, not three: omitted (untouched) or
+             * @description Two states, not three: omitted (untouched) or
              *     `Some(list)`, which always fully replaces the stored list —
              *     including `Some(vec![])` to clear it. Each entry is validated; an
              *     invalid entry rejects the whole request rather than being dropped.
              */
             links?: components["schemas"]["GuildLinkRequest"][] | null;
             /**
-             * @description Issue #153. Three states, same as `UpdateProfileRequest::bio`:
+             * @description Three states, same as `UpdateProfileRequest::bio`:
              *     omitted (untouched), `Some("")` (clear to `NULL`), `Some(nonempty)`
              *     (validate against [`MAX_GUILD_MOTD_LEN`], then set).
              */
             motd?: string | null;
             name?: string | null;
             /**
-             * @description Issue #449. Omitted leaves it untouched. Independent of
+             * @description Omitted leaves it untouched. Independent of
              *     `recruiting` — see `avalon_protocol::guilds::Guild::public`'s doc
              *     comment.
              */
             public?: boolean | null;
-            /** @description Issue #153. Omitted leaves it untouched. */
+            /** @description Omitted leaves it untouched. */
             recruiting?: boolean | null;
             /**
-             * @description Issue #87. `"public"` (anyone), `"guild_members"` (only current
+             * @description `"public"` (anyone), `"guild_members"` (only current
              *     members), or `"private"` (nobody, via this endpoint, but a
              *     `manage_guild` holder — see `update_guild`'s own permission check —
              *     can always change it back). Omitted leaves it untouched.
@@ -4757,7 +5180,7 @@ export interface components {
             avatar_url?: string | null;
             /**
              * @description Three states, same as `avatar_url` — a second image slot, separate
-             *     from the avatar, for the Hub profile page header (issue #372).
+             *     from the avatar, for the Hub profile page header.
              */
             banner_url?: string | null;
             /**
@@ -4767,7 +5190,7 @@ export interface components {
              */
             bio?: string | null;
             /**
-             * @description Issue #205's opt-in global search toggle. Two states, not three
+             * @description Opt-in global search toggle. Two states, not three
              *     (there's no "clear" state for a plain boolean): `None` leaves the
              *     existing preference untouched, `Some(bool)` sets it. Off by
              *     default for every identity (no row in `discovery_preferences` at
@@ -4784,14 +5207,14 @@ export interface components {
              * @description Two states, not three: omitted (untouched) or `Some(list)`, which
              *     always fully replaces the stored list — including `Some(vec![])` to
              *     clear it. Each entry must parse as a [`Genre`]; an unknown value is
-             *     rejected outright rather than silently dropped (issue #155).
+             *     rejected outright rather than silently dropped.
              */
             favorite_genres?: string[] | null;
             /**
              * @description Two states, not three: omitted (untouched) or `Some(list)`, which
              *     always fully replaces the stored list — including `Some(vec![])` to
              *     clear it. Same shape as `favorite_genres`, but each entry is a
-             *     free-form URL rather than a fixed vocabulary value (issue #372).
+             *     free-form URL rather than a fixed vocabulary value.
              */
             links?: string[] | null;
             /**
@@ -4809,7 +5232,7 @@ export interface components {
              */
             main_guild?: string | null;
             /**
-             * @description Issue #87. `"public"`/`"authenticated_only"`/`"friends"` (the
+             * @description `"public"`/`"authenticated_only"`/`"friends"` (the
              *     default)/`"private"` — who may read this identity's presence via
              *     `GET /presence`. `"guild_members"` is accepted (presence has no
              *     guild context, so it behaves like `"private"` — nobody but the
@@ -5462,7 +5885,7 @@ export interface operations {
                 /** @description Case-insensitive exact match on `guilds.tag`. */
                 tag: string | null;
                 /**
-                 * @description Filter to guilds associated (issue #20's `associate_integrator`) with this
+                 * @description Filter to guilds associated (via `associate_integrator`) with this
                  *     integrator id.
                  */
                 integrator: string | null;
@@ -8108,6 +8531,185 @@ export interface operations {
             };
         };
     };
+    list_rollback_candidates: {
+        parameters: {
+            query: {
+                /** @description RFC 3339 timestamp at which the owner believes the compromise began. */
+                since: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RollbackCandidatesResponse"];
+                };
+            };
+        };
+    };
+    reverse_event: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReverseEventRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReverseEventResponse"];
+                };
+            };
+        };
+    };
+    probe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProbeRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProbeResponse"];
+                };
+            };
+            /** @description Invalid sample count or target */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Target address refused by outbound policy */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unknown_target: not in this node's peer table */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Rate limit or in-flight cap hit; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    topology: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of `known` entries returned (default 100, capped at 500). */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description This node's topology view */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopologyResponse"];
+                };
+            };
+            /** @description Topology is disabled on this node (AVALON_TOPOLOGY_PUBLIC=false) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Rate limit hit; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    trace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TraceRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceResponse"];
+                };
+            };
+            /** @description Invalid target */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Rate limit or in-flight cap hit; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description This node has no AVALON_NODE_URL */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     discover_people: {
         parameters: {
             query?: never;
@@ -8357,4 +8959,4 @@ export interface operations {
 }
 
 // Issue #735: the info.version this file's types were generated from.
-export const OPENAPI_SCHEMA_VERSION = "0.2.0" as const
+export const OPENAPI_SCHEMA_VERSION = "0.6.0" as const

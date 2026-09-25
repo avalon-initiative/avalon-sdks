@@ -178,6 +178,11 @@ fn classify_send_result(
             "avalon-server unavailable: {detail}"
         ))),
 
+        // A server rate limit: the request was fine, retry later.
+        Err(SdkError::RateLimited { .. }) => Err(SubmitError::Retryable(
+            "avalon-server rate limited the request".to_string(),
+        )),
+
         // See the module docs' "A retried submission that lost the race
         // and was already pruned isn't a real rejection" section: on this
         // endpoint, with `client_entry_id` always set by this transport, a
@@ -1122,6 +1127,12 @@ mod tests {
             retried: 0,
             detail: "rate limited or server error".to_string(),
         }));
+        assert!(matches!(result, Err(SubmitError::Retryable(_))));
+    }
+
+    #[test]
+    fn rate_limited_stays_retryable() {
+        let result = classify_send_result(Err(SdkError::RateLimited { retry_after: None }));
         assert!(matches!(result, Err(SubmitError::Retryable(_))));
     }
 

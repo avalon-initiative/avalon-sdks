@@ -1,5 +1,5 @@
-import { ed25519 } from '@noble/curves/ed25519'
-import { bytesToHex } from '@noble/hashes/utils'
+import { ed25519 } from '@noble/curves/ed25519.js'
+import { bytesToHex } from '@noble/hashes/utils.js'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { SignedTreeHeadResponse } from '../../src/types.js'
 import { signingMessage } from '../../src/network/sthMessage.js'
@@ -62,7 +62,7 @@ describe('discoverAmong', () => {
     expect(result.entry).toEqual(entry)
   })
 
-  it('reports no-candidates for a target with no matching bundled entry', async () => {
+  it('reports no-candidates for a target with no matching entry', async () => {
     await expect(discoverAmong([], { kind: 'network-id', networkId: 'avalon-nowhere' })).rejects.toThrow(
       DiscoveryFailedError,
     )

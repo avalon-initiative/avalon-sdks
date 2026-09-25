@@ -41,7 +41,7 @@ namespace Avalon.Sdk.Generated
         /// Always populated — falls back to [`DEFAULT_ICON`] when the
         /// <br/>definition has neither `icon` nor `icon_url` set, so every reader
         /// <br/>(the Hub's `AvalonAchievementCard`) always has *something* to
-        /// <br/>render (issue #332's invariant), never a blank slot.
+        /// <br/>render, never a blank slot.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("icon")]
         public string Icon { get; set; } = default!;
@@ -97,9 +97,9 @@ namespace Avalon.Sdk.Generated
         public string PublicKey { get; set; } = default!;
 
         /// <summary>
-        /// `"attestation"` (the default, omit for existing pre-#543 caller
+        /// `"attestation"` (the default, omit for existing pre-existing caller
         /// <br/>behavior) or `"shard_settlement"` — see
-        /// <br/>`avalon_protocol::integrators::KeyPurpose`, issue #543.
+        /// <br/>`avalon_protocol::integrators::KeyPurpose`.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("purpose")]
         public string? Purpose { get; set; } = default!;
@@ -170,9 +170,9 @@ namespace Avalon.Sdk.Generated
     }
 
     /// <summary>
-    /// Issue #704: `POST /auth/device/approve` mints a brand-new, independently-
+    /// `POST /auth/device/approve` mints a brand-new, independently-
     /// <br/>usable session for a different device off nothing but the approver's
-    /// <br/>ambient session today — #697/#698's signature-required tier closes that
+    /// <br/>ambient session, so a signature-required tier closes that
     /// <br/>gap. `signing_key_id`/`signature` are optional on the wire (so
     /// <br/>deserialization never fails outright) but enforced as required by
     /// <br/>[`require_fresh_signature`] below.
@@ -218,7 +218,7 @@ namespace Avalon.Sdk.Generated
 
     /// <summary>
     /// One entry in an attestation's history — `"issued"` always, plus
-    /// <br/>`"revoked"` if a revocation entry exists (#85). Reinstatement/
+    /// <br/>`"revoked"` if a revocation entry exists. Reinstatement/
     /// <br/>supersession entries would append here too, once either exists.
     /// </summary>
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
@@ -378,14 +378,13 @@ namespace Avalon.Sdk.Generated
 
     /// <summary>
     /// `POST /integrations/{slug}/achievements/bulk-issue` /
-    /// <br/>`.../milestones/bulk-issue` (issue #495, implementing #492's decided
-    /// <br/>shape). One challenge-response proof that this integrator's key is
+    /// <br/>`.../milestones/bulk-issue`. One challenge-response proof that this integrator's key is
     /// <br/>making the call, plus **one** signature over
     /// <br/>[`bulk_attestation_signing_bytes`] of the whole ordered `claims` list —
     /// <br/>never a per-claim signature. Every claim still becomes its own ordinary
     /// <br/>attestation server-side, through the exact same write path
     /// <br/>[`issue_attestation`] uses per-item; this endpoint is purely an
-    /// <br/>API/transport-layer convenience over that, per #492's own invariant.
+    /// <br/>API/transport-layer convenience over that.
     /// </summary>
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class BulkIssueAttestationRequest
@@ -455,10 +454,9 @@ namespace Avalon.Sdk.Generated
         public string Name { get; set; } = default!;
 
         /// <summary>
-        /// Issue #458. Non-member visibility baseline for this channel —
-        /// <br/>same meaning as `guild_events.public` (#448), just newly added
-        /// <br/>for channels, which had no non-member visibility concept before
-        /// <br/>this ticket at all.
+        /// Non-member visibility baseline for this channel —
+        /// <br/>same meaning as `guild_events.public`, just newly added
+        /// <br/>for channels, which had no non-member visibility concept before.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("public")]
         public bool Public { get; set; } = default!;
@@ -582,7 +580,7 @@ namespace Avalon.Sdk.Generated
         public string Body { get; set; } = default!;
 
         /// <summary>
-        /// The submitting client's journal `EntryId` (issue #110/#111), when
+        /// The submitting client's journal `EntryId`, when
         /// <br/>this request came from the SDK's deferred submission engine rather
         /// <br/>than a direct online send. Optional — a message sent directly online
         /// <br/>never sets this and never needs to dedupe against anything (see
@@ -600,6 +598,46 @@ namespace Avalon.Sdk.Generated
 
     }
 
+    /// <summary>
+    /// A node's own network coordinate, as published in announce exchanges and
+    /// <br/>the topology read model.
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class Coordinate
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("error")]
+        public double Error { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("height")]
+        public double Height { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("vector")]
+        public System.Collections.Generic.ICollection<double> Vector { get; set; } = new System.Collections.ObjectModel.Collection<double>();
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class CpuMetrics
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("core_count")]
+        public int? CoreCount { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("load_average_15m")]
+        public double? LoadAverage15m { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("load_average_1m")]
+        public double? LoadAverage1m { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("load_average_5m")]
+        public double? LoadAverage5m { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("usage_percent")]
+        public float? UsagePercent { get; set; } = default!;
+
+    }
+
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class CreateAchievementDefinitionRequest
     {
@@ -609,7 +647,7 @@ namespace Avalon.Sdk.Generated
 
         /// <summary>
         /// One of [`BUILTIN_ICONS`]; omitted/`null` falls back to
-        /// <br/>[`DEFAULT_ICON`] at read time (issue #332).
+        /// <br/>[`DEFAULT_ICON`] at read time.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("icon")]
         public string? Icon { get; set; } = default!;
@@ -732,7 +770,7 @@ namespace Avalon.Sdk.Generated
     {
 
         /// <summary>
-        /// `integrator` / `app` / `service` (#282); omitted means `integrator`.
+        /// `integrator` / `app` / `service`; omitted means `integrator`.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("category")]
         public string? Category { get; set; } = default!;
@@ -854,6 +892,18 @@ namespace Avalon.Sdk.Generated
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("signing_key_id")]
         public System.Guid SigningKeyId { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class DbPoolMetrics
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("in_use")]
+        public int? InUse { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("size")]
+        public int? Size { get; set; } = default!;
 
     }
 
@@ -980,8 +1030,8 @@ namespace Avalon.Sdk.Generated
     {
 
         /// <summary>
-        /// Issue #258: same already-public fields `GET /guilds/{id}` returns
-        /// <br/>(#153/#246) — `null` when unset, no new visibility exposure.
+        /// Same already-public fields `GET /guilds/{id}` returns —
+        /// <br/>`null` when unset, no new visibility exposure.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("banner")]
         public string? Banner { get; set; } = default!;
@@ -1043,6 +1093,29 @@ namespace Avalon.Sdk.Generated
 
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
         public System.Guid IdentityId { get; set; } = default!;
+
+    }
+
+    /// <summary>
+    /// One configured path's disk usage — `label` says which config value it
+    /// <br/>came from (`"node_storage"` / `"postgres_data"`), since a node may
+    /// <br/>report more than one and a dashboard client needs to tell them apart.
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class DiskMetrics
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("label")]
+        public string Label { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("mount_point")]
+        public string? MountPoint { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("total_bytes")]
+        public long? TotalBytes { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("used_bytes")]
+        public long? UsedBytes { get; set; } = default!;
 
     }
 
@@ -1198,7 +1271,7 @@ namespace Avalon.Sdk.Generated
     /// <br/>guild's current members hold an active [`IntegratorBinding`](avalon_protocol::integrators::IntegratorBinding)
     /// <br/>to it. Never includes an integrator with zero bound members — there's no
     /// <br/>"add" action here, only real binding data feeds this (see the module
-    /// <br/>doc comment and `docs/architecture/guilds.md`).
+    /// <br/>doc comment and `docs/projects/backend-server/architecture/guilds.md`).
     /// </summary>
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class GameBreakdownEntry
@@ -1229,7 +1302,7 @@ namespace Avalon.Sdk.Generated
         /// No minimum-member threshold and no fixed cap — every integrator with at
         /// <br/>least one bound member appears, ordered by member count descending
         /// <br/>(ties broken alphabetically by name for a stable, readable order).
-        /// <br/>This is a display of real counts, not a system verdict, per #160.
+        /// <br/>This is a display of real counts, not a system verdict.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("breakdown")]
         public System.Collections.Generic.ICollection<GameBreakdownEntry> Breakdown { get; set; } = new System.Collections.ObjectModel.Collection<GameBreakdownEntry>();
@@ -1250,7 +1323,7 @@ namespace Avalon.Sdk.Generated
 
     /// <summary>
     /// The fixed, small controlled vocabulary `Profile::favorite_genres` draws
-    /// <br/>from (issue #155). Deliberately closed rather than free text — a bad
+    /// <br/>from. Deliberately closed rather than free text — a bad
     /// <br/>value here is more likely a real client bug than a schema drift, so it is
     /// <br/>rejected server-side, not silently dropped (same reasoning
     /// <br/>`GuildPermission` already established in `crates/protocol/src/guilds.rs`).
@@ -1424,7 +1497,7 @@ namespace Avalon.Sdk.Generated
     }
 
     /// <summary>
-    /// One entry in [`Guild::links`] (issue #153): a human label paired with the
+    /// One entry in [`Guild::links`]: a human label paired with the
     /// <br/>URL it points at. Both fields are validated/capped server-side
     /// <br/>(`crates/server/src/guilds.rs`) — this type carries no invariant of its
     /// <br/>own beyond "these are the two fields a link has."
@@ -1442,7 +1515,7 @@ namespace Avalon.Sdk.Generated
     }
 
     /// <summary>
-    /// Wire shape for one entry of `UpdateGuildRequest.links` (issue #153).
+    /// Wire shape for one entry of `UpdateGuildRequest.links`.
     /// </summary>
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class GuildLinkRequest
@@ -1572,7 +1645,7 @@ namespace Avalon.Sdk.Generated
     }
 
     /// <summary>
-    /// One event from the caller's own protocol history (issue #121) — "what
+    /// One event from the caller's own protocol history — "what
     /// <br/>does the network know about me." `subject` is included since not every
     /// <br/>event an identity issues is *about* itself the same way (e.g.
     /// <br/>`friend.requested` is issued by the requester but its subject is the
@@ -1928,6 +2001,27 @@ namespace Avalon.Sdk.Generated
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class KnownPeer
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("base_url")]
+        public string BaseUrl { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("last_announced_at")]
+        public System.DateTimeOffset LastAnnouncedAt { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("libp2p_peer_id")]
+        public string? Libp2pPeerId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("protocol_version")]
+        public string ProtocolVersion { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("roles")]
+        public System.Collections.Generic.ICollection<string> Roles { get; set; } = new System.Collections.ObjectModel.Collection<string>();
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class ListIntegratorsResponse
     {
 
@@ -1985,12 +2079,11 @@ namespace Avalon.Sdk.Generated
         public long ExpiresIn { get; set; } = default!;
 
         /// <summary>
-        /// Epic #623, issue #649, implementing #642's decided requirement:
-        /// <br/>whether this node — the one the identity is being asked to log
+        /// Whether this node — the one the identity is being asked to log
         /// <br/>into — resolves to a real, registered integrator (or a known
         /// <br/>network anchor for the default shard). See
         /// <br/>[`resolve_requester_verification`]'s own doc comment for exactly
-        /// <br/>what "verified" means here. `#639`/`#640` render this as a visual
+        /// <br/>what "verified" means here. Rendered as a visual
         /// <br/>distinction, never a hard gate — an unverified requester still
         /// <br/>gets a prompt, just a clearly flagged one.
         /// </summary>
@@ -2008,6 +2101,24 @@ namespace Avalon.Sdk.Generated
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("status")]
         public string Status { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class MemoryMetrics
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("swap_total_bytes")]
+        public long? SwapTotalBytes { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("swap_used_bytes")]
+        public long? SwapUsedBytes { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("total_bytes")]
+        public long? TotalBytes { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("used_bytes")]
+        public long? UsedBytes { get; set; } = default!;
 
     }
 
@@ -2058,6 +2169,43 @@ namespace Avalon.Sdk.Generated
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class MirrorSource
+    {
+
+        /// <summary>
+        /// Observed tree size minus mirrored entries, never negative; `None`
+        /// <br/>until a tree head has been observed from the source.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("lag_entries")]
+        public long? LagEntries { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("last_mirrored_at")]
+        public System.DateTimeOffset? LastMirroredAt { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("last_observed_at")]
+        public System.DateTimeOffset? LastObservedAt { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("mirrored_entries")]
+        public long MirroredEntries { get; set; } = default!;
+
+        /// <summary>
+        /// Tree size of the latest signed tree head observed from the source.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("observed_tree_size")]
+        public long? ObservedTreeSize { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("open_equivocations")]
+        public System.Collections.Generic.ICollection<OpenFinding> OpenEquivocations { get; set; } = new System.Collections.ObjectModel.Collection<OpenFinding>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("shard_id")]
+        public string ShardId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("source_url")]
+        public string SourceUrl { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class MyGrantsResponse
     {
 
@@ -2102,6 +2250,110 @@ namespace Avalon.Sdk.Generated
 
         [System.Text.Json.Serialization.JsonPropertyName("role_index")]
         public int RoleIndex { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class Neighbor
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("base_url")]
+        public string BaseUrl { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("bootstrap")]
+        public bool Bootstrap { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("coordinate")]
+        public Coordinate? Coordinate { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("last_announced_at")]
+        public System.DateTimeOffset? LastAnnouncedAt { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("latency")]
+        public ObservedLatency? Latency { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("libp2p_peer_id")]
+        public string? Libp2pPeerId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("protocol_version")]
+        public string? ProtocolVersion { get; set; } = default!;
+
+        /// <summary>
+        /// Empty and `None` below when the peer has not yet appeared in the peer table.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("roles")]
+        public System.Collections.Generic.ICollection<string> Roles { get; set; } = new System.Collections.ObjectModel.Collection<string>();
+
+    }
+
+    /// <summary>
+    /// The `resources` block itself — every field individually optional per
+    /// <br/>#517's acceptance criteria, so a client can render whatever a given
+    /// <br/>node/platform actually managed to report.
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class NodeResourceMetrics
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("cpu")]
+        public CpuMetrics Cpu { get; set; } = new CpuMetrics();
+
+        [System.Text.Json.Serialization.JsonPropertyName("db_pool")]
+        public DbPoolMetrics DbPool { get; set; } = new DbPoolMetrics();
+
+        [System.Text.Json.Serialization.JsonPropertyName("disks")]
+        public System.Collections.Generic.ICollection<DiskMetrics> Disks { get; set; } = new System.Collections.ObjectModel.Collection<DiskMetrics>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("memory")]
+        public MemoryMetrics Memory { get; set; } = new MemoryMetrics();
+
+        /// <summary>
+        /// This process's open file descriptor count — the cheapest
+        /// <br/>cross-platform proxy `sysinfo` exposes for "how many
+        /// <br/>connections/handles is this node currently holding open," since
+        /// <br/>`sysinfo` has no direct portable socket-count API.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("open_file_count")]
+        public int? OpenFileCount { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("process_uptime_seconds")]
+        public long? ProcessUptimeSeconds { get; set; } = default!;
+
+    }
+
+    /// <summary>
+    /// A round-trip measurement together with the node that took it.
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class ObservedLatency : RoundTripStats
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("observed_by")]
+        public string? ObservedBy { get; set; } = default!;
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class OpenFinding
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("source_a")]
+        public string SourceA { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("source_b")]
+        public string SourceB { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("tree_size")]
+        public long TreeSize { get; set; } = default!;
 
     }
 
@@ -2225,6 +2477,58 @@ namespace Avalon.Sdk.Generated
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class ProbeRequest
+    {
+
+        /// <summary>
+        /// Sequential samples to take, 1 to 3 (default 1).
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("samples")]
+        public int? Samples { get; set; } = default!;
+
+        /// <summary>
+        /// Base URL of a node in this node's peer table.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("target")]
+        public string Target { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class ProbeResponse
+    {
+
+        /// <summary>
+        /// `timeout`, `unreachable` or `bad_status` when a sample failed.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("error")]
+        public string? Error { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("median_ms")]
+        public double? MedianMs { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("min_ms")]
+        public double? MinMs { get; set; } = default!;
+
+        /// <summary>
+        /// True when every requested sample completed.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("ok")]
+        public bool Ok { get; set; } = default!;
+
+        /// <summary>
+        /// Round trip of each completed sample in milliseconds, in order. The
+        /// <br/>first sample includes connection setup.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("samples_ms")]
+        public System.Collections.Generic.ICollection<double> SamplesMs { get; set; } = new System.Collections.ObjectModel.Collection<double>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("target")]
+        public string Target { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class ProfileResponse
     {
 
@@ -2232,7 +2536,7 @@ namespace Avalon.Sdk.Generated
         public string? AvatarUrl { get; set; } = default!;
 
         /// <summary>
-        /// Expanded self-described fields (issue #372) — same promised-durable
+        /// Expanded self-described fields — same promised-durable
         /// <br/>tier and same public exposure level as `bio`/`favorite_genres`/
         /// <br/>`pronouns` above.
         /// </summary>
@@ -2240,7 +2544,7 @@ namespace Avalon.Sdk.Generated
         public string? BannerUrl { get; set; } = default!;
 
         /// <summary>
-        /// Small, user-optional self-description fields (issue #155) — same
+        /// Small, user-optional self-description fields — same
         /// <br/>promised-durable tier and same public exposure level as
         /// <br/>`display_name`/`avatar_url` above (no capability gate, no integrator ever
         /// <br/>sees more of it than `GET /me`/`GET /identities/profiles` already
@@ -2261,9 +2565,9 @@ namespace Avalon.Sdk.Generated
         public bool Discoverable { get; set; } = default!;
 
         /// <summary>
-        /// Issue #510: this identity's globally-unique, case-insensitive
+        /// This identity's globally-unique, case-insensitive
         /// <br/>handle in its own right — no separate `handle`/discriminator field
-        /// <br/>exists any more (issue #128's old scheme). Add-friend-by-handle
+        /// <br/>exists any more. Add-friend-by-handle
         /// <br/>resolves this field directly.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("display_name")]
@@ -2334,15 +2638,15 @@ namespace Avalon.Sdk.Generated
     }
 
     /// <summary>
-    /// Another identity's full self-description profile — issue #403's decided
-    /// <br/>widening of #393's read-only profile card. Deliberately a **separate,
+    /// Another identity's full self-description profile — a decided
+    /// <br/>widening of the read-only profile card. Deliberately a **separate,
     /// <br/>single-identity endpoint** rather than a widened `list_profiles`: the
     /// <br/>batch endpoint above stays exactly as narrow as it already is (any
     /// <br/>session can resolve arbitrarily many ids at once, so it only ever
     /// <br/>returns the least-sensitive public-face fields), while this endpoint
     /// <br/>exposes the same fields `GET /me` already does — `bio`/`favorite_genres`/
-    /// <br/>`pronouns` (#155) and `banner_url`/`status`/`links`/`timezone`/
-    /// <br/>`theme_color`/`location` (#372) — but only for one identity per request,
+    /// <br/>`pronouns` and `banner_url`/`status`/`links`/`timezone`/
+    /// <br/>`theme_color`/`location` — but only for one identity per request,
     /// <br/>matching a real profile-card view rather than a roster resolve. Omits
     /// <br/>`discoverable` and `presence_visibility`: both describe the *viewed*
     /// <br/>identity's own settings preferences, not something the viewer needs
@@ -2407,8 +2711,8 @@ namespace Avalon.Sdk.Generated
     /// <br/>`display_name`/`avatar_url` already are: the least-sensitive public-face
     /// <br/>fields. This endpoint has no further visibility gating (any session can
     /// <br/>batch-resolve arbitrary identity ids), so `bio`/`favorite_genres`/
-    /// <br/>`pronouns` (#155) and `banner_url`/`status`/`links`/`timezone`/
-    /// <br/>`theme_color`/`location` (#372) are deliberately withheld here even
+    /// <br/>`pronouns` and `banner_url`/`status`/`links`/`timezone`/
+    /// <br/>`theme_color`/`location` are deliberately withheld here even
     /// <br/>though they're unauthenticated-readable on one's own `GET /me` — batch
     /// <br/>stranger lookup is a materially wider exposure than a single
     /// <br/>self-disclosed profile view, and widening it is a scoping decision for
@@ -2481,8 +2785,8 @@ namespace Avalon.Sdk.Generated
     {
 
         /// <summary>
-        /// `"public"` (default) or `"private"` — #381's schema-level opt-out.
-        /// <br/>Omitted entirely by a pre-#384 publisher, which keeps today's
+        /// `"public"` (default) or `"private"` — schema-level opt-out.
+        /// <br/>Omitted entirely by a pre-existing publisher, which keeps today's
         /// <br/>fully-open behavior.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("default_visibility")]
@@ -2490,7 +2794,7 @@ namespace Avalon.Sdk.Generated
 
         /// <summary>
         /// Field name -&gt; `"public"`/`"private"`, overriding `default_visibility`
-        /// <br/>for that field specifically, in either direction (#381). Every key
+        /// <br/>for that field specifically, in either direction. Every key
         /// <br/>must name a real field of the parsed root message — see
         /// <br/>`proto_schema::validate_field_visibility_keys`.
         /// </summary>
@@ -2789,6 +3093,38 @@ namespace Avalon.Sdk.Generated
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class ReverseEventRequest
+    {
+
+        /// <summary>
+        /// Base64 Ed25519 signature over
+        /// <br/>`avalon:rollback.reverse:v1:&lt;event_id&gt;:&lt;identity_id&gt;:&lt;since&gt;`.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("signature")]
+        public string? Signature { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("signing_key_id")]
+        public System.Guid? SigningKeyId { get; set; } = default!;
+
+        /// <summary>
+        /// Same `since` value as the candidates listing (RFC 3339); part of the
+        /// <br/>signed message.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("since")]
+        public string Since { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class ReverseEventResponse
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("reversal_event_id")]
+        public System.Guid ReversalEventId { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class RevocationResponse
     {
 
@@ -2876,15 +3212,15 @@ namespace Avalon.Sdk.Generated
     }
 
     /// <summary>
-    /// A role's small, fixed visual identity (issue #152): an icon id from a
+    /// A role's small, fixed visual identity: an icon id from a
     /// <br/>closed enum paired with a color id from a closed enum — deliberately
     /// <br/>not a free-form asset/upload, no user-supplied image hosting in scope
     /// <br/>for milestone 1. Shaped as icon+color today (rather than e.g. a single
     /// <br/>opaque badge id) so it can grow into a richer badge system later —
     /// <br/>more icons/colors, tiers, an uploaded custom asset as an additional
     /// <br/>variant — without a breaking change to callers that just want "an icon
-    /// <br/>and a color" out of a role (`packages/ui`'s planned `AvalonRoleBadge`,
-    /// <br/>#24, is the first such caller).
+    /// <br/>and a color" out of a role (the shared UI library's `AvalonRoleBadge`
+    /// <br/>is the first such caller).
     /// </summary>
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class RoleBadge
@@ -2932,7 +3268,7 @@ namespace Avalon.Sdk.Generated
     }
 
     /// <summary>
-    /// Fixed milestone-1 vocabulary of role badge icons (issue #152). Not
+    /// Fixed milestone-1 vocabulary of role badge icons. Not
     /// <br/>user-uploadable — a role's icon is chosen from this closed set, same
     /// <br/>"custom names allowed, custom permissions/values not yet" precedent
     /// <br/>[`GuildPermission`] already established for milestone 1.
@@ -3005,6 +3341,117 @@ namespace Avalon.Sdk.Generated
 
         [System.Text.Json.Serialization.JsonPropertyName("permissions")]
         public System.Collections.Generic.ICollection<string> Permissions { get; set; } = new System.Collections.ObjectModel.Collection<string>();
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class RollbackCandidate
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("already_reversed")]
+        public bool AlreadyReversed { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("event_id")]
+        public System.Guid EventId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("occurred_at")]
+        public System.DateTimeOffset OccurredAt { get; set; } = default!;
+
+        /// <summary>
+        /// Why the event cannot be reversed; `null` when reversible.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("reason")]
+        public string? Reason { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("reversible")]
+        public bool Reversible { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("summary")]
+        public string Summary { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class RollbackCandidatesResponse
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("candidates")]
+        public System.Collections.Generic.ICollection<RollbackCandidate> Candidates { get; set; } = new System.Collections.ObjectModel.Collection<RollbackCandidate>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("recovery_completed_at")]
+        public System.DateTimeOffset RecoveryCompletedAt { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("recovery_request_id")]
+        public System.Guid RecoveryRequestId { get; set; } = default!;
+
+    }
+
+    /// <summary>
+    /// Rolling round-trip statistics for one neighbor, as observed by this node.
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class RoundTripStats
+    {
+
+        /// <summary>
+        /// Attempts in the last window (at most the window size).
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("attempts_recent")]
+        public int AttemptsRecent { get; set; } = default!;
+
+        /// <summary>
+        /// Exponentially weighted moving average of successful round trips.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("ewma_ms")]
+        public double? EwmaMs { get; set; } = default!;
+
+        /// <summary>
+        /// Failed attempts in the last window of attempts.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("failed_recent")]
+        public int FailedRecent { get; set; } = default!;
+
+        /// <summary>
+        /// Mean absolute deviation over the last successful round trips.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("jitter_ms")]
+        public double? JitterMs { get; set; } = default!;
+
+        /// <summary>
+        /// Round trip of the most recent successful announce, in milliseconds.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("last_ms")]
+        public double? LastMs { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("last_success_at")]
+        public System.DateTimeOffset? LastSuccessAt { get; set; } = default!;
+
+        /// <summary>
+        /// Fraction of recent attempts that failed, 0.0 when none were made.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("loss_ratio")]
+        public double LossRatio { get; set; } = default!;
+
+        /// <summary>
+        /// Always `"application_round_trip"`: announce request to parsed response.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("measurement")]
+        public string Measurement { get; set; } = default!;
+
+        /// <summary>
+        /// Minimum over the last successful round trips.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("min_ms")]
+        public double? MinMs { get; set; } = default!;
+
+        /// <summary>
+        /// Successful round trips recorded since the peer became active.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("samples")]
+        public long Samples { get; set; } = default!;
 
     }
 
@@ -3090,6 +3537,45 @@ namespace Avalon.Sdk.Generated
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class SelfView
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("base_url")]
+        public string? BaseUrl { get; set; } = default!;
+
+        /// <summary>
+        /// This node's advisory network coordinate; see `network_coordinates`.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("coordinate")]
+        public Coordinate Coordinate { get; set; } = new Coordinate();
+
+        [System.Text.Json.Serialization.JsonPropertyName("libp2p_peer_id")]
+        public string? Libp2pPeerId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("network_id")]
+        public string NetworkId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("protocol_version")]
+        public string ProtocolVersion { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("resources")]
+        public NodeResourceMetrics Resources { get; set; } = new NodeResourceMetrics();
+
+        [System.Text.Json.Serialization.JsonPropertyName("roles")]
+        public System.Collections.Generic.ICollection<string> Roles { get; set; } = new System.Collections.ObjectModel.Collection<string>();
+
+        /// <summary>
+        /// Shards this node authors, with their latest signed tree head.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("shards")]
+        public System.Collections.Generic.ICollection<ShardHead> Shards { get; set; } = new System.Collections.ObjectModel.Collection<ShardHead>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("stale")]
+        public bool Stale { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class SendMessageRequest
     {
 
@@ -3150,7 +3636,7 @@ namespace Avalon.Sdk.Generated
         /// <summary>
         /// The full desired ordered list of pinned integrator ids — always a full
         /// <br/>replace, never a per-entry patch, same "resend the whole list"
-        /// <br/>convention `UpdateGuildRequest::links` already established for #153.
+        /// <br/>convention `UpdateGuildRequest::links` already established.
         /// <br/>Position in this array is the new display order.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("integrator_ids")]
@@ -3214,6 +3700,21 @@ namespace Avalon.Sdk.Generated
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class ShardHead
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("shard_id")]
+        public string ShardId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("sth_created_at")]
+        public System.DateTimeOffset SthCreatedAt { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("tree_size")]
+        public long TreeSize { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class StartCrossNodeLoginResponse
     {
 
@@ -3256,6 +3757,27 @@ namespace Avalon.Sdk.Generated
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public enum StopReason
+    {
+
+        [System.Runtime.Serialization.EnumMember(Value = @"ttl")]
+        Ttl = 0,
+
+        [System.Runtime.Serialization.EnumMember(Value = @"no_route")]
+        No_route = 1,
+
+        [System.Runtime.Serialization.EnumMember(Value = @"loop")]
+        Loop = 2,
+
+        [System.Runtime.Serialization.EnumMember(Value = @"timeout")]
+        Timeout = 3,
+
+        [System.Runtime.Serialization.EnumMember(Value = @"target_unreachable")]
+        Target_unreachable = 4,
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class SubmitGrantRequest
     {
 
@@ -3286,6 +3808,142 @@ namespace Avalon.Sdk.Generated
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("token")]
         public string? Token { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class TopologyResponse
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("generated_at")]
+        public System.DateTimeOffset GeneratedAt { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("known")]
+        public System.Collections.Generic.ICollection<KnownPeer> Known { get; set; } = new System.Collections.ObjectModel.Collection<KnownPeer>();
+
+        /// <summary>
+        /// Peer table entries that are not active neighbors, before `limit`.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("known_total")]
+        public int KnownTotal { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("mirrors")]
+        public System.Collections.Generic.ICollection<MirrorSource> Mirrors { get; set; } = new System.Collections.ObjectModel.Collection<MirrorSource>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("neighbors")]
+        public System.Collections.Generic.ICollection<Neighbor> Neighbors { get; set; } = new System.Collections.ObjectModel.Collection<Neighbor>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("self")]
+        public SelfView Self { get; set; } = new SelfView();
+
+    }
+
+    /// <summary>
+    /// One node on the path, as that node reports itself.
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class TraceHop
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("base_url")]
+        public string BaseUrl { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("index")]
+        public int Index { get; set; } = default!;
+
+        /// <summary>
+        /// Time this node spent before forwarding (or in total, at the last hop),
+        /// <br/>on its own clock.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("processing_ms")]
+        public double ProcessingMs { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("protocol_version")]
+        public string ProtocolVersion { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("roles")]
+        public System.Collections.Generic.ICollection<string> Roles { get; set; } = new System.Collections.ObjectModel.Collection<string>();
+
+        /// <summary>
+        /// Leg to the next hop: this node's round trip to it minus the time the
+        /// <br/>next hop reports for itself, so it approximates network transit. When
+        /// <br/>the next hop did not answer, the time this node waited. Absent at the
+        /// <br/>last hop.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("to_next_ms")]
+        public double? ToNextMs { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class TraceRequest
+    {
+
+        /// <summary>
+        /// Set by forwarding nodes: remaining time budget in milliseconds.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("budget_ms")]
+        public long? BudgetMs { get; set; } = default!;
+
+        /// <summary>
+        /// Base URL of the node to trace to.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("target")]
+        public string Target { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("trace_id")]
+        public System.Guid? TraceId { get; set; } = default!;
+
+        /// <summary>
+        /// Forwards still allowed, 0 to 16 (default 12). Clients use 1 to 16;
+        /// <br/>a hop that receives 0 does not forward.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("ttl")]
+        public int? Ttl { get; set; } = default!;
+
+        /// <summary>
+        /// Set by forwarding nodes: base URLs already on the path.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("visited")]
+        public System.Collections.Generic.ICollection<string>? Visited { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class TraceResponse
+    {
+
+        /// <summary>
+        /// Why routing stopped, when `stopped_reason` is `no_route` or
+        /// <br/>`target_unreachable`.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("detail")]
+        public string? Detail { get; set; } = default!;
+
+        /// <summary>
+        /// Ordered path, first node to last, all self-reported.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("hops")]
+        public System.Collections.Generic.ICollection<TraceHop> Hops { get; set; } = new System.Collections.ObjectModel.Collection<TraceHop>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("reached")]
+        public bool Reached { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("stopped_reason")]
+        [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<StopReason>))]
+        public StopReason? StoppedReason { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("target")]
+        public string Target { get; set; } = default!;
+
+        /// <summary>
+        /// Time from receipt to response at the node that answered, on its own clock.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("total_ms")]
+        public double TotalMs { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("trace_id")]
+        public System.Guid TraceId { get; set; } = default!;
 
     }
 
@@ -3392,7 +4050,7 @@ namespace Avalon.Sdk.Generated
         public System.DateTimeOffset? EndsAt { get; set; } = default!;
 
         /// <summary>
-        /// Issue #448. Full replace like the rest of this request — always
+        /// Full replace like the rest of this request — always
         /// <br/>resent, not three-state.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("public")]
@@ -3431,7 +4089,7 @@ namespace Avalon.Sdk.Generated
     {
 
         /// <summary>
-        /// Issue #153. Same three-state convention as `motd`, same
+        /// Same three-state convention as `motd`, same
         /// <br/>`http`/`https`-URL validation as a profile's `avatar_url`.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("banner")]
@@ -3441,7 +4099,7 @@ namespace Avalon.Sdk.Generated
         public string? Description { get; set; } = default!;
 
         /// <summary>
-        /// Issue #206. Omitted leaves it untouched. Controls only whether the
+        /// Omitted leaves it untouched. Controls only whether the
         /// <br/>integrator affinity breakdown is shown on this guild's *public* profile —
         /// <br/>a `manage_guild` holder can always see it internally either way.
         /// </summary>
@@ -3449,7 +4107,7 @@ namespace Avalon.Sdk.Generated
         public bool? GameBreakdownPublic { get; set; } = default!;
 
         /// <summary>
-        /// Issue #246. Same three-state convention as `banner`, same
+        /// Same three-state convention as `banner`, same
         /// <br/>`http`/`https`-URL validation.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("icon")]
@@ -3459,13 +4117,13 @@ namespace Avalon.Sdk.Generated
         /// "invite_only" or "open" (see [`JoinPolicy`]) — omitted leaves it
         /// <br/>untouched. `Open` lets any authenticated identity join instantly via
         /// <br/>`POST /guilds/{id}/join` (`can_join_directly`/`join_guild`), bypassing
-        /// <br/>the invite (#21) and join-request/approval (#242) flows entirely.
+        /// <br/>the invite and join-request/approval flows entirely.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("join_policy")]
         public string? JoinPolicy { get; set; } = default!;
 
         /// <summary>
-        /// Issue #153. Two states, not three: omitted (untouched) or
+        /// Two states, not three: omitted (untouched) or
         /// <br/>`Some(list)`, which always fully replaces the stored list —
         /// <br/>including `Some(vec![])` to clear it. Each entry is validated; an
         /// <br/>invalid entry rejects the whole request rather than being dropped.
@@ -3474,7 +4132,7 @@ namespace Avalon.Sdk.Generated
         public System.Collections.Generic.ICollection<GuildLinkRequest>? Links { get; set; } = default!;
 
         /// <summary>
-        /// Issue #153. Three states, same as `UpdateProfileRequest::bio`:
+        /// Three states, same as `UpdateProfileRequest::bio`:
         /// <br/>omitted (untouched), `Some("")` (clear to `NULL`), `Some(nonempty)`
         /// <br/>(validate against [`MAX_GUILD_MOTD_LEN`], then set).
         /// </summary>
@@ -3485,7 +4143,7 @@ namespace Avalon.Sdk.Generated
         public string? Name { get; set; } = default!;
 
         /// <summary>
-        /// Issue #449. Omitted leaves it untouched. Independent of
+        /// Omitted leaves it untouched. Independent of
         /// <br/>`recruiting` — see `avalon_protocol::guilds::Guild::public`'s doc
         /// <br/>comment.
         /// </summary>
@@ -3493,13 +4151,13 @@ namespace Avalon.Sdk.Generated
         public bool? Public { get; set; } = default!;
 
         /// <summary>
-        /// Issue #153. Omitted leaves it untouched.
+        /// Omitted leaves it untouched.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("recruiting")]
         public bool? Recruiting { get; set; } = default!;
 
         /// <summary>
-        /// Issue #87. `"public"` (anyone), `"guild_members"` (only current
+        /// `"public"` (anyone), `"guild_members"` (only current
         /// <br/>members), or `"private"` (nobody, via this endpoint, but a
         /// <br/>`manage_guild` holder — see `update_guild`'s own permission check —
         /// <br/>can always change it back). Omitted leaves it untouched.
@@ -3558,7 +4216,7 @@ namespace Avalon.Sdk.Generated
 
         /// <summary>
         /// Three states, same as `avatar_url` — a second image slot, separate
-        /// <br/>from the avatar, for the Hub profile page header (issue #372).
+        /// <br/>from the avatar, for the Hub profile page header.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("banner_url")]
         public string? BannerUrl { get; set; } = default!;
@@ -3572,7 +4230,7 @@ namespace Avalon.Sdk.Generated
         public string? Bio { get; set; } = default!;
 
         /// <summary>
-        /// Issue #205's opt-in global search toggle. Two states, not three
+        /// Opt-in global search toggle. Two states, not three
         /// <br/>(there's no "clear" state for a plain boolean): `None` leaves the
         /// <br/>existing preference untouched, `Some(bool)` sets it. Off by
         /// <br/>default for every identity (no row in `discovery_preferences` at
@@ -3593,7 +4251,7 @@ namespace Avalon.Sdk.Generated
         /// Two states, not three: omitted (untouched) or `Some(list)`, which
         /// <br/>always fully replaces the stored list — including `Some(vec![])` to
         /// <br/>clear it. Each entry must parse as a [`Genre`]; an unknown value is
-        /// <br/>rejected outright rather than silently dropped (issue #155).
+        /// <br/>rejected outright rather than silently dropped.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("favorite_genres")]
         public System.Collections.Generic.ICollection<string>? FavoriteGenres { get; set; } = default!;
@@ -3602,7 +4260,7 @@ namespace Avalon.Sdk.Generated
         /// Two states, not three: omitted (untouched) or `Some(list)`, which
         /// <br/>always fully replaces the stored list — including `Some(vec![])` to
         /// <br/>clear it. Same shape as `favorite_genres`, but each entry is a
-        /// <br/>free-form URL rather than a fixed vocabulary value (issue #372).
+        /// <br/>free-form URL rather than a fixed vocabulary value.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("links")]
         public System.Collections.Generic.ICollection<string>? Links { get; set; } = default!;
@@ -3626,7 +4284,7 @@ namespace Avalon.Sdk.Generated
         public string? MainGuild { get; set; } = default!;
 
         /// <summary>
-        /// Issue #87. `"public"`/`"authenticated_only"`/`"friends"` (the
+        /// `"public"`/`"authenticated_only"`/`"friends"` (the
         /// <br/>default)/`"private"` — who may read this identity's presence via
         /// <br/>`GET /presence`. `"guild_members"` is accepted (presence has no
         /// <br/>guild context, so it behaves like `"private"` — nobody but the
@@ -3761,6 +4419,6 @@ namespace Avalon.Sdk
         /// <summary>Issue #735/#725: the docs/generated/openapi.json `info.version`
         /// this file's generated types were produced from — generated straight from
         /// the same schema file, so it can't drift by construction.</summary>
-        public const string OpenApiSchemaVersion = "0.2.0";
+        public const string OpenApiSchemaVersion = "0.6.0";
     }
 }

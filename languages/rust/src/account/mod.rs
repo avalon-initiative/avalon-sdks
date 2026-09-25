@@ -47,6 +47,7 @@ pub mod guild_admin;
 pub mod integrations;
 pub mod passkeys;
 pub mod recovery;
+pub mod rollback;
 pub mod social;
 
 use base64::engine::general_purpose::STANDARD as BASE64;

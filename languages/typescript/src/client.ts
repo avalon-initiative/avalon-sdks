@@ -33,7 +33,7 @@ import { generateMnemonicSigningKey } from './crypto/mnemonic.js'
 import { authenticate as authenticateIntegrator, type AuthenticateOptions, type IntegratorSession } from './integratorSession.js'
 import { getNodeStatus } from './nodeStatus.js'
 import type { NodeStatusResponse } from './types.js'
-import { getBundledTrustAnchors } from './network/trustAnchors.js'
+import { fetchTrustAnchors, type TrustAnchorEntry } from './network/trustAnchors.js'
 import { fetchNetworkTrustStatus, type NetworkTrustStatus } from './network/verifyNetwork.js'
 import { discover } from './network/discover.js'
 import type { TargetNetwork } from './network/targetNetwork.js'
@@ -236,7 +236,7 @@ export class AvalonClient {
   }
 
   /** Fetches `GET /ledger/sth/latest` from this client's configured
-   * `serverUrl` and verifies it against the bundled trust-anchor list —
+   * `serverUrl` and verifies it against the published trust-anchor list —
    * the check an integrator should run before registering an issuer or
    * submitting any write, so a call never lands on a server merely
    * claiming to be the network it targets.
@@ -245,7 +245,13 @@ export class AvalonClient {
    * `{ kind: 'unreachable' }`, since "is this the real network" is a
    * question with an answer even when that answer is "no signal at all." */
   async verifyNetwork(): Promise<NetworkTrustStatus> {
-    return fetchNetworkTrustStatus(getBundledTrustAnchors(), this.serverUrl)
+    let anchors: TrustAnchorEntry[]
+    try {
+      anchors = await fetchTrustAnchors()
+    } catch (err) {
+      return { kind: 'unreachable', detail: `trust-anchor list unavailable: ${String(err)}` }
+    }
+    return fetchNetworkTrustStatus(anchors, this.serverUrl)
   }
 
   /** Builds and returns a client with no server URL supplied up front —

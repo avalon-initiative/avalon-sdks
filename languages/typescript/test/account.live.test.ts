@@ -15,7 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import pg from 'pg'
 import { AvalonClient } from '../src/client.js'
 import { generateSigningKey, canonicalMessage, sign, bytesToBase64 } from '../src/crypto/signing.js'
-import { DeviceLoginDeniedError } from '../src/errors.js'
+import { ConflictError, DeviceLoginDeniedError } from '../src/errors.js'
 import { getLatestSth } from '../src/ledger.js'
 import type { PresenceUpdate, ChannelMessageUpdate } from '../src/accountSession/realtime.js'
 
@@ -301,5 +301,18 @@ maybeDescribe('AccountSession conversation message live round trip (issue #726)'
     expect(messages).toHaveLength(1)
     expect(messages[0].id).toBe(sent.id)
     expect(messages[0].conversationId).toBe(conversation.id)
+  })
+})
+
+maybeDescribe('AccountSession rollback live round trip', () => {
+  it('rollbackCandidates on an identity with no recovery is rejected with ROLLBACK_NO_COMPLETED_RECOVERY', async () => {
+    const { token } = await seedIdentitySession(`rollback-ts-${crypto.randomUUID()}`)
+    const client = new AvalonClient({ serverUrl: serverUrl! })
+    const session = await client.resumeAccountSession(token)
+
+    const err = await session.rollbackCandidates(new Date(Date.now() - 3600_000).toISOString()).catch((e) => e)
+    expect(err).toBeInstanceOf(ConflictError)
+    expect((err as Error).message).toContain('ROLLBACK_NO_COMPLETED_RECOVERY')
+    expect((err as { code?: string }).code).toBe('ROLLBACK_NO_COMPLETED_RECOVERY')
   })
 })

@@ -3,8 +3,8 @@
 // signs a real Ed25519 keypair through the exact same `signingMessage` this
 // module verifies against — not a mock — so a bug in byte layout would show
 // up as a failing "valid signature" case, not just a trivially-true one.
-import { ed25519 } from '@noble/curves/ed25519'
-import { bytesToHex } from '@noble/hashes/utils'
+import { ed25519 } from '@noble/curves/ed25519.js'
+import { bytesToHex } from '@noble/hashes/utils.js'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { SignedTreeHeadResponse } from '../../src/types.js'
 import { signingMessage } from '../../src/network/sthMessage.js'

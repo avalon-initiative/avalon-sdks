@@ -2,7 +2,7 @@
 //! server-side endpoint) against a real, running `avalon-server`. Gated
 //! `--ignored` since it needs live infra — see `make test-live` / `make
 //! start`. The local dev deployment's `network_id` (`avalon-dev-local`) is
-//! also the one entry `docs/trusted-networks.json` bundles, and a local
+//! also an entry in the published `docs/trusted-networks.json`, and a local
 //! `.env`'s `AVALON_SETTLEMENT_SIGNING_KEY` is the private half of that
 //! entry's pinned `verify_key` — so, uniquely among this crate's live
 //! tests, `verify_network()` against a real local dev server actually

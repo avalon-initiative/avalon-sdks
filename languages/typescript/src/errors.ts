@@ -2,7 +2,18 @@
 // a real avalon-server can produce, protocol-level rather than a raw
 // fetch Response a caller would have to know HTTP to interpret.
 
-export class AvalonSdkError extends Error {}
+export class AvalonSdkError extends Error {
+  /** The server's stable, machine-readable error code (for example
+   * `ROLLBACK_NOT_REVERSIBLE`), when the failing response carried one.
+   * Branch on this rather than on the error class when several distinct
+   * failures share one HTTP status. */
+  code?: string
+  /** The HTTP status of the failing response, when the error came from one. */
+  status?: number
+  /** Server-requested delay in seconds from a numeric `Retry-After` header
+   * (set on 429 responses); absent for the HTTP-date form or no header. */
+  retryAfterSeconds?: number
+}
 
 /** The session token itself was rejected (expired, unknown, malformed). */
 export class UnauthorizedError extends AvalonSdkError {
@@ -65,6 +76,17 @@ export class ProtocolError extends AvalonSdkError {
   }
 }
 
+/** HTTP 429: a server rate limit rejected the request. Subclasses
+ * `ProtocolError`, which 429 previously surfaced as, so existing
+ * `instanceof ProtocolError` handling keeps working. */
+export class RateLimitedError extends ProtocolError {
+  constructor(message: string) {
+    super(message)
+    this.message = `rate limited: ${message}`
+    this.name = 'RateLimitedError'
+  }
+}
+
 /** The server rejected a conversation read/send with "not a participant" —
  * deliberately carries nothing beyond that: never reveal a
  * block, not even indirectly. */
@@ -112,6 +134,38 @@ export class NoLocalSigningKeyError extends AvalonSdkError {
   }
 }
 
+function errorForStatus(status: number, message: string): AvalonSdkError {
+  switch (status) {
+    case 401:
+      return new UnauthorizedError()
+    case 403:
+      return new CapabilityNotGrantedError(message)
+    case 404:
+      return new NotFoundError(message)
+    case 409:
+      return new ConflictError(message)
+    case 429:
+      return new RateLimitedError(message)
+    case 400:
+    case 422:
+      return new RejectedError(message)
+    default:
+      if (status >= 500) {
+        return new UnavailableError(message)
+      }
+      return new ProtocolError(message)
+  }
+}
+
+/** Parses `Retry-After` as integer delta-seconds; the HTTP-date form and
+ * anything non-numeric yield `undefined`. */
+export function parseRetryAfter(value: string | null | undefined): number | undefined {
+  if (value == null || !/^\s*\d+\s*$/.test(value)) {
+    return undefined
+  }
+  return Number.parseInt(value, 10)
+}
+
 /** Translates a non-success `Response` into the matching typed error,
  * mirroring `crate::http::map_error_response`. Reads the body once as
  * `{ error?: string, code?: string }`, falling back to status text. */
@@ -127,22 +181,14 @@ export async function mapErrorResponse(response: Response): Promise<AvalonSdkErr
   }
   const message = code ?? serverMessage ?? response.statusText ?? `HTTP ${response.status}`
 
-  switch (response.status) {
-    case 401:
-      return new UnauthorizedError()
-    case 403:
-      return new CapabilityNotGrantedError(message)
-    case 404:
-      return new NotFoundError(message)
-    case 409:
-      return new ConflictError(message)
-    case 400:
-    case 422:
-      return new RejectedError(message)
-    default:
-      if (response.status >= 500) {
-        return new UnavailableError(message)
-      }
-      return new ProtocolError(message)
+  const error = errorForStatus(response.status, message)
+  error.status = response.status
+  const retryAfter = parseRetryAfter(response.headers?.get('retry-after'))
+  if (retryAfter !== undefined) {
+    error.retryAfterSeconds = retryAfter
   }
+  if (code !== undefined) {
+    error.code = code
+  }
+  return error
 }

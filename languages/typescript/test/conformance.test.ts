@@ -21,6 +21,8 @@ import {
 } from '../src/integratorSession.js'
 import { revocationSigningBytes } from '../src/integratorAccount.js'
 import { sign, verify } from '../src/crypto/signing.js'
+import { signingMessage } from '../src/network/sthMessage.js'
+import type { SignedTreeHeadResponse } from '../src/types.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const VECTORS_DIR = path.resolve(__dirname, '../../../conformance/vectors')
@@ -209,11 +211,26 @@ describe('conformance: attestation issuance/bulk-issuance/revocation signing (#7
   }
 })
 
-describe('conformance: Signed Tree Head signing (#39/#210)', () => {
+describe('conformance: Signed Tree Head signing', () => {
   const doc = loadVector('signed-tree-head.json')
+  const publicKey = hexToBytes(doc.signingPublicKeyHex)
 
-  it('is a known typescript SDK gap', () => {
-    expect(doc.supportedIn).not.toContain('typescript')
-    expect(doc.notSupported?.typescript, 'notSupported.typescript must explain the gap').toBeTruthy()
+  it('lists typescript in supportedIn', () => {
+    expect(doc.supportedIn).toContain('typescript')
   })
+
+  for (const vector of doc.vectors) {
+    it(`matches the shared vector: ${vector.name}`, () => {
+      const { input, expected } = vector
+      const bytes = signingMessage({
+        tree_size: input.treeSize,
+        root_hash: input.rootHashHex,
+        network_id: input.networkId,
+        created_at: new Date(input.createdAtUnixSeconds * 1000).toISOString(),
+      } as SignedTreeHeadResponse)
+
+      expect(bytesToHex(bytes)).toBe(expected.signingBytesHex)
+      expect(verify(publicKey, bytes, hexToBytes(expected.signatureHex))).toBe(true)
+    })
+  }
 })

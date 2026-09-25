@@ -154,7 +154,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             var friendships = await ReadJsonAsync<List<Avalon.Sdk.Generated.FriendshipResponse>>(response, ct).ConfigureAwait(false)
                 ?? new List<Avalon.Sdk.Generated.FriendshipResponse>();
@@ -198,7 +198,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             var presences = await ReadJsonAsync<List<Avalon.Sdk.Generated.PresenceResponse>>(response, ct).ConfigureAwait(false)
                 ?? new List<Avalon.Sdk.Generated.PresenceResponse>();
@@ -215,7 +215,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
         }
 
@@ -347,7 +347,7 @@ namespace Avalon.Sdk
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw ServerError(response.StatusCode);
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
             }
             var body = await ReadJsonAsync<Avalon.Sdk.Generated.PresenceResponse>(response, ct).ConfigureAwait(false);
             return ToDomainPresence(body);
@@ -360,8 +360,16 @@ namespace Avalon.Sdk
 #else
             var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
 #endif
-            var value = await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions, ct).ConfigureAwait(false);
-            return value ?? throw new System.Text.Json.JsonException("expected a JSON value, got null");
+            T? value;
+            try
+            {
+                value = await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions, ct).ConfigureAwait(false);
+            }
+            catch (JsonException e)
+            {
+                throw new AvalonProtocolException(e.Message, e);
+            }
+            return value ?? throw new AvalonProtocolException("expected a JSON value, got null");
         }
 
         private static HttpContent JsonContent<T>(T value)

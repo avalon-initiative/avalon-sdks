@@ -38,12 +38,57 @@ namespace Avalon.Sdk
     public sealed class AvalonRequestException : Exception
     {
         public AvalonRequestException(System.Net.HttpStatusCode statusCode)
-            : base("avalon-server returned " + statusCode)
+            : this(statusCode, null)
         {
-            StatusCode = statusCode;
         }
 
+        public AvalonRequestException(System.Net.HttpStatusCode statusCode, string? code)
+            : this(statusCode, code, null)
+        {
+        }
+
+        public AvalonRequestException(System.Net.HttpStatusCode statusCode, string? code, TimeSpan? retryAfter)
+            : base("avalon-server returned " + statusCode + (code == null ? string.Empty : " (" + code + ")"))
+        {
+            StatusCode = statusCode;
+            Code = code;
+            RetryAfter = retryAfter;
+        }
+
+        /// <summary>
+        /// The server-requested delay from a numeric <c>Retry-After</c> header (sent with 429),
+        /// or <c>null</c> when absent or in the HTTP-date form.
+        /// </summary>
+        public TimeSpan? RetryAfter { get; }
+
+        /// <summary>True for HTTP 429 (a server rate limit).</summary>
+        public bool IsRateLimited => StatusCode == (System.Net.HttpStatusCode)429;
+
         public System.Net.HttpStatusCode StatusCode { get; }
+
+        /// <summary>
+        /// The server's stable, machine-readable error code (for example
+        /// <c>ROLLBACK_NOT_REVERSIBLE</c>), or <c>null</c> when the response carried none. Branch on this
+        /// rather than on the HTTP status when several distinct failures share one status.
+        /// </summary>
+        public string? Code { get; }
+    }
+
+    /// <summary>
+    /// The server answered successfully but the body did not parse as the shape the call
+    /// expected. Mirrors <c>SdkError::Protocol</c>.
+    /// </summary>
+    public sealed class AvalonProtocolException : Exception
+    {
+        public AvalonProtocolException(string message)
+            : base("unexpected response from avalon-server: " + message)
+        {
+        }
+
+        public AvalonProtocolException(string message, Exception innerException)
+            : base("unexpected response from avalon-server: " + message, innerException)
+        {
+        }
     }
 
     /// <summary>
@@ -269,6 +314,51 @@ namespace Avalon.Sdk
 
         /// <summary>Translates a non-success HTTP response into the matching exception.</summary>
         internal static Exception ServerError(System.Net.HttpStatusCode status) => new AvalonRequestException(status);
+
+        /// <summary>Like <see cref="ServerError(System.Net.HttpStatusCode)"/>, but also reads the
+        /// server's stable <c>code</c> from the JSON error body when there is one.</summary>
+        internal static async System.Threading.Tasks.Task<Exception> ServerErrorAsync(System.Net.Http.HttpResponseMessage response)
+        {
+            string? code = null;
+            try
+            {
+                var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                using (var doc = System.Text.Json.JsonDocument.Parse(body))
+                {
+                    if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
+                        && doc.RootElement.TryGetProperty("code", out var codeElement)
+                        && codeElement.ValueKind == System.Text.Json.JsonValueKind.String)
+                    {
+                        code = codeElement.GetString();
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Non-JSON or empty body: the status alone is all there is to report.
+            }
+            return new AvalonRequestException(response.StatusCode, code, ParseRetryAfter(response));
+        }
+
+        /// <summary>Parses <c>Retry-After</c> as integer delta-seconds; the HTTP-date form and
+        /// non-numeric values yield <c>null</c>.</summary>
+        internal static TimeSpan? ParseRetryAfter(System.Net.Http.HttpResponseMessage response)
+        {
+            if (response.Headers.TryGetValues("Retry-After", out var values))
+            {
+                foreach (var value in values)
+                {
+                    var trimmed = value.Trim();
+                    if (trimmed.Length > 0 && trimmed.All(c => c >= (char)48 && c <= (char)57)
+                        && long.TryParse(trimmed, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var seconds)
+                        && seconds <= (long)TimeSpan.MaxValue.TotalSeconds)
+                    {
+                        return TimeSpan.FromSeconds(seconds);
+                    }
+                }
+            }
+            return null;
+        }
 
         /// <summary>GET /identities/{id}/locations — every shard
         /// base URL this identity has any durable history on, resolved over the DHT identity

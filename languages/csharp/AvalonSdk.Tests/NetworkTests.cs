@@ -73,11 +73,31 @@ public class NetworkTests
 
     private static string SthJson(SignedTreeHeadWire wire) => JsonSerializer.Serialize(wire);
 
-    [Fact]
-    public void BundledTrustAnchors_ParsesTheRealCheckedInFile()
+    private sealed class StubHandler : HttpMessageHandler
     {
-        var anchors = TrustAnchors.Bundled;
-        Assert.Contains(anchors, a => a.NetworkId == "avalon-dev-local");
+        private readonly HttpStatusCode _status;
+        private readonly string _body;
+
+        public StubHandler(HttpStatusCode status, string body) { _status = status; _body = body; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, System.Threading.CancellationToken ct) =>
+            Task.FromResult(new HttpResponseMessage(_status) { Content = new StringContent(_body) });
+    }
+
+    [Fact]
+    public async Task FetchAsync_ParsesThePublishedFile()
+    {
+        var json = "{\"networks\":[{\"label\":\"n\",\"network_id\":\"n\",\"verify_key\":\"ab\",\"signing_key_id\":\"k\",\"environment\":\"dev\"}]}";
+        using var http = new HttpClient(new StubHandler(HttpStatusCode.OK, json));
+        var anchors = await TrustAnchors.FetchAsync(http, "http://x");
+        Assert.Equal("n", Assert.Single(anchors).NetworkId);
+    }
+
+    [Fact]
+    public async Task FetchAsync_ThrowsOnAFailingResponse()
+    {
+        using var http = new HttpClient(new StubHandler(HttpStatusCode.InternalServerError, ""));
+        await Assert.ThrowsAsync<HttpRequestException>(() => TrustAnchors.FetchAsync(http, "http://x"));
     }
 
     [Fact]
@@ -196,10 +216,10 @@ public class NetworkTests
     {
         var signingKey = GenerateKey();
         var sth = SignedSth(signingKey, "avalon-test");
-        var handler = new StubHttpMessageHandler().Enqueue(SthJson(sth));
+        var handler = new StubHttpMessageHandler().Enqueue("{\"networks\":[]}").Enqueue(SthJson(sth));
         var client = new AvalonClient(new AvalonConfig("https://example.invalid", "test-integrator"), handler.ToHttpClient());
 
-        // No bundled trust anchor for "avalon-test" in this build, so the real end-to-end path
+        // "avalon-test" has no entry in the published list, so the real end-to-end path
         // (fetch -> deserialize -> evaluate) still correctly reports unknown rather than erroring.
         var status = await client.VerifyNetworkAsync();
 
