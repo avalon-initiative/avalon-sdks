@@ -97,6 +97,18 @@ export { OPENAPI_SCHEMA_VERSION } from './generated.js'
 
 export { getLatestSth } from './ledger.js'
 export { getNodeStatus } from './nodeStatus.js'
+export { getTopology, probeNode, traceRoute } from './nodeTopology.js'
+export type {
+  Topology,
+  Neighbor,
+  KnownPeer,
+  MirrorSource,
+  NetworkCoordinate,
+  ProbeResult,
+  TraceResult,
+  TraceHop,
+  TraceStopReason,
+} from './nodeTopology.js'
 
 export {
   fetchTrustAnchors,

@@ -82,6 +82,7 @@ pub use account::{AccountCredentials, AccountSession, ProfileUpdate};
 /// or log which schema version this SDK build targets.
 pub use generated::OPENAPI_SCHEMA_VERSION;
 pub use http::RetryConfig;
+pub use nodes::{ProbeResult, StopReason, Topology, TraceHop, TraceResult};
 
 use crate::types::identity::{Identity, Profile};
 use crate::types::ids::{GuildId, IdentityId};

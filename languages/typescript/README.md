@@ -57,6 +57,8 @@ const integratorSession = await client.authenticate({
   security boundary — the server enforces the same check independently).
 - Typed errors, all subclasses of `AvalonSdkError`, carrying the HTTP `status` and, on 429 (`RateLimitedError`), `retryAfterSeconds` from a numeric `Retry-After`.
 
+- Node topology, read-only and unauthenticated (plain `fetch`, no credentials, usable from a browser origin): `getTopology(nodeUrl, { limit? })`, `probeNode(nodeUrl, target, samples?)` and `traceRoute(nodeUrl, target, { ttl? })`, typed from the generated schema (`Topology`, `ProbeResult`, `TraceResult`, `TraceHop`). Every value is what a node reports about itself: trace hops are self-reported by the nodes on the path, so treat a path as advisory, not verified. Rate limits surface as `RateLimitedError` with `retryAfterSeconds`.
+
 See the [full architecture doc](https://github.com/avalon-initiative/avalon-protocol/blob/main/docs/projects/sdks/architecture/sdk.md)
 for the design that applies across every language's SDK, not just this
 one.

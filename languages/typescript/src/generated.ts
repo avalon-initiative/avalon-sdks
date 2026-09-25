@@ -78,7 +78,7 @@ export interface paths {
         };
         /**
          * `GET /auth/cross-node/lookup?user_code=...` — unauthenticated: the
-         *     Hub/mobile-hub approval screen has to
+         *     Hub/hub-app approval screen has to
          *     show real context before a human decides whether to approve, but `submit`/`deny` only
          *     ever take a `user_code` with no read path to go with it. Deliberately
          *     returns nothing beyond what's needed to render the prompt — never
@@ -2658,6 +2658,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/nodes/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Measure the round trip from this node to a known peer.
+         * @description Timings only; nothing the target returns is passed on. The target must be
+         *     in this node's peer table.
+         */
+        post: operations["probe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nodes/topology": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /nodes/topology`: this node's own view of its neighbors, known
+         *     peers, and mirror sources. Public and read-only.
+         */
+        get: operations["topology"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nodes/trace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trace the overlay route from this node to a target, hop by hop.
+         * @description Each node on the path reports itself, so the result is advisory and not a
+         *     verified fact about the path. Requests forwarded between nodes use the same
+         *     route with `visited` and `budget_ms` set.
+         */
+        post: operations["trace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/people/discover": {
         parameters: {
             query?: never;
@@ -3261,6 +3324,28 @@ export interface components {
              */
             client_entry_id?: string | null;
         };
+        /**
+         * @description A node's own network coordinate, as published in announce exchanges and
+         *     the topology read model.
+         */
+        Coordinate: {
+            /** Format: double */
+            error: number;
+            /** Format: double */
+            height: number;
+            vector: number[];
+        };
+        CpuMetrics: {
+            core_count?: number | null;
+            /** Format: double */
+            load_average_15m?: number | null;
+            /** Format: double */
+            load_average_1m?: number | null;
+            /** Format: double */
+            load_average_5m?: number | null;
+            /** Format: float */
+            usage_percent?: number | null;
+        };
         CreateAchievementDefinitionRequest: {
             description: string;
             /**
@@ -3396,6 +3481,12 @@ export interface components {
              */
             signing_key_id: string;
         };
+        DbPoolMetrics: {
+            /** Format: int32 */
+            in_use?: number | null;
+            /** Format: int32 */
+            size?: number | null;
+        };
         DeleteInstanceRequest: {
             reason?: string | null;
             reason_code?: string;
@@ -3495,6 +3586,19 @@ export interface components {
         DiscoveryCandidate: {
             /** Format: uuid */
             identity_id: string;
+        };
+        /**
+         * @description One configured path's disk usage — `label` says which config value it
+         *     came from (`"node_storage"` / `"postgres_data"`), since a node may
+         *     report more than one and a dashboard client needs to tell them apart.
+         */
+        DiskMetrics: {
+            label: string;
+            mount_point?: string | null;
+            /** Format: int64 */
+            total_bytes?: number | null;
+            /** Format: int64 */
+            used_bytes?: number | null;
         };
         EventResponse: {
             /** Format: uuid */
@@ -3938,6 +4042,14 @@ export interface components {
             /** Format: date-time */
             registered_at: string;
         };
+        KnownPeer: {
+            base_url: string;
+            /** Format: date-time */
+            last_announced_at: string;
+            libp2p_peer_id?: string | null;
+            protocol_version: string;
+            roles: string[];
+        };
         ListIntegratorsResponse: {
             integrators: components["schemas"]["IntegratorSummary"][];
             /**
@@ -3988,6 +4100,16 @@ export interface components {
              */
             status: string;
         };
+        MemoryMetrics: {
+            /** Format: int64 */
+            swap_total_bytes?: number | null;
+            /** Format: int64 */
+            swap_used_bytes?: number | null;
+            /** Format: int64 */
+            total_bytes?: number | null;
+            /** Format: int64 */
+            used_bytes?: number | null;
+        };
         MessageResponse: {
             /** Format: uuid */
             author: string;
@@ -4013,6 +4135,28 @@ export interface components {
             /** Format: int64 */
             value: number;
         };
+        MirrorSource: {
+            /**
+             * Format: int64
+             * @description Observed tree size minus mirrored entries, never negative; `None`
+             *     until a tree head has been observed from the source.
+             */
+            lag_entries?: number | null;
+            /** Format: date-time */
+            last_mirrored_at: string | null;
+            /** Format: date-time */
+            last_observed_at: string | null;
+            /** Format: int64 */
+            mirrored_entries: number;
+            /**
+             * Format: int64
+             * @description Tree size of the latest signed tree head observed from the source.
+             */
+            observed_tree_size?: number | null;
+            open_equivocations: components["schemas"]["OpenFinding"][];
+            shard_id: string;
+            source_url: string;
+        };
         MyGrantsResponse: {
             capabilities: string[];
             /** Format: uuid */
@@ -4036,6 +4180,48 @@ export interface components {
             joined_at: string;
             /** Format: int32 */
             role_index: number;
+        };
+        Neighbor: {
+            base_url: string;
+            bootstrap: boolean;
+            coordinate?: null | components["schemas"]["Coordinate"];
+            /** Format: date-time */
+            last_announced_at: string | null;
+            latency?: null | components["schemas"]["ObservedLatency"];
+            libp2p_peer_id?: string | null;
+            protocol_version?: string | null;
+            /** @description Empty and `None` below when the peer has not yet appeared in the peer table. */
+            roles: string[];
+        };
+        /**
+         * @description The `resources` block itself — every field individually optional per
+         *     #517's acceptance criteria, so a client can render whatever a given
+         *     node/platform actually managed to report.
+         */
+        NodeResourceMetrics: {
+            cpu: components["schemas"]["CpuMetrics"];
+            db_pool: components["schemas"]["DbPoolMetrics"];
+            disks: components["schemas"]["DiskMetrics"][];
+            memory: components["schemas"]["MemoryMetrics"];
+            /**
+             * @description This process's open file descriptor count — the cheapest
+             *     cross-platform proxy `sysinfo` exposes for "how many
+             *     connections/handles is this node currently holding open," since
+             *     `sysinfo` has no direct portable socket-count API.
+             */
+            open_file_count?: number | null;
+            /** Format: int64 */
+            process_uptime_seconds?: number | null;
+        };
+        /** @description A round-trip measurement together with the node that took it. */
+        ObservedLatency: components["schemas"]["RoundTripStats"] & {
+            observed_by?: string | null;
+        };
+        OpenFinding: {
+            source_a: string;
+            source_b: string;
+            /** Format: int64 */
+            tree_size: number;
         };
         PasskeyResponse: {
             /** Format: date-time */
@@ -4087,6 +4273,31 @@ export interface components {
          * @enum {string}
          */
         PresenceStatus: "Online" | "Away" | "DoNotDisturb" | "Offline";
+        ProbeRequest: {
+            /**
+             * Format: int32
+             * @description Sequential samples to take, 1 to 3 (default 1).
+             */
+            samples?: number | null;
+            /** @description Base URL of a node in this node's peer table. */
+            target: string;
+        };
+        ProbeResponse: {
+            /** @description `timeout`, `unreachable` or `bad_status` when a sample failed. */
+            error?: string | null;
+            /** Format: double */
+            median_ms?: number | null;
+            /** Format: double */
+            min_ms?: number | null;
+            /** @description True when every requested sample completed. */
+            ok: boolean;
+            /**
+             * @description Round trip of each completed sample in milliseconds, in order. The
+             *     first sample includes connection setup.
+             */
+            samples_ms: number[];
+            target: string;
+        };
         ProfileResponse: {
             avatar_url?: string | null;
             /**
@@ -4480,7 +4691,7 @@ export interface components {
          *     opaque badge id) so it can grow into a richer badge system later —
          *     more icons/colors, tiers, an uploaded custom asset as an additional
          *     variant — without a breaking change to callers that just want "an icon
-         *     and a color" out of a role (`packages/ui`'s planned `AvalonRoleBadge`
+         *     and a color" out of a role (the shared UI library's `AvalonRoleBadge`
          *     is the first such caller).
          */
         RoleBadge: {
@@ -4540,6 +4751,53 @@ export interface components {
             /** Format: uuid */
             recovery_request_id: string;
         };
+        /** @description Rolling round-trip statistics for one neighbor, as observed by this node. */
+        RoundTripStats: {
+            /**
+             * Format: int32
+             * @description Attempts in the last window (at most the window size).
+             */
+            attempts_recent: number;
+            /**
+             * Format: double
+             * @description Exponentially weighted moving average of successful round trips.
+             */
+            ewma_ms?: number | null;
+            /**
+             * Format: int32
+             * @description Failed attempts in the last window of attempts.
+             */
+            failed_recent: number;
+            /**
+             * Format: double
+             * @description Mean absolute deviation over the last successful round trips.
+             */
+            jitter_ms?: number | null;
+            /**
+             * Format: double
+             * @description Round trip of the most recent successful announce, in milliseconds.
+             */
+            last_ms?: number | null;
+            /** Format: date-time */
+            last_success_at: string | null;
+            /**
+             * Format: double
+             * @description Fraction of recent attempts that failed, 0.0 when none were made.
+             */
+            loss_ratio: number;
+            /** @description Always `"application_round_trip"`: announce request to parsed response. */
+            measurement: string;
+            /**
+             * Format: double
+             * @description Minimum over the last successful round trips.
+             */
+            min_ms?: number | null;
+            /**
+             * Format: int64
+             * @description Successful round trips recorded since the peer became active.
+             */
+            samples: number;
+        };
         RsvpCounts: {
             /** Format: int64 */
             going: number;
@@ -4575,6 +4833,19 @@ export interface components {
             display_name: string;
             /** Format: uuid */
             identity_id: string;
+        };
+        SelfView: {
+            base_url?: string | null;
+            /** @description This node's advisory network coordinate; see `network_coordinates`. */
+            coordinate: components["schemas"]["Coordinate"];
+            libp2p_peer_id?: string | null;
+            network_id: string;
+            protocol_version: string;
+            resources: components["schemas"]["NodeResourceMetrics"];
+            roles: string[];
+            /** @description Shards this node authors, with their latest signed tree head. */
+            shards: components["schemas"]["ShardHead"][];
+            stale: boolean;
         };
         SendMessageRequest: {
             body: string;
@@ -4637,6 +4908,13 @@ export interface components {
              */
             signing_key_id?: string | null;
         };
+        ShardHead: {
+            shard_id: string;
+            /** Format: date-time */
+            sth_created_at: string;
+            /** Format: int64 */
+            tree_size: number;
+        };
         StartCrossNodeLoginResponse: {
             /** Format: int64 */
             expires_in: number;
@@ -4655,6 +4933,8 @@ export interface components {
             user_code: string;
             verification_uri: string;
         };
+        /** @enum {string} */
+        StopReason: "ttl" | "no_route" | "loop" | "timeout" | "target_unreachable";
         SubmitGrantRequest: {
             grant: components["schemas"]["CrossNodeLoginGrant"];
             /**
@@ -4673,6 +4953,76 @@ export interface components {
              *     `device_pairing::approve_pairing`, not returned here directly.
              */
             token?: string | null;
+        };
+        TopologyResponse: {
+            /** Format: date-time */
+            generated_at: string;
+            known: components["schemas"]["KnownPeer"][];
+            /** @description Peer table entries that are not active neighbors, before `limit`. */
+            known_total: number;
+            mirrors: components["schemas"]["MirrorSource"][];
+            neighbors: components["schemas"]["Neighbor"][];
+            self: components["schemas"]["SelfView"];
+        };
+        /** @description One node on the path, as that node reports itself. */
+        TraceHop: {
+            base_url: string;
+            /** Format: int32 */
+            index: number;
+            /**
+             * Format: double
+             * @description Time this node spent before forwarding (or in total, at the last hop),
+             *     on its own clock.
+             */
+            processing_ms: number;
+            protocol_version: string;
+            roles: string[];
+            /**
+             * Format: double
+             * @description Leg to the next hop: this node's round trip to it minus the time the
+             *     next hop reports for itself, so it approximates network transit. When
+             *     the next hop did not answer, the time this node waited. Absent at the
+             *     last hop.
+             */
+            to_next_ms?: number | null;
+        };
+        TraceRequest: {
+            /**
+             * Format: int64
+             * @description Set by forwarding nodes: remaining time budget in milliseconds.
+             */
+            budget_ms?: number | null;
+            /** @description Base URL of the node to trace to. */
+            target: string;
+            /** Format: uuid */
+            trace_id?: string | null;
+            /**
+             * Format: int32
+             * @description Forwards still allowed, 0 to 16 (default 12). Clients use 1 to 16;
+             *     a hop that receives 0 does not forward.
+             */
+            ttl?: number | null;
+            /** @description Set by forwarding nodes: base URLs already on the path. */
+            visited?: string[] | null;
+        };
+        TraceResponse: {
+            /**
+             * @description Why routing stopped, when `stopped_reason` is `no_route` or
+             *     `target_unreachable`.
+             */
+            detail?: string | null;
+            /** @description Ordered path, first node to last, all self-reported. */
+            hops: components["schemas"]["TraceHop"][];
+            reached: boolean;
+            stopped_reason?: null | components["schemas"]["StopReason"];
+            target: string;
+            /**
+             * Format: double
+             * @description Time from receipt to response at the node that answered, on its own clock.
+             */
+            total_ms: number;
+            /** Format: uuid */
+            trace_id: string;
         };
         TransferOwnershipRequest: {
             signature?: string | null;
@@ -8228,6 +8578,138 @@ export interface operations {
             };
         };
     };
+    probe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProbeRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProbeResponse"];
+                };
+            };
+            /** @description Invalid sample count or target */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Target address refused by outbound policy */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unknown_target: not in this node's peer table */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Rate limit or in-flight cap hit; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    topology: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of `known` entries returned (default 100, capped at 500). */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description This node's topology view */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopologyResponse"];
+                };
+            };
+            /** @description Topology is disabled on this node (AVALON_TOPOLOGY_PUBLIC=false) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Rate limit hit; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    trace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TraceRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceResponse"];
+                };
+            };
+            /** @description Invalid target */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Rate limit or in-flight cap hit; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description This node has no AVALON_NODE_URL */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     discover_people: {
         parameters: {
             query?: never;
@@ -8477,4 +8959,4 @@ export interface operations {
 }
 
 // Issue #735: the info.version this file's types were generated from.
-export const OPENAPI_SCHEMA_VERSION = "0.3.1" as const
+export const OPENAPI_SCHEMA_VERSION = "0.6.0" as const

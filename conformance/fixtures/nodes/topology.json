@@ -1,0 +1,200 @@
+{
+    "self": {
+        "base_url": "http://192.168.7.174:8080",
+        "libp2p_peer_id": "12D3KooWS2ZyVEDp2tqfHrbLRxhGEZegR5JSG6CGVUsZhtrMw1pu",
+        "protocol_version": "0.1.0",
+        "network_id": "avalon-dev-local",
+        "roles": [
+            "combined"
+        ],
+        "stale": false,
+        "resources": {
+            "cpu": {
+                "core_count": 4,
+                "usage_percent": 0.59910136,
+                "load_average_1m": 0.18,
+                "load_average_5m": 0.26,
+                "load_average_15m": 0.26
+            },
+            "memory": {
+                "used_bytes": 176529408,
+                "total_bytes": 4294967296,
+                "swap_used_bytes": 191827968,
+                "swap_total_bytes": 1063256064
+            },
+            "disks": [
+                {
+                    "label": "node_storage",
+                    "mount_point": "/",
+                    "used_bytes": 83383799808,
+                    "total_bytes": 105089261568
+                }
+            ],
+            "process_uptime_seconds": 10239,
+            "open_file_count": 161,
+            "db_pool": {
+                "size": 3,
+                "in_use": 0
+            }
+        },
+        "shards": [
+            {
+                "shard_id": "game:wow-demo/4",
+                "tree_size": 28,
+                "sth_created_at": "2026-09-24T14:36:23.220117Z"
+            }
+        ],
+        "coordinate": {
+            "vector": [
+                2.268206751763963,
+                -1.7743883350325063,
+                -7.97459958247841
+            ],
+            "height": 0.015949947565963584,
+            "error": 0.31377240752578567
+        }
+    },
+    "neighbors": [
+        {
+            "base_url": "http://192.168.7.113:8080",
+            "bootstrap": true,
+            "roles": [],
+            "protocol_version": null,
+            "libp2p_peer_id": null,
+            "last_announced_at": null,
+            "latency": {
+                "observed_by": "http://192.168.7.174:8080",
+                "measurement": "application_round_trip",
+                "last_ms": 2.5685119999999997,
+                "ewma_ms": 2.9530357280249535,
+                "min_ms": 2.459809,
+                "jitter_ms": 0.38857877999999985,
+                "samples": 1023,
+                "failed_recent": 0,
+                "attempts_recent": 20,
+                "loss_ratio": 0.0,
+                "last_success_at": "2026-09-25T02:44:23.657565111Z"
+            },
+            "coordinate": {
+                "vector": [
+                    2.185467430924142,
+                    -1.6924757122553966,
+                    -8.038869875139003
+                ],
+                "height": 3.695876296161321,
+                "error": 0.22279556624795632
+            }
+        },
+        {
+            "base_url": "http://192.168.7.194:8080",
+            "bootstrap": false,
+            "roles": [
+                "combined"
+            ],
+            "protocol_version": "0.1.0",
+            "libp2p_peer_id": "12D3KooWS2ZyVEDp2tqfHrbLRxhGEZegR5JSG6CGVUsZhtrMw1pu",
+            "last_announced_at": "2026-09-25T02:44:25.047435127Z",
+            "latency": {
+                "observed_by": "http://192.168.7.174:8080",
+                "measurement": "application_round_trip",
+                "last_ms": 1.016394,
+                "ewma_ms": 1.1933159167119483,
+                "min_ms": 0.9962440000000001,
+                "jitter_ms": 0.09827764500000001,
+                "samples": 1022,
+                "failed_recent": 0,
+                "attempts_recent": 20,
+                "loss_ratio": 0.0,
+                "last_success_at": "2026-09-25T02:44:23.65865273Z"
+            },
+            "coordinate": {
+                "vector": [
+                    2.622508836806426,
+                    -2.3821487858041053,
+                    -7.948476518519509
+                ],
+                "height": 0.059418952262374064,
+                "error": 0.44202400381520635
+            }
+        },
+        {
+            "base_url": "http://192.168.7.204:8080",
+            "bootstrap": false,
+            "roles": [
+                "combined"
+            ],
+            "protocol_version": "0.1.0",
+            "libp2p_peer_id": "12D3KooWS2ZyVEDp2tqfHrbLRxhGEZegR5JSG6CGVUsZhtrMw1pu",
+            "last_announced_at": "2026-09-25T02:44:25.646212823Z",
+            "latency": {
+                "observed_by": "http://192.168.7.174:8080",
+                "measurement": "application_round_trip",
+                "last_ms": 1.27301,
+                "ewma_ms": 1.2713116276240901,
+                "min_ms": 0.933732,
+                "jitter_ms": 0.09121151499999999,
+                "samples": 1021,
+                "failed_recent": 0,
+                "attempts_recent": 20,
+                "loss_ratio": 0.0,
+                "last_success_at": "2026-09-25T02:44:23.659973351Z"
+            },
+            "coordinate": {
+                "vector": [
+                    1.4897499450258336,
+                    -1.3123179606788216,
+                    -8.057430165974337
+                ],
+                "height": 0.07386309263069134,
+                "error": 0.4515073937288989
+            }
+        },
+        {
+            "base_url": "http://192.168.7.183:8080",
+            "bootstrap": false,
+            "roles": [
+                "combined"
+            ],
+            "protocol_version": "0.1.0",
+            "libp2p_peer_id": "12D3KooWShc7jjwtQjkXb6bjj9TguAYnDMGUHfevVLAF3CkrMydM",
+            "last_announced_at": "2026-09-25T02:44:26.998046889Z",
+            "latency": {
+                "observed_by": "http://192.168.7.174:8080",
+                "measurement": "application_round_trip",
+                "last_ms": 1.675597,
+                "ewma_ms": 1.6540099678668785,
+                "min_ms": 1.2907229999999998,
+                "jitter_ms": 0.12781744999999994,
+                "samples": 1021,
+                "failed_recent": 0,
+                "attempts_recent": 20,
+                "loss_ratio": 0.0,
+                "last_success_at": "2026-09-25T02:44:23.661697646Z"
+            },
+            "coordinate": {
+                "vector": [
+                    2.2246942432852013,
+                    -1.0175466069680468,
+                    -6.81437695629863
+                ],
+                "height": 0.011278035151173088,
+                "error": 0.36879855887743535
+            }
+        }
+    ],
+    "known": [],
+    "known_total": 0,
+    "mirrors": [
+        {
+            "shard_id": "core",
+            "source_url": "http://192.168.7.113:8080",
+            "observed_tree_size": 8468,
+            "last_observed_at": "2026-09-24T14:58:18.281923Z",
+            "mirrored_entries": 8468,
+            "last_mirrored_at": "2026-09-24T14:58:18.314153Z",
+            "lag_entries": 0,
+            "open_equivocations": []
+        }
+    ],
+    "generated_at": "2026-09-25T02:44:32.205417038Z"
+}
