@@ -98,12 +98,33 @@ export { OPENAPI_SCHEMA_VERSION } from './generated.js'
 export { getLatestSth } from './ledger.js'
 export { getNodeStatus } from './nodeStatus.js'
 export { getTopology, probeNode, traceRoute } from './nodeTopology.js'
+export {
+  walkTopology,
+  normalizeNodeUrl,
+  WALK_DEFAULT_MAX_NODES,
+  WALK_DEFAULT_MAX_DEPTH,
+  WALK_DEFAULT_CONCURRENCY,
+  WALK_DEFAULT_REQUEST_TIMEOUT_MS,
+  WALK_DEFAULT_MAX_RETRY_AFTER_MS,
+} from './topologyWalk.js'
+export type {
+  WalkOptions,
+  WalkEvent,
+  WalkEdge,
+  WalkEdgeKind,
+  WalkNode,
+  WalkNodeStatus,
+  WalkFailure,
+  WalkFailureReason,
+  TopologyGraph,
+} from './topologyWalk.js'
 export type {
   Topology,
   Neighbor,
   KnownPeer,
   MirrorSource,
   NetworkCoordinate,
+  ObservedLatency,
   ProbeResult,
   TraceResult,
   TraceHop,

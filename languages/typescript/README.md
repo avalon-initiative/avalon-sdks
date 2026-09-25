@@ -59,6 +59,12 @@ const integratorSession = await client.authenticate({
 
 - Node topology, read-only and unauthenticated (plain `fetch`, no credentials, usable from a browser origin): `getTopology(nodeUrl, { limit? })`, `probeNode(nodeUrl, target, samples?)` and `traceRoute(nodeUrl, target, { ttl? })`, typed from the generated schema (`Topology`, `ProbeResult`, `TraceResult`, `TraceHop`). Every value is what a node reports about itself: trace hops are self-reported by the nodes on the path, so treat a path as advisory, not verified. Rate limits surface as `RateLimitedError` with `retryAfterSeconds`.
 
+- Topology walk: `walkTopology(seeds, options)` follows `getTopology` outward breadth-first and resolves to a `TopologyGraph` of `nodes` (`visited`, `unreachable` with a `failure.reason` of `timeout`, `http_status`, `rate_limited`, `protocol_error` or `network`, or `unvisited`) and typed `edges` (`active`, `mirror`, `known`, each one observation by its `from` node, so `latency.observed_by` is the reporter). Read-only, browser-safe (plain `fetch`, `AbortSignal`), and bounded even with no options: `maxNodes` 64, `maxDepth` 4, `concurrency` 4, `requestTimeoutMs` 10000, `maxRetryAfterMs` 10000, each with a hard ceiling. A 429 is retried once after its `Retry-After` when within `maxRetryAfterMs`, otherwise recorded as `rate_limited`. `onProgress` receives `discovered` and `visited` events so a UI can draw while the walk runs; aborting `signal` resolves with the partial graph and `cancelled: true`.
+
+  ```ts
+  const graph = await walkTopology(['http://node.example:8080'], { maxNodes: 32, signal })
+  ```
+
 See the [full architecture doc](https://github.com/avalon-initiative/avalon-protocol/blob/main/docs/projects/sdks/architecture/sdk.md)
 for the design that applies across every language's SDK, not just this
 one.

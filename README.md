@@ -61,6 +61,31 @@ and is advisory, not verified. A rate-limited call surfaces through each SDK's e
 429 error with the server's `Retry-After`. Recorded real-node responses used by each
 language's tests live in `conformance/fixtures/nodes/`.
 
+### Walking the whole overlay
+
+No node holds the whole graph, so each SDK also has a bounded, read-only walk helper that
+follows a node's neighbors, mirror sources and known peers breadth-first, using the topology
+call above:
+
+| | Walk |
+| --- | --- |
+| Rust | `AvalonClient::walk_topology(&seeds, WalkOptions)` |
+| C# | `WalkTopologyAsync(seeds, WalkOptions?, ct)` |
+| TypeScript | `walkTopology(seeds, options)` |
+
+All three return the same graph: nodes (`visited`, `unreachable` with a reason, or `unvisited`
+when a limit or cancellation stopped the walk) and edges typed active link, mirror source or
+known-only. Each edge is one observation by the reporting node, so latency is labeled as
+observed by that node and a node reported by several neighbors keeps every observation.
+URLs are deduplicated after normalization (lowercase scheme and host, default port and trailing
+slash dropped). Options are max nodes (64), max depth (4), concurrency (4), per-request timeout
+(10 s) and the longest `Retry-After` honored (10 s), each with a hard ceiling, and a progress
+callback and cancellation (an `AbortSignal`, a `CancellationToken`, or a `watch` receiver in
+Rust). A 429 is retried once after its `Retry-After` when that fits the budget, otherwise the
+node is recorded as rate limited; timeouts, HTTP statuses, malformed bodies and connection
+errors are recorded per node and never stop the walk. Cancelling returns the partial graph with
+`cancelled` set.
+
 ## Development
 
 ```bash
