@@ -1,7 +1,7 @@
 // Byte-for-byte reconstruction of the message an STH's signature covers —
 // must match `crates/chain/src/sth.rs::signing_message` exactly, or every
 // signature verification in this module fails even for a genuine STH.
-import { concatBytes } from '@noble/hashes/utils'
+import { concatBytes } from '@noble/hashes/utils.js'
 import type { SignedTreeHeadResponse } from '../types.js'
 
 const DOMAIN_TAG = new TextEncoder().encode('avalon-settlement-sth-v1')

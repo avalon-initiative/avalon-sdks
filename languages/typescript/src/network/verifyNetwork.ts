@@ -5,7 +5,7 @@
 // network a server is. Mirrors `crates/chain/src/sth.rs::verify_tree_head`'s
 // own contract: malformed hex or a wrong-length signature/key fails closed
 // (`false`/a rejected status), never throws.
-import { ed25519 } from '@noble/curves/ed25519'
+import { ed25519 } from '@noble/curves/ed25519.js'
 import type { SignedTreeHeadResponse } from '../types.js'
 import { getLatestSth } from '../ledger.js'
 import { signingMessage } from './sthMessage.js'

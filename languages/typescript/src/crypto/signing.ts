@@ -2,7 +2,7 @@
 // than imported from packages/api-client/src/crypto/signingKey.ts, since
 // this SDK's hard invariant is zero dependency on that package. Same library
 // (@noble/curves), same wire shapes.
-import { ed25519 } from '@noble/curves/ed25519'
+import { ed25519 } from '@noble/curves/ed25519.js'
 
 export interface SigningKeyPair {
   secretKey: Uint8Array
