@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AccountSession } from '../../src/accountSession/core.js'
 import { canonicalMessage, generateSigningKey } from '../../src/crypto/signing.js'
-import { ed25519 } from '@noble/curves/ed25519'
+import { ed25519 } from '@noble/curves/ed25519.js'
 import { ConflictError, NotFoundError, RejectedError } from '../../src/errors.js'
 import '../../src/accountSession/rollback.js'
 

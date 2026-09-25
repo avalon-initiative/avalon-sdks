@@ -8,11 +8,11 @@
 // once it migrates onto this SDK. Storage stays Hub's own
 // concern (this module never touches localStorage) — only the pure
 // mnemonic<->key derivation moves here.
-import { ed25519 } from '@noble/curves/ed25519'
-import { sha256 } from '@noble/hashes/sha256'
-import { concatBytes } from '@noble/hashes/utils'
+import { ed25519 } from '@noble/curves/ed25519.js'
+import { sha256 } from '@noble/hashes/sha2.js'
+import { concatBytes } from '@noble/hashes/utils.js'
 import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from '@scure/bip39'
-import { wordlist } from '@scure/bip39/wordlists/english'
+import { wordlist } from '@scure/bip39/wordlists/english.js'
 import type { SigningKeyPair } from './signing.js'
 
 /** Domain-separation label for deriving a 32-byte Ed25519 seed out of
