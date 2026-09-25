@@ -455,54 +455,127 @@ pub enum DiscoveryError {
     },
 }
 
+/// Bounds on the latency ranking applied among verified candidates.
+#[derive(Debug, Clone, Copy)]
+pub struct RankConfig {
+    /// At most this many verified candidates are collected and timed.
+    pub max_timed: usize,
+    /// Timeout for each timing request.
+    pub probe_timeout: std::time::Duration,
+    /// How long verification continues after the first candidate verifies.
+    pub collect_window: std::time::Duration,
+}
+
+impl Default for RankConfig {
+    fn default() -> Self {
+        Self {
+            max_timed: 5,
+            probe_timeout: std::time::Duration::from_secs(2),
+            collect_window: std::time::Duration::from_secs(2),
+        }
+    }
+}
+
+/// A verified candidate and its measured `GET /nodes/status` round trip;
+/// `latency` is `None` when it was not measured or the probe failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedCandidate {
+    /// The candidate's base URL.
+    pub server_url: String,
+    /// The measured round trip, if any.
+    pub latency: Option<std::time::Duration>,
+}
+
+/// The outcome of [`discover_ranked`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct Discovered {
+    /// The selected server.
+    pub server_url: String,
+    /// The pinned entry the selected server verified against.
+    pub entry: TrustAnchorEntry,
+    /// Every verified candidate in selection order: measured fastest first,
+    /// then unmeasured ones in candidate order.
+    pub verified: Vec<VerifiedCandidate>,
+}
+
 /// Resolves `target` to a live, independently-verified `(server_url,
-/// entry)` with no server URL supplied up front — the zero-URL bootstrap
-/// case (#91): a caller who only knows which network they want to join,
-/// not which of its nodes to talk to.
+/// entry)` with no server URL supplied up front: a caller who only knows
+/// which network they want to join, not which of its nodes to talk to.
 ///
-/// Candidates come only from the published trust-anchor list' own `server_url`/
-/// `seed_nodes` fields for every entry matching `target` — never anywhere
-/// else, so discovery can't be tricked into contacting an unpinned host.
-/// Each candidate is fetched and verified exactly like
-/// [`AvalonClient::verify_network`] would; the first one whose STH
-/// verifies against `target`'s own matching entry wins. Entries are tried
-/// in the published trust-anchor list' order, and each entry's `server_url`
-/// before its `seed_nodes`, so results are deterministic across runs of
-/// the same SDK build.
+/// See [`discover_ranked`] for how candidates are verified and ranked.
 pub async fn discover(
     target: &TargetNetwork,
     retry: &crate::RetryConfig,
 ) -> Result<(String, TrustAnchorEntry), DiscoveryError> {
-    discover_from(TRUST_ANCHORS_URL, target, retry).await
+    let found = discover_ranked(target, retry, &RankConfig::default()).await?;
+    Ok((found.server_url, found.entry))
+}
+
+/// Like [`discover`], also reporting every verified candidate's measured latency.
+///
+/// Candidates come only from the published trust-anchor list's own
+/// `server_url`/`seed_nodes` fields for every entry matching `target`, so
+/// discovery can't be tricked into contacting an unpinned host. They are
+/// verified exactly like [`AvalonClient::verify_network`] would, in list
+/// order (each entry's `server_url` before its `seed_nodes`). Only verified
+/// candidates are eligible; up to `max_timed` (5) of them are timed with one
+/// `GET /nodes/status` each, in parallel, and the lowest round trip wins. A
+/// failed or timed-out probe ranks after measured ones and ties keep
+/// candidate order. With one verified candidate no extra request is made.
+/// The extra time over first-verified selection is bounded by
+/// `collect_window` (2s of further verification after the first success)
+/// plus `probe_timeout` (2s).
+pub async fn discover_ranked(
+    target: &TargetNetwork,
+    retry: &crate::RetryConfig,
+    rank: &RankConfig,
+) -> Result<Discovered, DiscoveryError> {
+    discover_from(TRUST_ANCHORS_URL, target, retry, rank).await
 }
 
 async fn discover_from(
     anchors_url: &str,
     target: &TargetNetwork,
     retry: &crate::RetryConfig,
-) -> Result<(String, TrustAnchorEntry), DiscoveryError> {
+    rank: &RankConfig,
+) -> Result<Discovered, DiscoveryError> {
     let anchors = fetch_trust_anchors(&reqwest::Client::new(), anchors_url)
         .await
         .map_err(|err| DiscoveryError::TrustAnchorsUnavailable {
             detail: err.to_string(),
         })?;
-    discover_among(&anchors, target, retry).await
+    discover_among(&anchors, target, retry, rank).await
 }
 
-/// [`discover`]'s actual logic, taking `anchors` explicitly rather than
-/// always fetching the published list — split out the same way
-/// [`evaluate_network_trust`] is, so tests can supply a mock server's own
-/// key instead of needing to forge a signature for a real published entry.
+async fn time_probe(
+    http: &reqwest::Client,
+    server_url: &str,
+    timeout: std::time::Duration,
+) -> Option<std::time::Duration> {
+    let start = std::time::Instant::now();
+    let request = http.get(format!("{server_url}/nodes/status")).send();
+    match tokio::time::timeout(timeout, request).await {
+        Ok(Ok(response)) if response.status().is_success() => Some(start.elapsed()),
+        _ => None,
+    }
+}
+
+/// [`discover_ranked`]'s actual logic, taking `anchors` explicitly rather
+/// than always fetching the published list, so tests can supply a mock
+/// server's own key instead of forging a signature for a real entry.
 async fn discover_among(
     anchors: &[TrustAnchorEntry],
     target: &TargetNetwork,
     retry: &crate::RetryConfig,
-) -> Result<(String, TrustAnchorEntry), DiscoveryError> {
+    rank: &RankConfig,
+) -> Result<Discovered, DiscoveryError> {
     let http = reqwest::Client::new();
     let mut attempts = Vec::new();
     let mut tried_any = false;
+    let mut verified: Vec<(String, TrustAnchorEntry)> = Vec::new();
+    let mut first_verified_at: Option<std::time::Instant> = None;
 
-    for entry in anchors {
+    'collect: for entry in anchors {
         let entry_matches = match target {
             TargetNetwork::NetworkId(expected) => &entry.network_id == expected,
             TargetNetwork::Env(tier) => tier.matches(entry.environment),
@@ -512,24 +585,75 @@ async fn discover_among(
         }
         let candidates = entry.server_url.iter().chain(entry.seed_nodes.iter());
         for candidate in candidates {
+            if verified.len() >= rank.max_timed {
+                break 'collect;
+            }
             tried_any = true;
-            let status = fetch_network_trust_status(anchors, &http, retry, candidate).await;
+            let check = fetch_network_trust_status(anchors, &http, retry, candidate);
+            let status = match first_verified_at {
+                None => check.await,
+                Some(start) => {
+                    let remaining = rank.collect_window.saturating_sub(start.elapsed());
+                    match tokio::time::timeout(remaining, check).await {
+                        Ok(status) => status,
+                        Err(_) => break 'collect,
+                    }
+                }
+            };
             match check_target_network(&status, target) {
-                Ok(verified_entry) => return Ok((candidate.clone(), verified_entry.clone())),
+                Ok(verified_entry) => {
+                    first_verified_at.get_or_insert_with(std::time::Instant::now);
+                    verified.push((candidate.clone(), verified_entry.clone()));
+                }
                 Err(err) => attempts.push((candidate.clone(), err.to_string())),
             }
         }
     }
 
-    if !tried_any {
-        return Err(DiscoveryError::NoCandidates {
+    match verified.len() {
+        0 if !tried_any => Err(DiscoveryError::NoCandidates {
             target: target.to_string(),
-        });
+        }),
+        0 => Err(DiscoveryError::NoneVerified {
+            target: target.to_string(),
+            attempts,
+        }),
+        1 => {
+            let (server_url, entry) = verified.remove(0);
+            Ok(Discovered {
+                verified: vec![VerifiedCandidate {
+                    server_url: server_url.clone(),
+                    latency: None,
+                }],
+                server_url,
+                entry,
+            })
+        }
+        _ => {
+            let latencies = futures_util::future::join_all(
+                verified
+                    .iter()
+                    .map(|(url, _)| time_probe(&http, url, rank.probe_timeout)),
+            )
+            .await;
+            let mut ranked: Vec<_> = verified.into_iter().zip(latencies).collect();
+            // Stable sort: measured before unmeasured, ties keep candidate order.
+            ranked.sort_by_key(|(_, latency)| (latency.is_none(), *latency));
+            let summary = ranked
+                .iter()
+                .map(|((url, _), latency)| VerifiedCandidate {
+                    server_url: url.clone(),
+                    latency: *latency,
+                })
+                .collect();
+            let ((server_url, entry), _) = ranked.remove(0);
+            Ok(Discovered {
+                server_url,
+                entry,
+                verified: summary,
+            })
+        }
     }
-    Err(DiscoveryError::NoneVerified {
-        target: target.to_string(),
-        attempts,
-    })
 }
 
 impl AvalonClient {
@@ -721,9 +845,14 @@ mod tests {
             .mount(&server)
             .await;
         let target = TargetNetwork::NetworkId("avalon-dev-local".to_string());
-        let err = discover_from(&server.uri(), &target, &RetryConfig::default())
-            .await
-            .unwrap_err();
+        let err = discover_from(
+            &server.uri(),
+            &target,
+            &RetryConfig::default(),
+            &RankConfig::default(),
+        )
+        .await
+        .unwrap_err();
         assert!(matches!(
             err,
             DiscoveryError::TrustAnchorsUnavailable { .. }
@@ -876,18 +1005,25 @@ mod tests {
             base_delay: std::time::Duration::from_millis(1),
             request_timeout: std::time::Duration::from_secs(5),
         };
-        let (server_url, resolved) = discover_among(std::slice::from_ref(&entry), &target, &retry)
-            .await
-            .expect("the live seed node should verify");
-        assert_eq!(server_url, live.uri());
-        assert_eq!(resolved, entry);
+        let found = discover_among(
+            std::slice::from_ref(&entry),
+            &target,
+            &retry,
+            &RankConfig::default(),
+        )
+        .await
+        .expect("the live seed node should verify");
+        assert_eq!(found.server_url, live.uri());
+        assert_eq!(found.entry, entry);
     }
 
     #[tokio::test]
     async fn discover_reports_no_candidates_for_an_unpinned_target() {
         let target = TargetNetwork::NetworkId("avalon-nowhere".to_string());
         let retry = RetryConfig::default();
-        let err = discover_among(&[], &target, &retry).await.unwrap_err();
+        let err = discover_among(&[], &target, &retry, &RankConfig::default())
+            .await
+            .unwrap_err();
         assert!(matches!(err, DiscoveryError::NoCandidates { .. }));
     }
 
@@ -909,9 +1045,207 @@ mod tests {
             base_delay: std::time::Duration::from_millis(1),
             request_timeout: std::time::Duration::from_secs(5),
         };
-        let err = discover_among(std::slice::from_ref(&entry), &target, &retry)
-            .await
-            .unwrap_err();
+        let err = discover_among(
+            std::slice::from_ref(&entry),
+            &target,
+            &retry,
+            &RankConfig::default(),
+        )
+        .await
+        .unwrap_err();
         assert!(matches!(err, DiscoveryError::NoneVerified { .. }));
+    }
+
+    struct Node {
+        server: MockServer,
+        status_hits: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    /// `status`: `Some(delay_ms)` answers `/nodes/status` after the delay, `None` answers 500.
+    async fn node(key: &SigningKey, sth_delay_ms: u64, status: Option<u64>) -> Node {
+        let server = mock_sth_server_delayed(key, sth_delay_ms).await;
+        let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = hits.clone();
+        let template = match status {
+            Some(ms) => ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({}))
+                .set_delay(std::time::Duration::from_millis(ms)),
+            None => ResponseTemplate::new(500),
+        };
+        Mock::given(method("GET"))
+            .and(path("/nodes/status"))
+            .respond_with(move |_: &wiremock::Request| {
+                counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                template.clone()
+            })
+            .mount(&server)
+            .await;
+        Node {
+            server,
+            status_hits: hits,
+        }
+    }
+
+    async fn mock_sth_server_delayed(key: &SigningKey, delay_ms: u64) -> MockServer {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/ledger/sth/latest"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({
+                        "tree_size": 42,
+                        "root_hash": "ab".repeat(32),
+                        "network_id": "avalon-test",
+                        "signing_key_id": "test-key",
+                        "signature": signed_sth(key, "avalon-test").signature,
+                        "created_at": "1970-01-01T00:00:00Z",
+                    }))
+                    .set_delay(std::time::Duration::from_millis(delay_ms)),
+            )
+            .mount(&server)
+            .await;
+        server
+    }
+
+    fn quick_retry() -> RetryConfig {
+        RetryConfig {
+            max_retries: 0,
+            base_delay: std::time::Duration::from_millis(1),
+            request_timeout: std::time::Duration::from_secs(5),
+        }
+    }
+
+    fn rank_config() -> RankConfig {
+        RankConfig {
+            max_timed: 5,
+            probe_timeout: std::time::Duration::from_millis(300),
+            collect_window: std::time::Duration::from_millis(300),
+        }
+    }
+
+    fn entry_for(key: &SigningKey, urls: Vec<String>) -> TrustAnchorEntry {
+        let mut entry = anchor("avalon-test", hex::encode(key.verifying_key().to_bytes()));
+        entry.seed_nodes = urls;
+        entry
+    }
+
+    async fn rank(
+        entry: &TrustAnchorEntry,
+        cfg: &RankConfig,
+    ) -> Result<Discovered, DiscoveryError> {
+        let target = TargetNetwork::NetworkId("avalon-test".to_string());
+        discover_among(std::slice::from_ref(entry), &target, &quick_retry(), cfg).await
+    }
+
+    #[tokio::test]
+    async fn ranking_chooses_the_fastest_verified_candidate() {
+        let key = SigningKey::generate(&mut rand::rng());
+        let slow = node(&key, 0, Some(120)).await;
+        let fast = node(&key, 0, Some(1)).await;
+        let mid = node(&key, 0, Some(50)).await;
+        let entry = entry_for(
+            &key,
+            vec![slow.server.uri(), fast.server.uri(), mid.server.uri()],
+        );
+        let found = rank(&entry, &rank_config()).await.unwrap();
+        assert_eq!(found.server_url, fast.server.uri());
+        let order: Vec<_> = found
+            .verified
+            .iter()
+            .map(|v| v.server_url.clone())
+            .collect();
+        assert_eq!(
+            order,
+            vec![fast.server.uri(), mid.server.uri(), slow.server.uri()]
+        );
+        assert!(found.verified.iter().all(|v| v.latency.is_some()));
+    }
+
+    #[tokio::test]
+    async fn ranking_never_chooses_an_unverified_fast_candidate() {
+        let key = SigningKey::generate(&mut rand::rng());
+        let impostor = SigningKey::generate(&mut rand::rng());
+        let forged = node(&impostor, 0, Some(1)).await;
+        let slow = node(&key, 0, Some(60)).await;
+        let ok = node(&key, 0, Some(20)).await;
+        let entry = entry_for(
+            &key,
+            vec![forged.server.uri(), slow.server.uri(), ok.server.uri()],
+        );
+        let found = rank(&entry, &rank_config()).await.unwrap();
+        assert_eq!(found.server_url, ok.server.uri());
+        assert_eq!(
+            forged.status_hits.load(std::sync::atomic::Ordering::SeqCst),
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn a_single_verified_candidate_makes_no_extra_request() {
+        let key = SigningKey::generate(&mut rand::rng());
+        let impostor = SigningKey::generate(&mut rand::rng());
+        let forged = node(&impostor, 0, Some(1)).await;
+        let only = node(&key, 0, Some(1)).await;
+        let entry = entry_for(&key, vec![forged.server.uri(), only.server.uri()]);
+        let found = rank(&entry, &rank_config()).await.unwrap();
+        assert_eq!(found.server_url, only.server.uri());
+        assert_eq!(
+            only.status_hits.load(std::sync::atomic::Ordering::SeqCst),
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_probes_fall_back_to_candidate_order_and_stay_eligible() {
+        let key = SigningKey::generate(&mut rand::rng());
+        let a = node(&key, 0, None).await;
+        let b = node(&key, 0, None).await;
+        let entry = entry_for(&key, vec![a.server.uri(), b.server.uri()]);
+        let found = rank(&entry, &rank_config()).await.unwrap();
+        assert_eq!(found.server_url, a.server.uri());
+        assert!(found.verified.iter().all(|v| v.latency.is_none()));
+
+        let c = node(&key, 0, None).await;
+        let d = node(&key, 0, Some(5)).await;
+        let entry = entry_for(&key, vec![c.server.uri(), d.server.uri()]);
+        let found = rank(&entry, &rank_config()).await.unwrap();
+        assert_eq!(found.server_url, d.server.uri());
+        assert_eq!(found.verified[1].server_url, c.server.uri());
+    }
+
+    #[tokio::test]
+    async fn ranking_bounds_timed_candidates_and_probe_time() {
+        let key = SigningKey::generate(&mut rand::rng());
+        let a = node(&key, 0, Some(5_000)).await;
+        let b = node(&key, 0, Some(5_000)).await;
+        let c = node(&key, 0, Some(5_000)).await;
+        let entry = entry_for(&key, vec![a.server.uri(), b.server.uri(), c.server.uri()]);
+        let cfg = RankConfig {
+            max_timed: 2,
+            probe_timeout: std::time::Duration::from_millis(50),
+            collect_window: std::time::Duration::from_millis(300),
+        };
+        let start = std::time::Instant::now();
+        let found = rank(&entry, &cfg).await.unwrap();
+        assert!(start.elapsed() < std::time::Duration::from_secs(2));
+        assert_eq!(found.server_url, a.server.uri());
+        assert_eq!(c.status_hits.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn collection_stops_after_the_window_following_the_first_verification() {
+        let key = SigningKey::generate(&mut rand::rng());
+        let first = node(&key, 0, Some(5)).await;
+        let laggard = node(&key, 2_000, Some(1)).await;
+        let entry = entry_for(&key, vec![first.server.uri(), laggard.server.uri()]);
+        let cfg = RankConfig {
+            collect_window: std::time::Duration::from_millis(50),
+            ..rank_config()
+        };
+        let start = std::time::Instant::now();
+        let found = rank(&entry, &cfg).await.unwrap();
+        assert!(start.elapsed() < std::time::Duration::from_secs(1));
+        assert_eq!(found.server_url, first.server.uri());
+        assert_eq!(found.verified.len(), 1);
     }
 }

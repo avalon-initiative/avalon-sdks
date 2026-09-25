@@ -305,4 +305,154 @@ public class NetworkTests
         Assert.Equal(DiscoveryErrorKind.NoneVerified, ex.Kind);
         Assert.Single(ex.Attempts);
     }
+
+    private sealed class NodeSpec
+    {
+        public bool ForgedSth { get; init; }
+        public int SthDelayMs { get; init; }
+        public int? StatusDelayMs { get; init; } // null: /nodes/status answers 500
+    }
+
+    private sealed class RoutingHandler : HttpMessageHandler
+    {
+        private readonly Dictionary<string, NodeSpec> _nodes;
+        private readonly string _good;
+        private readonly string _forged;
+        public List<string> Requests { get; } = new();
+
+        public RoutingHandler(Dictionary<string, NodeSpec> nodes, string good, string forged)
+        {
+            _nodes = nodes;
+            _good = good;
+            _forged = forged;
+        }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, System.Threading.CancellationToken ct)
+        {
+            var uri = request.RequestUri!;
+            lock (Requests) { Requests.Add($"{uri.Scheme}://{uri.Host}{uri.AbsolutePath}"); }
+            var spec = _nodes[$"{uri.Scheme}://{uri.Host}"];
+            if (uri.AbsolutePath == "/ledger/sth/latest")
+            {
+                await Task.Delay(spec.SthDelayMs, ct);
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(spec.ForgedSth ? _forged : _good) };
+            }
+            if (spec.StatusDelayMs is not int delay)
+            {
+                return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+            }
+            await Task.Delay(delay, ct);
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") };
+        }
+    }
+
+    private static readonly string[] Hosts = { "http://a.invalid", "http://b.invalid", "http://c.invalid" };
+
+    private static async Task<(DiscoveryResult Result, RoutingHandler Handler)> Rank(
+        Dictionary<string, NodeSpec> nodes, DiscoveryRankOptions? options = null)
+    {
+        var key = GenerateKey();
+        var handler = new RoutingHandler(
+            nodes, SthJson(SignedSth(key, "avalon-test")), SthJson(SignedSth(GenerateKey(), "avalon-test")));
+        var entry = Anchor("avalon-test", PublicKeyHex(key), seedNodes: nodes.Keys.ToList());
+        var result = await AvalonClient.DiscoverAmongAsync(
+            new[] { entry }, TargetNetwork.ForNetworkId("avalon-test"), new HttpClient(handler), default, options);
+        return (result, handler);
+    }
+
+    private static DiscoveryRankOptions Options(int maxTimed = 5, int probeMs = 300, int windowMs = 300) =>
+        new() { MaxTimed = maxTimed, ProbeTimeout = TimeSpan.FromMilliseconds(probeMs), CollectWindow = TimeSpan.FromMilliseconds(windowMs) };
+
+    [Fact]
+    public async Task Ranking_ChoosesTheFastestVerifiedCandidate()
+    {
+        var (result, _) = await Rank(new()
+        {
+            [Hosts[0]] = new NodeSpec { StatusDelayMs = 120 },
+            [Hosts[1]] = new NodeSpec { StatusDelayMs = 1 },
+            [Hosts[2]] = new NodeSpec { StatusDelayMs = 50 },
+        }, Options());
+
+        Assert.Equal(Hosts[1], result.ServerUrl);
+        Assert.Equal(new[] { Hosts[1], Hosts[2], Hosts[0] }, result.Verified.Select(v => v.ServerUrl));
+        Assert.All(result.Verified, v => Assert.NotNull(v.Latency));
+    }
+
+    [Fact]
+    public async Task Ranking_NeverChoosesAnUnverifiedFastCandidate()
+    {
+        var (result, handler) = await Rank(new()
+        {
+            [Hosts[0]] = new NodeSpec { ForgedSth = true, StatusDelayMs = 1 },
+            [Hosts[1]] = new NodeSpec { StatusDelayMs = 60 },
+            [Hosts[2]] = new NodeSpec { StatusDelayMs = 20 },
+        }, Options());
+
+        Assert.Equal(Hosts[2], result.ServerUrl);
+        Assert.DoesNotContain(handler.Requests, r => r == Hosts[0] + "/nodes/status");
+    }
+
+    [Fact]
+    public async Task Ranking_SingleVerifiedCandidate_MakesNoExtraRequest()
+    {
+        var (result, handler) = await Rank(new()
+        {
+            [Hosts[0]] = new NodeSpec { ForgedSth = true },
+            [Hosts[1]] = new NodeSpec { StatusDelayMs = 1 },
+        }, Options());
+
+        Assert.Equal(Hosts[1], result.ServerUrl);
+        Assert.DoesNotContain(handler.Requests, r => r.EndsWith("/nodes/status"));
+    }
+
+    [Fact]
+    public async Task Ranking_FailedProbesFallBackToCandidateOrder_AndStayEligible()
+    {
+        var (allFailed, _) = await Rank(new()
+        {
+            [Hosts[0]] = new NodeSpec(),
+            [Hosts[1]] = new NodeSpec(),
+        }, Options());
+        Assert.Equal(Hosts[0], allFailed.ServerUrl);
+        Assert.All(allFailed.Verified, v => Assert.Null(v.Latency));
+
+        var (mixed, _) = await Rank(new()
+        {
+            [Hosts[0]] = new NodeSpec(),
+            [Hosts[1]] = new NodeSpec { StatusDelayMs = 5 },
+        }, Options());
+        Assert.Equal(Hosts[1], mixed.ServerUrl);
+        Assert.Equal(Hosts[0], mixed.Verified[1].ServerUrl);
+    }
+
+    [Fact]
+    public async Task Ranking_BoundsTimedCandidatesAndProbeTime()
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var (result, handler) = await Rank(new()
+        {
+            [Hosts[0]] = new NodeSpec { StatusDelayMs = 5000 },
+            [Hosts[1]] = new NodeSpec { StatusDelayMs = 5000 },
+            [Hosts[2]] = new NodeSpec { StatusDelayMs = 5000 },
+        }, Options(maxTimed: 2, probeMs: 50));
+
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2));
+        Assert.Equal(Hosts[0], result.ServerUrl);
+        Assert.DoesNotContain(handler.Requests, r => r == Hosts[2] + "/nodes/status");
+    }
+
+    [Fact]
+    public async Task Ranking_StopsCollectingAfterTheWindowFollowingTheFirstVerification()
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var (result, _) = await Rank(new()
+        {
+            [Hosts[0]] = new NodeSpec { StatusDelayMs = 5 },
+            [Hosts[1]] = new NodeSpec { SthDelayMs = 2000, StatusDelayMs = 1 },
+        }, Options(windowMs: 50));
+
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(1));
+        Assert.Equal(Hosts[0], result.ServerUrl);
+        Assert.Single(result.Verified);
+    }
 }

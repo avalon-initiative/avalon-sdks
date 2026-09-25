@@ -10,4 +10,4 @@ export { checkTargetNetwork, NetworkTargetMismatchError } from './targetNetwork.
 export type { TargetNetwork, TargetNetworkTier, NetworkTargetError } from './targetNetwork.js'
 
 export { discover, discoverAmong, DiscoveryFailedError } from './discover.js'
-export type { DiscoveryError } from './discover.js'
+export type { DiscoveryError, DiscoverOptions, DiscoverResult, VerifiedCandidate } from './discover.js'
