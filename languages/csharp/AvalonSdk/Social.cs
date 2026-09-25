@@ -360,8 +360,16 @@ namespace Avalon.Sdk
 #else
             var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
 #endif
-            var value = await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions, ct).ConfigureAwait(false);
-            return value ?? throw new System.Text.Json.JsonException("expected a JSON value, got null");
+            T? value;
+            try
+            {
+                value = await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions, ct).ConfigureAwait(false);
+            }
+            catch (JsonException e)
+            {
+                throw new AvalonProtocolException(e.Message, e);
+            }
+            return value ?? throw new AvalonProtocolException("expected a JSON value, got null");
         }
 
         private static HttpContent JsonContent<T>(T value)

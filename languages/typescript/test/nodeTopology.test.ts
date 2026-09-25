@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { getTopology, probeNode, traceRoute } from '../src/nodeTopology.js'
-import { RateLimitedError } from '../src/errors.js'
+import { ProtocolError, RateLimitedError } from '../src/errors.js'
 
 const originalFetch = globalThis.fetch
 afterEach(() => {
@@ -51,7 +51,7 @@ describe('getTopology', () => {
 
   it('rejects a malformed body', async () => {
     mockFetch(() => new Response('not json', { status: 200 }))
-    await expect(getTopology('http://node.test:8080')).rejects.toThrow()
+    await expect(getTopology('http://node.test:8080')).rejects.toBeInstanceOf(ProtocolError)
   })
 })
 
@@ -76,7 +76,7 @@ describe('probeNode', () => {
 
   it('rejects a malformed body', async () => {
     mockFetch(() => new Response('{"target":', { status: 200 }))
-    await expect(probeNode('http://node.test:8080', 'http://o:1')).rejects.toThrow()
+    await expect(probeNode('http://node.test:8080', 'http://o:1')).rejects.toBeInstanceOf(ProtocolError)
   })
 })
 
@@ -100,6 +100,6 @@ describe('traceRoute', () => {
 
   it('rejects a malformed body', async () => {
     mockFetch(() => new Response('<html>', { status: 200 }))
-    await expect(traceRoute('http://node.test:8080', 'http://o:1')).rejects.toThrow()
+    await expect(traceRoute('http://node.test:8080', 'http://o:1')).rejects.toBeInstanceOf(ProtocolError)
   })
 })

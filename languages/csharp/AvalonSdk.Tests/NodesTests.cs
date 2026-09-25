@@ -140,9 +140,9 @@ public class NodesTests
     {
         var handler = new StubHttpMessageHandler().Enqueue("not json").Enqueue("{\"target\":").Enqueue("null");
         var client = ClientFor(handler);
-        await Assert.ThrowsAnyAsync<System.Text.Json.JsonException>(() => client.TopologyAsync());
-        await Assert.ThrowsAnyAsync<System.Text.Json.JsonException>(() => client.ProbeAsync("http://o:1"));
-        await Assert.ThrowsAnyAsync<System.Text.Json.JsonException>(() => client.TraceAsync("http://o:1"));
+        await Assert.ThrowsAsync<AvalonProtocolException>(() => client.TopologyAsync());
+        await Assert.ThrowsAsync<AvalonProtocolException>(() => client.ProbeAsync("http://o:1"));
+        await Assert.ThrowsAsync<AvalonProtocolException>(() => client.TraceAsync("http://o:1"));
     }
 
     private static string Canonical(string json)

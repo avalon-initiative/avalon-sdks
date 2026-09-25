@@ -75,6 +75,23 @@ namespace Avalon.Sdk
     }
 
     /// <summary>
+    /// The server answered successfully but the body did not parse as the shape the call
+    /// expected. Mirrors <c>SdkError::Protocol</c>.
+    /// </summary>
+    public sealed class AvalonProtocolException : Exception
+    {
+        public AvalonProtocolException(string message)
+            : base("unexpected response from avalon-server: " + message)
+        {
+        }
+
+        public AvalonProtocolException(string message, Exception innerException)
+            : base("unexpected response from avalon-server: " + message, innerException)
+        {
+        }
+    }
+
+    /// <summary>
     /// A presence websocket connection failed. Mirrors <c>SdkError::WebSocket</c>.
     /// </summary>
     public sealed class AvalonWebSocketException : Exception
