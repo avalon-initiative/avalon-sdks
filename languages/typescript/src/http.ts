@@ -3,7 +3,7 @@
 // browser/Node fetch caller is expected to apply its own retry policy at a
 // higher layer if it wants one; this keeps the wire layer simple and
 // dependency-free.
-import { mapErrorResponse } from './errors.js'
+import { mapErrorResponse, ProtocolError } from './errors.js'
 
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'
@@ -73,5 +73,9 @@ export async function request<T>(serverUrl: string, path: string, options: Reque
   if (text.length === 0) {
     return undefined as T
   }
-  return JSON.parse(text) as T
+  try {
+    return JSON.parse(text) as T
+  } catch (error) {
+    throw new ProtocolError(error instanceof Error ? error.message : String(error))
+  }
 }

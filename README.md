@@ -43,6 +43,24 @@ Until real cross-repo tooling exists, resyncing any of these is a manual
 copy from the corresponding path in `avalon-protocol`, then this repo's
 own test suites (all three languages) to confirm nothing broke.
 
+## Node topology, probe and trace
+
+All three SDKs expose the node's read-only topology view and its probe and trace
+endpoints, typed from the generated schema (`GET /nodes/topology`,
+`POST /nodes/probe`, `POST /nodes/trace`):
+
+| | Topology | Probe | Trace |
+| --- | --- | --- | --- |
+| Rust | `AvalonClient::topology(node_url: Option<&str>)` | `probe(target, samples)` | `trace(target, ttl)` |
+| C# | `TopologyAsync(nodeUrl?)` | `ProbeAsync(target, samples?)` | `TraceAsync(target, ttl?)` |
+| TypeScript | `getTopology(nodeUrl, { limit? })` | `probeNode(nodeUrl, target, samples?)` | `traceRoute(nodeUrl, target, { ttl? })` |
+
+Probe and trace run on the node the client points at (`target` must be in that node's
+peer table for probe). Hop and latency data is self-reported by the nodes on the path
+and is advisory, not verified. A rate-limited call surfaces through each SDK's existing
+429 error with the server's `Retry-After`. Recorded real-node responses used by each
+language's tests live in `conformance/fixtures/nodes/`.
+
 ## Development
 
 ```bash

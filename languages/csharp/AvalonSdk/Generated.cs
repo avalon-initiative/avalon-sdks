@@ -598,6 +598,46 @@ namespace Avalon.Sdk.Generated
 
     }
 
+    /// <summary>
+    /// A node's own network coordinate, as published in announce exchanges and
+    /// <br/>the topology read model.
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class Coordinate
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("error")]
+        public double Error { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("height")]
+        public double Height { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("vector")]
+        public System.Collections.Generic.ICollection<double> Vector { get; set; } = new System.Collections.ObjectModel.Collection<double>();
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class CpuMetrics
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("core_count")]
+        public int? CoreCount { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("load_average_15m")]
+        public double? LoadAverage15m { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("load_average_1m")]
+        public double? LoadAverage1m { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("load_average_5m")]
+        public double? LoadAverage5m { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("usage_percent")]
+        public float? UsagePercent { get; set; } = default!;
+
+    }
+
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class CreateAchievementDefinitionRequest
     {
@@ -856,6 +896,18 @@ namespace Avalon.Sdk.Generated
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class DbPoolMetrics
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("in_use")]
+        public int? InUse { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("size")]
+        public int? Size { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class DeleteInstanceRequest
     {
 
@@ -1041,6 +1093,29 @@ namespace Avalon.Sdk.Generated
 
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
         public System.Guid IdentityId { get; set; } = default!;
+
+    }
+
+    /// <summary>
+    /// One configured path's disk usage — `label` says which config value it
+    /// <br/>came from (`"node_storage"` / `"postgres_data"`), since a node may
+    /// <br/>report more than one and a dashboard client needs to tell them apart.
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class DiskMetrics
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("label")]
+        public string Label { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("mount_point")]
+        public string? MountPoint { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("total_bytes")]
+        public long? TotalBytes { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("used_bytes")]
+        public long? UsedBytes { get; set; } = default!;
 
     }
 
@@ -1926,6 +2001,27 @@ namespace Avalon.Sdk.Generated
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class KnownPeer
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("base_url")]
+        public string BaseUrl { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("last_announced_at")]
+        public System.DateTimeOffset LastAnnouncedAt { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("libp2p_peer_id")]
+        public string? Libp2pPeerId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("protocol_version")]
+        public string ProtocolVersion { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("roles")]
+        public System.Collections.Generic.ICollection<string> Roles { get; set; } = new System.Collections.ObjectModel.Collection<string>();
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class ListIntegratorsResponse
     {
 
@@ -2009,6 +2105,24 @@ namespace Avalon.Sdk.Generated
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class MemoryMetrics
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("swap_total_bytes")]
+        public long? SwapTotalBytes { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("swap_used_bytes")]
+        public long? SwapUsedBytes { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("total_bytes")]
+        public long? TotalBytes { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("used_bytes")]
+        public long? UsedBytes { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class MessageResponse
     {
 
@@ -2051,6 +2165,43 @@ namespace Avalon.Sdk.Generated
 
         [System.Text.Json.Serialization.JsonPropertyName("value")]
         public long Value { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class MirrorSource
+    {
+
+        /// <summary>
+        /// Observed tree size minus mirrored entries, never negative; `None`
+        /// <br/>until a tree head has been observed from the source.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("lag_entries")]
+        public long? LagEntries { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("last_mirrored_at")]
+        public System.DateTimeOffset? LastMirroredAt { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("last_observed_at")]
+        public System.DateTimeOffset? LastObservedAt { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("mirrored_entries")]
+        public long MirroredEntries { get; set; } = default!;
+
+        /// <summary>
+        /// Tree size of the latest signed tree head observed from the source.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("observed_tree_size")]
+        public long? ObservedTreeSize { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("open_equivocations")]
+        public System.Collections.Generic.ICollection<OpenFinding> OpenEquivocations { get; set; } = new System.Collections.ObjectModel.Collection<OpenFinding>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("shard_id")]
+        public string ShardId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("source_url")]
+        public string SourceUrl { get; set; } = default!;
 
     }
 
@@ -2099,6 +2250,110 @@ namespace Avalon.Sdk.Generated
 
         [System.Text.Json.Serialization.JsonPropertyName("role_index")]
         public int RoleIndex { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class Neighbor
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("base_url")]
+        public string BaseUrl { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("bootstrap")]
+        public bool Bootstrap { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("coordinate")]
+        public Coordinate? Coordinate { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("last_announced_at")]
+        public System.DateTimeOffset? LastAnnouncedAt { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("latency")]
+        public ObservedLatency? Latency { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("libp2p_peer_id")]
+        public string? Libp2pPeerId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("protocol_version")]
+        public string? ProtocolVersion { get; set; } = default!;
+
+        /// <summary>
+        /// Empty and `None` below when the peer has not yet appeared in the peer table.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("roles")]
+        public System.Collections.Generic.ICollection<string> Roles { get; set; } = new System.Collections.ObjectModel.Collection<string>();
+
+    }
+
+    /// <summary>
+    /// The `resources` block itself — every field individually optional per
+    /// <br/>#517's acceptance criteria, so a client can render whatever a given
+    /// <br/>node/platform actually managed to report.
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class NodeResourceMetrics
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("cpu")]
+        public CpuMetrics Cpu { get; set; } = new CpuMetrics();
+
+        [System.Text.Json.Serialization.JsonPropertyName("db_pool")]
+        public DbPoolMetrics DbPool { get; set; } = new DbPoolMetrics();
+
+        [System.Text.Json.Serialization.JsonPropertyName("disks")]
+        public System.Collections.Generic.ICollection<DiskMetrics> Disks { get; set; } = new System.Collections.ObjectModel.Collection<DiskMetrics>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("memory")]
+        public MemoryMetrics Memory { get; set; } = new MemoryMetrics();
+
+        /// <summary>
+        /// This process's open file descriptor count — the cheapest
+        /// <br/>cross-platform proxy `sysinfo` exposes for "how many
+        /// <br/>connections/handles is this node currently holding open," since
+        /// <br/>`sysinfo` has no direct portable socket-count API.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("open_file_count")]
+        public int? OpenFileCount { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("process_uptime_seconds")]
+        public long? ProcessUptimeSeconds { get; set; } = default!;
+
+    }
+
+    /// <summary>
+    /// A round-trip measurement together with the node that took it.
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class ObservedLatency : RoundTripStats
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("observed_by")]
+        public string? ObservedBy { get; set; } = default!;
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class OpenFinding
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("source_a")]
+        public string SourceA { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("source_b")]
+        public string SourceB { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("tree_size")]
+        public long TreeSize { get; set; } = default!;
 
     }
 
@@ -2218,6 +2473,58 @@ namespace Avalon.Sdk.Generated
 
         [System.Runtime.Serialization.EnumMember(Value = @"Offline")]
         Offline = 3,
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class ProbeRequest
+    {
+
+        /// <summary>
+        /// Sequential samples to take, 1 to 3 (default 1).
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("samples")]
+        public int? Samples { get; set; } = default!;
+
+        /// <summary>
+        /// Base URL of a node in this node's peer table.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("target")]
+        public string Target { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class ProbeResponse
+    {
+
+        /// <summary>
+        /// `timeout`, `unreachable` or `bad_status` when a sample failed.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("error")]
+        public string? Error { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("median_ms")]
+        public double? MedianMs { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("min_ms")]
+        public double? MinMs { get; set; } = default!;
+
+        /// <summary>
+        /// True when every requested sample completed.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("ok")]
+        public bool Ok { get; set; } = default!;
+
+        /// <summary>
+        /// Round trip of each completed sample in milliseconds, in order. The
+        /// <br/>first sample includes connection setup.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("samples_ms")]
+        public System.Collections.Generic.ICollection<double> SamplesMs { get; set; } = new System.Collections.ObjectModel.Collection<double>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("target")]
+        public string Target { get; set; } = default!;
 
     }
 
@@ -2912,7 +3219,7 @@ namespace Avalon.Sdk.Generated
     /// <br/>opaque badge id) so it can grow into a richer badge system later —
     /// <br/>more icons/colors, tiers, an uploaded custom asset as an additional
     /// <br/>variant — without a breaking change to callers that just want "an icon
-    /// <br/>and a color" out of a role (`packages/ui`'s planned `AvalonRoleBadge`
+    /// <br/>and a color" out of a role (the shared UI library's `AvalonRoleBadge`
     /// <br/>is the first such caller).
     /// </summary>
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
@@ -3082,6 +3389,72 @@ namespace Avalon.Sdk.Generated
 
     }
 
+    /// <summary>
+    /// Rolling round-trip statistics for one neighbor, as observed by this node.
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class RoundTripStats
+    {
+
+        /// <summary>
+        /// Attempts in the last window (at most the window size).
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("attempts_recent")]
+        public int AttemptsRecent { get; set; } = default!;
+
+        /// <summary>
+        /// Exponentially weighted moving average of successful round trips.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("ewma_ms")]
+        public double? EwmaMs { get; set; } = default!;
+
+        /// <summary>
+        /// Failed attempts in the last window of attempts.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("failed_recent")]
+        public int FailedRecent { get; set; } = default!;
+
+        /// <summary>
+        /// Mean absolute deviation over the last successful round trips.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("jitter_ms")]
+        public double? JitterMs { get; set; } = default!;
+
+        /// <summary>
+        /// Round trip of the most recent successful announce, in milliseconds.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("last_ms")]
+        public double? LastMs { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("last_success_at")]
+        public System.DateTimeOffset? LastSuccessAt { get; set; } = default!;
+
+        /// <summary>
+        /// Fraction of recent attempts that failed, 0.0 when none were made.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("loss_ratio")]
+        public double LossRatio { get; set; } = default!;
+
+        /// <summary>
+        /// Always `"application_round_trip"`: announce request to parsed response.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("measurement")]
+        public string Measurement { get; set; } = default!;
+
+        /// <summary>
+        /// Minimum over the last successful round trips.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("min_ms")]
+        public double? MinMs { get; set; } = default!;
+
+        /// <summary>
+        /// Successful round trips recorded since the peer became active.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("samples")]
+        public long Samples { get; set; } = default!;
+
+    }
+
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class RsvpCounts
     {
@@ -3160,6 +3533,45 @@ namespace Avalon.Sdk.Generated
 
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
         public System.Guid IdentityId { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class SelfView
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("base_url")]
+        public string? BaseUrl { get; set; } = default!;
+
+        /// <summary>
+        /// This node's advisory network coordinate; see `network_coordinates`.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("coordinate")]
+        public Coordinate Coordinate { get; set; } = new Coordinate();
+
+        [System.Text.Json.Serialization.JsonPropertyName("libp2p_peer_id")]
+        public string? Libp2pPeerId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("network_id")]
+        public string NetworkId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("protocol_version")]
+        public string ProtocolVersion { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("resources")]
+        public NodeResourceMetrics Resources { get; set; } = new NodeResourceMetrics();
+
+        [System.Text.Json.Serialization.JsonPropertyName("roles")]
+        public System.Collections.Generic.ICollection<string> Roles { get; set; } = new System.Collections.ObjectModel.Collection<string>();
+
+        /// <summary>
+        /// Shards this node authors, with their latest signed tree head.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("shards")]
+        public System.Collections.Generic.ICollection<ShardHead> Shards { get; set; } = new System.Collections.ObjectModel.Collection<ShardHead>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("stale")]
+        public bool Stale { get; set; } = default!;
 
     }
 
@@ -3288,6 +3700,21 @@ namespace Avalon.Sdk.Generated
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class ShardHead
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("shard_id")]
+        public string ShardId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("sth_created_at")]
+        public System.DateTimeOffset SthCreatedAt { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("tree_size")]
+        public long TreeSize { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class StartCrossNodeLoginResponse
     {
 
@@ -3330,6 +3757,27 @@ namespace Avalon.Sdk.Generated
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public enum StopReason
+    {
+
+        [System.Runtime.Serialization.EnumMember(Value = @"ttl")]
+        Ttl = 0,
+
+        [System.Runtime.Serialization.EnumMember(Value = @"no_route")]
+        No_route = 1,
+
+        [System.Runtime.Serialization.EnumMember(Value = @"loop")]
+        Loop = 2,
+
+        [System.Runtime.Serialization.EnumMember(Value = @"timeout")]
+        Timeout = 3,
+
+        [System.Runtime.Serialization.EnumMember(Value = @"target_unreachable")]
+        Target_unreachable = 4,
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class SubmitGrantRequest
     {
 
@@ -3360,6 +3808,142 @@ namespace Avalon.Sdk.Generated
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("token")]
         public string? Token { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class TopologyResponse
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("generated_at")]
+        public System.DateTimeOffset GeneratedAt { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("known")]
+        public System.Collections.Generic.ICollection<KnownPeer> Known { get; set; } = new System.Collections.ObjectModel.Collection<KnownPeer>();
+
+        /// <summary>
+        /// Peer table entries that are not active neighbors, before `limit`.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("known_total")]
+        public int KnownTotal { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("mirrors")]
+        public System.Collections.Generic.ICollection<MirrorSource> Mirrors { get; set; } = new System.Collections.ObjectModel.Collection<MirrorSource>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("neighbors")]
+        public System.Collections.Generic.ICollection<Neighbor> Neighbors { get; set; } = new System.Collections.ObjectModel.Collection<Neighbor>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("self")]
+        public SelfView Self { get; set; } = new SelfView();
+
+    }
+
+    /// <summary>
+    /// One node on the path, as that node reports itself.
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class TraceHop
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("base_url")]
+        public string BaseUrl { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("index")]
+        public int Index { get; set; } = default!;
+
+        /// <summary>
+        /// Time this node spent before forwarding (or in total, at the last hop),
+        /// <br/>on its own clock.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("processing_ms")]
+        public double ProcessingMs { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("protocol_version")]
+        public string ProtocolVersion { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("roles")]
+        public System.Collections.Generic.ICollection<string> Roles { get; set; } = new System.Collections.ObjectModel.Collection<string>();
+
+        /// <summary>
+        /// Leg to the next hop: this node's round trip to it minus the time the
+        /// <br/>next hop reports for itself, so it approximates network transit. When
+        /// <br/>the next hop did not answer, the time this node waited. Absent at the
+        /// <br/>last hop.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("to_next_ms")]
+        public double? ToNextMs { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class TraceRequest
+    {
+
+        /// <summary>
+        /// Set by forwarding nodes: remaining time budget in milliseconds.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("budget_ms")]
+        public long? BudgetMs { get; set; } = default!;
+
+        /// <summary>
+        /// Base URL of the node to trace to.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("target")]
+        public string Target { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("trace_id")]
+        public System.Guid? TraceId { get; set; } = default!;
+
+        /// <summary>
+        /// Forwards still allowed, 0 to 16 (default 12). Clients use 1 to 16;
+        /// <br/>a hop that receives 0 does not forward.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("ttl")]
+        public int? Ttl { get; set; } = default!;
+
+        /// <summary>
+        /// Set by forwarding nodes: base URLs already on the path.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("visited")]
+        public System.Collections.Generic.ICollection<string>? Visited { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class TraceResponse
+    {
+
+        /// <summary>
+        /// Why routing stopped, when `stopped_reason` is `no_route` or
+        /// <br/>`target_unreachable`.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("detail")]
+        public string? Detail { get; set; } = default!;
+
+        /// <summary>
+        /// Ordered path, first node to last, all self-reported.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("hops")]
+        public System.Collections.Generic.ICollection<TraceHop> Hops { get; set; } = new System.Collections.ObjectModel.Collection<TraceHop>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("reached")]
+        public bool Reached { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("stopped_reason")]
+        [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<StopReason>))]
+        public StopReason? StoppedReason { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("target")]
+        public string Target { get; set; } = default!;
+
+        /// <summary>
+        /// Time from receipt to response at the node that answered, on its own clock.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("total_ms")]
+        public double TotalMs { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("trace_id")]
+        public System.Guid TraceId { get; set; } = default!;
 
     }
 
@@ -3835,6 +4419,6 @@ namespace Avalon.Sdk
         /// <summary>Issue #735/#725: the docs/generated/openapi.json `info.version`
         /// this file's generated types were produced from — generated straight from
         /// the same schema file, so it can't drift by construction.</summary>
-        public const string OpenApiSchemaVersion = "0.3.1";
+        public const string OpenApiSchemaVersion = "0.6.0";
     }
 }

@@ -48,6 +48,76 @@ impl AvalonClient {
     }
 }
 
+pub use crate::generated::{
+    Coordinate, KnownPeer, MirrorSource, Neighbor, ObservedLatency, ProbeResponse as ProbeResult,
+    StopReason, TopologyResponse as Topology, TraceHop, TraceResponse as TraceResult,
+};
+
+/// `POST` bodies for probe/trace, kept internal so callers pass plain arguments.
+use crate::generated::{ProbeRequest, TraceRequest};
+
+impl AvalonClient {
+    /// `GET /nodes/topology` on `node_url`, or on this client's configured
+    /// server when `None`. Unauthenticated and read-only; the view is what
+    /// that node reports about itself and its peers.
+    pub async fn topology(&self, node_url: Option<&str>) -> Result<Topology, SdkError> {
+        let base = node_url
+            .unwrap_or(&self.config.server_url)
+            .trim_end_matches('/');
+        let response = crate::http::send(&self.http, &self.config.retry, true, |c| {
+            c.get(format!("{base}/nodes/topology"))
+        })
+        .await?;
+        decode(response).await
+    }
+
+    /// `POST /nodes/probe`: this node measures its round trip to `target`,
+    /// which must be in its peer table. `samples` is 1 to 3 (server default 1).
+    pub async fn probe(&self, target: &str, samples: Option<u32>) -> Result<ProbeResult, SdkError> {
+        let body = ProbeRequest {
+            target: target.to_string(),
+            samples: samples.map(|s| s as i32),
+        };
+        let response = crate::http::send(&self.http, &self.config.retry, false, |c| {
+            c.post(format!("{}/nodes/probe", self.config.server_url))
+                .json(&body)
+        })
+        .await?;
+        decode(response).await
+    }
+
+    /// `POST /nodes/trace`: the overlay route from this node to `target`.
+    /// Every hop is self-reported by the node it names, so the path is
+    /// advisory and not verified. `ttl` is 1 to 16 (server default 12).
+    pub async fn trace(&self, target: &str, ttl: Option<u32>) -> Result<TraceResult, SdkError> {
+        let body = TraceRequest {
+            target: target.to_string(),
+            ttl: ttl.map(|t| t as i32),
+            budget_ms: None,
+            trace_id: None,
+            visited: None,
+        };
+        let response = crate::http::send(&self.http, &self.config.retry, false, |c| {
+            c.post(format!("{}/nodes/trace", self.config.server_url))
+                .json(&body)
+        })
+        .await?;
+        decode(response).await
+    }
+}
+
+async fn decode<R: serde::de::DeserializeOwned>(
+    response: reqwest::Response,
+) -> Result<R, SdkError> {
+    if !response.status().is_success() {
+        return Err(crate::http::map_error_response(response).await);
+    }
+    response
+        .json()
+        .await
+        .map_err(|e| SdkError::Protocol(e.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use wiremock::matchers::{method, path};
