@@ -1,89 +1,65 @@
 #!/usr/bin/env bash
-# Cut a release of one SDK: run its checks, bump only its own version files,
-# commit, and create an annotated tag. Pushing the tag starts the release workflow.
+# One release covers all three SDKs, always at the same version.
 #
-#   scripts/release.sh ts     0.2.0 ["Optional title"]   ->  tag ts-v0.2.0[-optional-title]
-#   scripts/release.sh csharp 0.2.0 ["Optional title"]   ->  tag csharp-v0.2.0[-optional-title]
-#   scripts/release.sh rust   0.2.0 ["Optional title"]   ->  tag rust-v0.2.0[-optional-title]
+#   scripts/release.sh bump X.Y.Z        set the version in every SDK's version files (open a PR with the result)
+#   scripts/release.sh tag  X.Y.Z [title]  after that PR is merged: check main, create the annotated tag vX.Y.Z[-title]
 #
-# Environment: SKIP_CHECKS=1 skips the checks.
+# Pushing the tag starts the release workflow (`git push origin vX.Y.Z`).
+# Environment: SKIP_CHECKS=1 skips the checks in `tag`.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-lang="${1:-}"
+cmd="${1:-}"
 ver="${2:-}"
 title="${3:-}"
 
-read_version() {
-  case "$1" in
-    ts) node -p "require('./languages/typescript/package.json').version" ;;
-    csharp) sed -nE 's|.*<Version>([^<]+)</Version>.*|\1|p' languages/csharp/AvalonSdk/AvalonSdk.csproj | head -n1 ;;
-    rust) sed -n '/^\[workspace\.package\]/,/^\[/p' Cargo.toml | sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' | head -n1 ;;
-  esac
-}
-
-case "$lang" in
-  ts|csharp|rust) prefix="${lang}-v" ;;
-  *) echo "usage: release.sh <ts|csharp|rust> <X.Y.Z> [title]"; exit 1 ;;
-esac
-
-current="$(read_version "$lang")"
-if [ -z "$ver" ]; then
-  read -r -p "Release version for $lang (current: $current): " ver
-  ver="${ver:-$current}"
+if [ "$cmd" != "bump" ] && [ "$cmd" != "tag" ]; then
+  echo "usage: release.sh bump X.Y.Z | release.sh tag X.Y.Z [title]"
+  exit 1
 fi
 if ! [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "release: invalid version '$ver' (expected X.Y.Z)"
   exit 1
 fi
 
+if [ "$cmd" = "bump" ]; then
+  (cd languages/typescript && npm version --no-git-tag-version --allow-same-version "$ver" >/dev/null)
+  sed -i -E "s|<Version>[^<]+</Version>|<Version>${ver}</Version>|" languages/csharp/AvalonSdk/AvalonSdk.csproj
+  tmp="$(mktemp)"
+  awk -v ver="$ver" '
+    $0 == "[workspace.package]" { in_pkg = 1; print; next }
+    in_pkg && /^\[/ { in_pkg = 0 }
+    in_pkg && /^version[[:space:]]*=/ { $0 = "version = \"" ver "\"" }
+    { print }' Cargo.toml > "$tmp"
+  mv "$tmp" Cargo.toml
+  cargo update -q --workspace
+  git add -- languages/typescript/package.json languages/typescript/package-lock.json \
+    languages/csharp/AvalonSdk/AvalonSdk.csproj Cargo.toml Cargo.lock
+  echo "release: staged version $ver in all three SDKs; commit them and open a PR"
+  exit 0
+fi
+
 slug="$(printf '%s' "$title" | sed -E 's/[[:space:]]+/-/g; s/[^A-Za-z0-9._-]//g; s/^-+//; s/-+$//')"
-tag="${prefix}${ver}${slug:+-$slug}"
+tag="v${ver}${slug:+-$slug}"
 if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
   echo "release: tag '$tag' already exists"
   exit 1
 fi
 
+git fetch -q origin main
+if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+  echo "release: HEAD is not origin/main; check out an up-to-date main first"
+  exit 1
+fi
+bash scripts/verify-release-version.sh "$tag"
+
 if [ "${SKIP_CHECKS:-}" = "1" ]; then
   echo "release: skipping checks (SKIP_CHECKS=1)"
 else
-  echo "release: running checks for $lang"
-  if ! bash scripts/release-checks.sh "$lang"; then
-    echo "release: checks failed; nothing was changed"
-    exit 1
-  fi
+  bash scripts/release-checks.sh all || { echo "release: checks failed; nothing was tagged"; exit 1; }
 fi
 
-echo "release: sdk=$lang version=$ver tag=$tag"
-case "$lang" in
-  ts)
-    (cd languages/typescript && npm version --no-git-tag-version --allow-same-version "$ver" >/dev/null)
-    files=(languages/typescript/package.json languages/typescript/package-lock.json)
-    ;;
-  csharp)
-    sed -i -E "s|<Version>[^<]+</Version>|<Version>${ver}</Version>|" languages/csharp/AvalonSdk/AvalonSdk.csproj
-    files=(languages/csharp/AvalonSdk/AvalonSdk.csproj)
-    ;;
-  rust)
-    tmp="$(mktemp)"
-    awk -v ver="$ver" '
-      $0 == "[workspace.package]" { in_pkg = 1; print; next }
-      in_pkg && /^\[/ { in_pkg = 0 }
-      in_pkg && /^version[[:space:]]*=/ { $0 = "version = \"" ver "\"" }
-      { print }' Cargo.toml > "$tmp"
-    mv "$tmp" Cargo.toml
-    cargo update -q --workspace
-    files=(Cargo.toml Cargo.lock)
-    ;;
-esac
-
-git add -- "${files[@]}"
-if git diff --cached --quiet -- "${files[@]}"; then
-  echo "release: no version changes to commit (continuing with tag)"
-else
-  git commit -q -m "Release $tag"
-fi
 git tag -a "$tag" -m "$tag"
 echo "release done: $tag"
-echo "Next: git push origin main --follow-tags   (pushing the tag starts the release workflow)"
+echo "Next: git push origin $tag   (pushing the tag starts the release workflow)"

@@ -118,26 +118,25 @@ Live and integration tests need a running `avalon-server` and are never part of 
 Pull requests run the checks above in parallel jobs (`.github/workflows/ci.yml`); the aggregate
 `ci` job is the one required by the branch ruleset.
 
-Each SDK versions and releases independently, with its own tag prefix:
+All three SDKs share one version and ship in one release. A release is a PR that sets the version everywhere, then a tag on the merged commit:
 
 ```bash
-make release-ts     VER=0.2.0 TITLE="Optional title"   # tag ts-v0.2.0-Optional-title
-make release-csharp VER=0.2.0 TITLE="Optional title"   # tag csharp-v0.2.0-Optional-title
-make release-rust   VER=0.2.0 TITLE="Optional title"   # tag rust-v0.2.0-Optional-title
-git push origin main --follow-tags
+make release-bump VER=0.2.0                              # sets all three SDKs' version files; commit and open a PR
+make release-tag  VER=0.2.0 TITLE="Optional title"       # on up-to-date main after the merge: checks, then tag v0.2.0-Optional-title
+git push origin v0.2.0-Optional-title
 ```
 
-Each target runs that SDK's checks first and changes nothing if they fail, then bumps only that
-SDK's version files (`languages/typescript/package.json`, `AvalonSdk.csproj`, or the workspace
-`Cargo.toml`), commits, and creates the annotated tag. Pushing the tag starts the release workflow,
-which verifies the tag against the version files and that the commit is on `main`, reruns the
-checks, and then:
+`release-tag` refuses to run unless `HEAD` is `origin/main`, every SDK's version matches the tag and the checks pass.
+Pushing the tag starts the release workflow (`.github/workflows/release.yml`), which verifies the tag against all
+three version files and that the commit is on `main`, reruns the checks, packs both packages, and only then publishes:
 
-| Tag | Publishes |
+| Published | Where |
 |---|---|
-| `ts-v*` | `@avalon-initiative/protocol-sdk` to GitHub Packages (`https://npm.pkg.github.com`), plus a GitHub Release with the packed tarball |
-| `csharp-v*` | `Avalon.Sdk` to the GitHub Packages NuGet feed, plus a GitHub Release with the `.nupkg` |
-| `rust-v*` | a GitHub Release only; the crate is not on a registry yet (GitHub Packages has no cargo registry and the crate depends on its sibling `avalon-schema-derive` by path) |
+| `@avalon-initiative/protocol-sdk` | GitHub Packages (`https://npm.pkg.github.com`) |
+| `Avalon.Sdk` | the GitHub Packages NuGet feed |
+| Rust SDK | not on a registry yet (GitHub Packages has no cargo registry and the crate depends on its sibling `avalon-schema-derive` by path); the release's source archive is the Rust release |
+
+One GitHub Release (`v0.2.0`) carries the packed npm tarball and the `.nupkg`.
 
 Published versions are immutable: ship a fix as a new version. Installing a GitHub Packages
 package needs a token with `read:packages`, even though the packages are public.

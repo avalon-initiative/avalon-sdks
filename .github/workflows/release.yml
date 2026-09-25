@@ -1,0 +1,82 @@
+name: Release SDKs
+
+# Pushing a v<X.Y.Z>[-title] tag (created by `make release-tag`) releases all three
+# SDKs together: the TypeScript package to GitHub Packages (npm), the C# package to
+# the GitHub Packages NuGet feed, and one GitHub Release carrying both packages
+# (GitHub attaches the source archive, which is the Rust release: the crate is not on
+# a registry yet since GitHub Packages has no cargo registry and the crate depends on
+# its sibling avalon-schema-derive by path). Every check and both packs run before
+# anything is published.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Require the tagged commit to be on main
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "Tag ${GITHUB_REF_NAME} is not on main; refusing to release."; exit 1; }
+
+      - name: Verify tag matches every SDK's version
+        run: bash scripts/verify-release-version.sh "${GITHUB_REF_NAME}"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: swatinem/rust-cache@v2
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: languages/typescript/package-lock.json
+          registry-url: https://npm.pkg.github.com
+          scope: "@avalon-initiative"
+
+      - name: Install TypeScript dependencies
+        run: npm ci
+        working-directory: languages/typescript
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checks
+        run: bash scripts/release-checks.sh all
+
+      - name: Pack TypeScript
+        run: npm pack
+        working-directory: languages/typescript
+
+      - name: Pack C#
+        run: dotnet pack languages/csharp/AvalonSdk/AvalonSdk.csproj -c Release --no-build -o out --nologo
+
+      - name: Publish the TypeScript package
+        run: npm publish
+        working-directory: languages/typescript
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish the C# package to the GitHub Packages NuGet feed
+        run: dotnet nuget push "out/*.nupkg" --source "https://nuget.pkg.github.com/avalon-initiative/index.json" --api-key "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Create the GitHub Release
+        run: gh release create "${GITHUB_REF_NAME}" languages/typescript/*.tgz out/*.nupkg --title "${GITHUB_REF_NAME}" --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
