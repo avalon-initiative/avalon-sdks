@@ -73,6 +73,7 @@ pub mod social;
 pub mod sth;
 pub mod submission;
 pub mod sync_journal;
+pub mod topology_walk;
 pub mod types;
 
 pub use account::device_login::AccountDeviceLogin;
@@ -83,6 +84,10 @@ pub use account::{AccountCredentials, AccountSession, ProfileUpdate};
 pub use generated::OPENAPI_SCHEMA_VERSION;
 pub use http::RetryConfig;
 pub use nodes::{ProbeResult, StopReason, Topology, TraceHop, TraceResult};
+pub use topology_walk::{
+    normalize_node_url, ProgressCallback, TopologyGraph, WalkEdge, WalkEdgeKind, WalkEvent,
+    WalkFailure, WalkFailureReason, WalkNode, WalkNodeStatus, WalkOptions, WalkTruncation,
+};
 
 use crate::types::identity::{Identity, Profile};
 use crate::types::ids::{GuildId, IdentityId};

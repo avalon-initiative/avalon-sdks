@@ -208,7 +208,7 @@ const MAX_RETRY_AFTER_WAIT: Duration = Duration::from_secs(30);
 
 /// `Retry-After` as integer delta-seconds; the HTTP-date form and anything
 /// non-numeric yield `None`.
-fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
+pub(crate) fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
     let secs = headers
         .get(reqwest::header::RETRY_AFTER)?
         .to_str()

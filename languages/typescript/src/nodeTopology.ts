@@ -5,6 +5,7 @@ export type Topology = components['schemas']['TopologyResponse']
 export type Neighbor = components['schemas']['Neighbor']
 export type KnownPeer = components['schemas']['KnownPeer']
 export type MirrorSource = components['schemas']['MirrorSource']
+export type ObservedLatency = components['schemas']['ObservedLatency']
 export type NetworkCoordinate = components['schemas']['Coordinate']
 export type ProbeResult = components['schemas']['ProbeResponse']
 export type TraceResult = components['schemas']['TraceResponse']
@@ -13,9 +14,9 @@ export type TraceStopReason = components['schemas']['StopReason']
 
 /** `GET /nodes/topology` on `nodeUrl`: that node's own view of its neighbors,
  * known peers and mirror sources. Public, unauthenticated, no credentials sent. */
-export function getTopology(nodeUrl: string, options: { limit?: number } = {}): Promise<Topology> {
+export function getTopology(nodeUrl: string, options: { limit?: number; signal?: AbortSignal } = {}): Promise<Topology> {
   const query = options.limit === undefined ? undefined : { limit: String(options.limit) }
-  return request<Topology>(nodeUrl, '/nodes/topology', { query })
+  return request<Topology>(nodeUrl, '/nodes/topology', { query, signal: options.signal })
 }
 
 /** `POST /nodes/probe`: `nodeUrl` measures its round trip to `target`, which
