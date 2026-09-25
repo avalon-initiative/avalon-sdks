@@ -150,3 +150,16 @@ There is no trust-anchor file in this repo. Each SDK fetches `avalon-protocol`'s
 it can't be fetched, network verification and discovery fail rather than fall
 back to a stale copy. A fork running its own network repoints that constant at
 its own repo.
+
+## Zero-URL connect
+
+`connect()` (`AvalonClient.connect` in Rust/TypeScript, `AvalonClient.ConnectAsync` in C#) resolves a
+target network to a node using only the candidates in the trust-anchor list. Verification comes
+first: a candidate whose signed tree head or target check fails is never chosen, however fast. Of the
+candidates that verify (at most 5), one `GET /nodes/status` each is timed in parallel and the lowest
+round trip wins; a failed or timed-out probe ranks after measured ones, and ties keep list order.
+With exactly one verified candidate no extra request is made. The extra time over
+first-verified selection is bounded: verification continues for at most 2 seconds after the first
+success, then probes run with a 2 second timeout, so at most about 4 seconds in total. The
+`discover` variants (`discoverAmong`/`discover_ranked`/`DiscoverRankedAsync`) also return each
+verified candidate's measured latency. A caller-supplied server URL skips all of this.

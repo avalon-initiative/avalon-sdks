@@ -10,6 +10,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Runtime.Serialization;
@@ -382,6 +383,59 @@ namespace Avalon.Sdk
                 attempts);
     }
 
+    /// <summary>Bounds on the latency ranking applied among verified candidates.</summary>
+    public sealed class DiscoveryRankOptions
+    {
+        /// <summary>At most this many verified candidates are collected and timed.</summary>
+        public int MaxTimed { get; set; } = 5;
+
+        /// <summary>Timeout for each timing request.</summary>
+        public TimeSpan ProbeTimeout { get; set; } = TimeSpan.FromSeconds(2);
+
+        /// <summary>How long verification continues after the first candidate verifies.</summary>
+        public TimeSpan CollectWindow { get; set; } = TimeSpan.FromSeconds(2);
+    }
+
+    /// <summary>A verified candidate and its measured GET /nodes/status round trip; null when
+    /// not measured or the probe failed.</summary>
+    public sealed class VerifiedCandidate
+    {
+        public VerifiedCandidate(string serverUrl, TimeSpan? latency)
+        {
+            ServerUrl = serverUrl;
+            Latency = latency;
+        }
+
+        public string ServerUrl { get; }
+
+        public TimeSpan? Latency { get; }
+    }
+
+    /// <summary>The outcome of <see cref="AvalonClient.DiscoverRankedAsync"/>. Verified lists every
+    /// verified candidate in selection order: measured fastest first, then unmeasured ones in
+    /// candidate order.</summary>
+    public sealed class DiscoveryResult
+    {
+        public DiscoveryResult(string serverUrl, TrustAnchorEntry entry, IReadOnlyList<VerifiedCandidate> verified)
+        {
+            ServerUrl = serverUrl;
+            Entry = entry;
+            Verified = verified;
+        }
+
+        public string ServerUrl { get; }
+
+        public TrustAnchorEntry Entry { get; }
+
+        public IReadOnlyList<VerifiedCandidate> Verified { get; }
+
+        public void Deconstruct(out string serverUrl, out TrustAnchorEntry entry)
+        {
+            serverUrl = ServerUrl;
+            entry = Entry;
+        }
+    }
+
     /// <summary>Everything <see cref="AvalonClient.ConnectAsync"/> needs besides the server URL
     /// itself, since discovery is what supplies that field. Mirrors <see cref="AvalonConfig"/>
     /// minus <see cref="AvalonConfig.ServerUrl"/>.</summary>
@@ -461,19 +515,31 @@ namespace Avalon.Sdk
         }
 
         /// <summary>Resolves <paramref name="target"/> to a live, independently-verified
-        /// (server URL, entry) with no server URL supplied up front — a caller who only knows
-        /// which network they want to join, not which of its nodes to talk to.
-        ///
-        /// Candidates come only from the published trust-anchor list's own ServerUrl/
-        /// SeedNodes fields for every entry matching <paramref name="target"/> — never anywhere
-        /// else, so discovery can't be tricked into contacting an unpinned host. Each candidate
-        /// is fetched and verified exactly like <see cref="VerifyNetworkAsync"/> would; the
-        /// first one whose STH verifies against target's own matching entry wins. Entries are
-        /// tried in the published trust-anchor list's order, and each entry's ServerUrl
-        /// before its SeedNodes, so results are deterministic across runs of the same SDK
-        /// build.</summary>
+        /// (server URL, entry) with no server URL supplied up front. See
+        /// <see cref="DiscoverRankedAsync"/> for how candidates are verified and ranked.</summary>
         public static async Task<(string ServerUrl, TrustAnchorEntry Entry)> DiscoverAsync(
             TargetNetwork target, HttpClient? httpClient = null, CancellationToken ct = default)
+        {
+            var result = await DiscoverRankedAsync(target, httpClient, null, ct).ConfigureAwait(false);
+            return (result.ServerUrl, result.Entry);
+        }
+
+        /// <summary>Like <see cref="DiscoverAsync"/>, also reporting each verified candidate's
+        /// measured latency.
+        ///
+        /// Candidates come only from the published trust-anchor list's own ServerUrl/SeedNodes
+        /// fields for every entry matching <paramref name="target"/>, so discovery can't be
+        /// tricked into contacting an unpinned host. They are verified exactly like
+        /// <see cref="VerifyNetworkAsync"/> would, in list order (each entry's ServerUrl before
+        /// its SeedNodes). Only verified candidates are eligible; up to
+        /// <see cref="DiscoveryRankOptions.MaxTimed"/> (5) are timed with one GET /nodes/status
+        /// each, in parallel, and the lowest round trip wins. A failed or timed-out probe ranks
+        /// after measured ones and ties keep candidate order. With one verified candidate no
+        /// extra request is made. The extra time over first-verified selection is bounded by
+        /// <see cref="DiscoveryRankOptions.CollectWindow"/> (2s of further verification after
+        /// the first success) plus <see cref="DiscoveryRankOptions.ProbeTimeout"/> (2s).</summary>
+        public static async Task<DiscoveryResult> DiscoverRankedAsync(
+            TargetNetwork target, HttpClient? httpClient = null, DiscoveryRankOptions? rank = null, CancellationToken ct = default)
         {
             var http = httpClient ?? new HttpClient();
             IReadOnlyList<TrustAnchorEntry> anchors;
@@ -485,7 +551,7 @@ namespace Avalon.Sdk
             {
                 throw DiscoveryException.AnchorsUnavailable(target.ToString(), ex.Message);
             }
-            return await DiscoverAmongAsync(anchors, target, http, ct).ConfigureAwait(false);
+            return await DiscoverAmongAsync(anchors, target, http, ct, rank).ConfigureAwait(false);
         }
 
         /// <summary>Builds and returns a client with no server URL supplied up front — resolves
@@ -502,18 +568,27 @@ namespace Avalon.Sdk
                 http);
         }
 
-        /// <summary>[`DiscoverAsync`]'s actual logic, taking <paramref name="anchors"/>
-        /// explicitly rather than always fetching the published list — split out
-        /// so tests can supply a mock server's own key instead of needing to forge a signature
-        /// for a real published entry.</summary>
-        internal static async Task<(string, TrustAnchorEntry)> DiscoverAmongAsync(
-            IReadOnlyList<TrustAnchorEntry> anchors, TargetNetwork target, HttpClient http, CancellationToken ct)
+        /// <summary><see cref="DiscoverRankedAsync"/>'s actual logic, taking
+        /// <paramref name="anchors"/> explicitly rather than always fetching the published list,
+        /// so tests can supply a mock server's own key instead of forging a signature for a real
+        /// entry.</summary>
+        internal static async Task<DiscoveryResult> DiscoverAmongAsync(
+            IReadOnlyList<TrustAnchorEntry> anchors, TargetNetwork target, HttpClient http, CancellationToken ct,
+            DiscoveryRankOptions? rank = null)
         {
+            rank ??= new DiscoveryRankOptions();
             var attempts = new List<(string CandidateUrl, string Outcome)>();
+            var verified = new List<(string Url, TrustAnchorEntry Entry)>();
             var triedAny = false;
+            Stopwatch? sinceFirstVerified = null;
+            var stop = false;
 
             foreach (var entry in anchors)
             {
+                if (stop)
+                {
+                    break;
+                }
                 if (!target.Matches(entry))
                 {
                     continue;
@@ -528,12 +603,35 @@ namespace Avalon.Sdk
 
                 foreach (var candidate in candidates)
                 {
+                    if (verified.Count >= rank.MaxTimed)
+                    {
+                        stop = true;
+                        break;
+                    }
                     triedAny = true;
-                    var status = await FetchNetworkTrustStatusAsync(anchors, http, candidate, ct).ConfigureAwait(false);
+                    using var window = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    if (sinceFirstVerified != null)
+                    {
+                        var remaining = rank.CollectWindow - sinceFirstVerified.Elapsed;
+                        if (remaining <= TimeSpan.Zero)
+                        {
+                            stop = true;
+                            break;
+                        }
+                        window.CancelAfter(remaining);
+                    }
+                    var status = await FetchNetworkTrustStatusAsync(anchors, http, candidate, window.Token).ConfigureAwait(false);
+                    if (window.IsCancellationRequested)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        stop = true;
+                        break;
+                    }
                     try
                     {
                         var verifiedEntry = CheckTargetNetwork(status, target);
-                        return (candidate, verifiedEntry);
+                        sinceFirstVerified ??= Stopwatch.StartNew();
+                        verified.Add((candidate, verifiedEntry));
                     }
                     catch (NetworkTargetException ex)
                     {
@@ -542,11 +640,47 @@ namespace Avalon.Sdk
                 }
             }
 
-            if (!triedAny)
+            if (verified.Count == 0)
             {
-                throw DiscoveryException.NoCandidates(target.ToString());
+                if (!triedAny)
+                {
+                    throw DiscoveryException.NoCandidates(target.ToString());
+                }
+                throw DiscoveryException.NoneVerified(target.ToString(), attempts);
             }
-            throw DiscoveryException.NoneVerified(target.ToString(), attempts);
+            if (verified.Count == 1)
+            {
+                var only = verified[0];
+                return new DiscoveryResult(only.Url, only.Entry, new[] { new VerifiedCandidate(only.Url, null) });
+            }
+
+            var latencies = await Task.WhenAll(verified.Select(v => TimeProbeAsync(http, v.Url, rank.ProbeTimeout, ct))).ConfigureAwait(false);
+            var ranked = verified
+                .Select((v, index) => (v.Url, v.Entry, Latency: latencies[index], Index: index))
+                .OrderBy(r => r.Latency.HasValue ? 0 : 1)
+                .ThenBy(r => r.Latency.HasValue ? r.Latency.Value : TimeSpan.Zero)
+                .ThenBy(r => r.Index)
+                .ToList();
+            var best = ranked[0];
+            return new DiscoveryResult(
+                best.Url, best.Entry, ranked.Select(r => new VerifiedCandidate(r.Url, r.Latency)).ToList());
+        }
+
+        private static async Task<TimeSpan?> TimeProbeAsync(HttpClient http, string serverUrl, TimeSpan timeout, CancellationToken ct)
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(timeout);
+            var start = Stopwatch.StartNew();
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, $"{serverUrl}/nodes/status");
+                using var response = await http.SendAsync(request, cts.Token).ConfigureAwait(false);
+                return response.IsSuccessStatusCode ? (TimeSpan?)start.Elapsed : null;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         /// <summary>Fetches GET /ledger/sth/latest from <paramref name="serverUrl"/> and

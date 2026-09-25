@@ -150,6 +150,9 @@ export type {
   TargetNetworkTier,
   NetworkTargetError,
   DiscoveryError,
+  DiscoverOptions,
+  DiscoverResult,
+  VerifiedCandidate,
 } from './network/index.js'
 
 export {
