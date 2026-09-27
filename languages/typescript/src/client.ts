@@ -34,7 +34,9 @@ import { authenticate as authenticateIntegrator, type AuthenticateOptions, type 
 import { getNodeStatus } from './nodeStatus.js'
 import type { NodeStatusResponse } from './types.js'
 import { fetchTrustAnchors, type TrustAnchorEntry } from './network/trustAnchors.js'
-import type { NetworkTrustStatus } from './network/verifyNetwork.js'
+import { fetchNetworkTrustStatus, type NetworkTrustStatus } from './network/verifyNetwork.js'
+import { buildKnownList, type BuildKnownListOptions } from './network/knownList.js'
+import type { KnownWitness } from './types.js'
 import { fetchCosignedNetworkTrustStatus, type CosignedVerifyOptions } from './network/cosignedTrust.js'
 import { discover } from './network/discover.js'
 import type { TargetNetwork } from './network/targetNetwork.js'
@@ -59,8 +61,16 @@ interface SessionStartResponseWire {
 
 type SessionFinishResponseWire = components['schemas']['SessionFinishResponse']
 
+export interface VerifyNetworkOptions extends CosignedVerifyOptions {
+  /** `'auto'` (default) builds the known list from discovery; `'none'` skips witness checks; an array is an explicit list. */
+  witnessPolicy?: 'auto' | 'none' | KnownWitness[]
+  /** Tuning for the automatic list (capacity, anchor slots, prefix cap, random source). */
+  knownListOptions?: Omit<BuildKnownListOptions, 'entry'>
+}
+
 export class AvalonClient {
   private readonly serverUrl: string
+  private readonly knownLists = new Map<string, Promise<KnownWitness[]>>()
 
   constructor(config: AvalonClientConfig) {
     this.serverUrl = config.serverUrl
@@ -246,16 +256,35 @@ export class AvalonClient {
    * `{ kind: 'unreachable' }`, since "is this the real network" is a
    * question with an answer even when that answer is "no signal at all."
    *
-   * With `options.knownWitnesses` of two or more, the head must also be cosigned by a majority of
-   * that caller-supplied list (fails closed as `mismatch`); with none or one it is the plain check. */
-  async verifyNetwork(options: CosignedVerifyOptions = {}): Promise<NetworkTrustStatus> {
+   * Witness policy: `options.knownWitnesses` (or a list given as `witnessPolicy`) is verified as
+   * given; `'none'` is the plain author-signature check; the default `'auto'` builds a known list
+   * once per client from the trust-anchor seeds and verified adverts (never from this server). A
+   * list of fewer than two is the plain check; two or more require a cosigned majority and fail
+   * closed as `mismatch`. */
+  async verifyNetwork(options: VerifyNetworkOptions = {}): Promise<NetworkTrustStatus> {
     let anchors: TrustAnchorEntry[]
     try {
       anchors = await fetchTrustAnchors()
     } catch (err) {
       return { kind: 'unreachable', detail: `trust-anchor list unavailable: ${String(err)}` }
     }
-    return fetchCosignedNetworkTrustStatus(anchors, this.serverUrl, options)
+    const { witnessPolicy, knownListOptions, ...cosigned } = options
+    const policy = cosigned.knownWitnesses ?? witnessPolicy ?? 'auto'
+    if (Array.isArray(policy)) {
+      return fetchCosignedNetworkTrustStatus(anchors, this.serverUrl, { ...cosigned, knownWitnesses: policy })
+    }
+    if (policy === 'none') return fetchNetworkTrustStatus(anchors, this.serverUrl)
+    const plain = await fetchNetworkTrustStatus(anchors, this.serverUrl)
+    if (plain.kind !== 'verified') return plain
+    const networkId = plain.entry.network_id
+    let list = this.knownLists.get(networkId)
+    if (!list) {
+      list = buildKnownList({ ...knownListOptions, entry: plain.entry })
+      this.knownLists.set(networkId, list)
+    }
+    const known = await list
+    if (known.length < 2) return plain
+    return fetchCosignedNetworkTrustStatus(anchors, this.serverUrl, { ...cosigned, knownWitnesses: known })
   }
 
   /** Builds and returns a client with no server URL supplied up front —

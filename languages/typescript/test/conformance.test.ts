@@ -23,7 +23,13 @@ import { revocationSigningBytes } from '../src/integratorAccount.js'
 import { sign, verify } from '../src/crypto/signing.js'
 import { signingMessage } from '../src/network/sthMessage.js'
 import type { CosignedTreeHead, KnownWitness, SignedTreeHeadResponse } from '../src/types.js'
-import { findEquivocatingWitnesses, verifyCosignedTreeHead } from '../src/network/witness.js'
+import {
+  findEquivocatingWitnesses,
+  verifyCosignedTreeHead,
+  verifyWitnessAnnounce,
+  witnessAnnounceMessage,
+} from '../src/network/witness.js'
+import { diversityPrefixForUrl, selectKnownList } from '../src/network/knownListRules.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const VECTORS_DIR = path.resolve(__dirname, '../../../conformance/vectors')
@@ -289,6 +295,37 @@ describe('conformance: witness-cosigned tree head', () => {
           expected.accepted,
         )
       }
+    })
+  }
+})
+
+describe('conformance: witness announce proofs', () => {
+  const doc = loadVector('witness-announce.json')
+  for (const vector of doc.vectors) {
+    it(vector.name, () => {
+      const { baseUrl, witnessKeyId, announcedAt, proofHex, now, messageHex } = vector.input
+      const announced = new Date(announcedAt)
+      if (/^[0-9a-f]{64}$/.test(witnessKeyId)) {
+        expect(bytesToHex(witnessAnnounceMessage(baseUrl, witnessKeyId, announced))).toBe(messageHex)
+      }
+      expect(verifyWitnessAnnounce(baseUrl, witnessKeyId, announced, proofHex, new Date(now))).toBe(
+        vector.expected.accepted,
+      )
+    })
+  }
+})
+
+describe('conformance: known-list selection', () => {
+  const doc = loadVector('known-list-selection.json')
+  for (const vector of doc.prefixVectors) {
+    it(`prefix: ${vector.name}`, () => {
+      expect(diversityPrefixForUrl(vector.input.baseUrl)).toBe(vector.expected.prefix)
+    })
+  }
+  for (const vector of doc.selectionVectors) {
+    it(`selection: ${vector.name}`, () => {
+      const { candidates, capacity, anchorCapacity, maxPerPrefix } = vector.input
+      expect(selectKnownList(candidates, capacity, anchorCapacity, maxPerPrefix)).toEqual(vector.expected)
     })
   }
 })
