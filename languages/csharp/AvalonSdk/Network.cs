@@ -121,7 +121,7 @@ namespace Avalon.Sdk
     }
 
     /// <summary>GET /ledger/sth/latest's wire shape.</summary>
-    internal sealed class SignedTreeHeadWire
+    public class SignedTreeHeadWire
     {
         [JsonPropertyName("tree_size")]
         public long TreeSize { get; set; }
@@ -467,8 +467,17 @@ namespace Avalon.Sdk
         ///
         /// Never throws: an unreachable/unparseable server is itself
         /// <see cref="NetworkTrustStatusKind.Unreachable"/>, since "is this the real network" is
-        /// a question with an answer even when that answer is "no signal at all."</summary>
-        public async Task<NetworkTrustStatus> VerifyNetworkAsync(CancellationToken ct = default)
+        /// a question with an answer even when that answer is "no signal at all."
+        ///
+        /// With <paramref name="knownWitnesses"/> of two or more entries the head must also be
+        /// cosigned by a majority of them within <paramref name="freshnessWindow"/> (default 600
+        /// seconds); a head that is not is <see cref="NetworkTrustStatusKind.Mismatch"/>. With
+        /// none or one it behaves as without. The list is the caller's own and is never taken
+        /// from the server being checked.</summary>
+        public async Task<NetworkTrustStatus> VerifyNetworkAsync(
+            IReadOnlyList<KnownWitness>? knownWitnesses = null,
+            TimeSpan? freshnessWindow = null,
+            CancellationToken ct = default)
         {
             IReadOnlyList<TrustAnchorEntry> anchors;
             try
@@ -479,7 +488,32 @@ namespace Avalon.Sdk
             {
                 return NetworkTrustStatus.Unreachable($"trust-anchor list unavailable: {ex.Message}");
             }
-            return await FetchNetworkTrustStatusAsync(anchors, _http, _config.ServerUrl, ct).ConfigureAwait(false);
+            return await FetchNetworkTrustStatusAsync(
+                anchors, _http, _config.ServerUrl, ct, knownWitnesses, freshnessWindow).ConfigureAwait(false);
+        }
+
+        /// <summary>GET /ledger/sth/latest, or /ledger/sth/{treeSize} when given, with
+        /// <c>?witnesses=1</c> so the head comes back with its cosignatures. Nothing here
+        /// verifies the result; see <see cref="WitnessCosigning.VerifyCosignedTreeHead"/>.</summary>
+        public async Task<CosignedTreeHead> GetCosignedTreeHeadAsync(
+            string? shardId = null, long? treeSize = null, CancellationToken ct = default)
+        {
+            var wire = await FetchCosignedWireAsync(_http, _config.ServerUrl, shardId, treeSize, ct).ConfigureAwait(false);
+            return wire.ToCosignedTreeHead();
+        }
+
+        private static async Task<CosignedTreeHeadWire> FetchCosignedWireAsync(
+            HttpClient http, string serverUrl, string? shardId, long? treeSize, CancellationToken ct)
+        {
+            var path = treeSize.HasValue ? $"/ledger/sth/{treeSize.Value}" : "/ledger/sth/latest";
+            var query = shardId == null ? "?witnesses=1" : $"?shard_id={Uri.EscapeDataString(shardId)}&witnesses=1";
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{serverUrl}{path}{query}");
+            using var response = await http.SendAsync(request, ct).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw await Session.ServerErrorAsync(response).ConfigureAwait(false);
+            }
+            return await Session.ReadJsonAsync<CosignedTreeHeadWire>(response, ct).ConfigureAwait(false);
         }
 
         /// <summary>The check a declared <see cref="TargetNetwork"/> exists for: it only ever
@@ -689,12 +723,15 @@ namespace Avalon.Sdk
         /// <see cref="DiscoverAmongAsync"/> (candidate servers with no known-good one yet). Never
         /// throws: any failure becomes <see cref="NetworkTrustStatusKind.Unreachable"/>.</summary>
         internal static async Task<NetworkTrustStatus> FetchNetworkTrustStatusAsync(
-            IReadOnlyList<TrustAnchorEntry> anchors, HttpClient http, string serverUrl, CancellationToken ct)
+            IReadOnlyList<TrustAnchorEntry> anchors, HttpClient http, string serverUrl, CancellationToken ct,
+            IReadOnlyList<KnownWitness>? knownWitnesses = null, TimeSpan? freshnessWindow = null)
         {
+            var requireCosigned = knownWitnesses != null && knownWitnesses.Count >= 2;
             HttpResponseMessage response;
             try
             {
-                using var request = new HttpRequestMessage(HttpMethod.Get, $"{serverUrl}/ledger/sth/latest");
+                using var request = new HttpRequestMessage(
+                    HttpMethod.Get, $"{serverUrl}/ledger/sth/latest{(requireCosigned ? "?witnesses=1" : "")}");
                 response = await http.SendAsync(request, ct).ConfigureAwait(false);
             }
             catch (Exception ex)
@@ -709,17 +746,28 @@ namespace Avalon.Sdk
                     return NetworkTrustStatus.Unreachable($"server returned {response.StatusCode}");
                 }
 
-                SignedTreeHeadWire wire;
+                CosignedTreeHeadWire wire;
                 try
                 {
-                    wire = await Session.ReadJsonAsync<SignedTreeHeadWire>(response, ct).ConfigureAwait(false);
+                    wire = await Session.ReadJsonAsync<CosignedTreeHeadWire>(response, ct).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
                     return NetworkTrustStatus.Unreachable(ex.Message);
                 }
 
-                return EvaluateNetworkTrust(anchors, wire);
+                var status = EvaluateNetworkTrust(anchors, wire);
+                if (requireCosigned && status.Kind == NetworkTrustStatusKind.Verified)
+                {
+                    var now = DateTimeOffset.UtcNow;
+                    var cutoff = now - (freshnessWindow ?? WitnessCosigning.DefaultFreshnessWindow);
+                    if (!WitnessCosigning.VerifyCosignedTreeHead(
+                            status.Entry!.VerifyKey, wire.ToCosignedTreeHead(), knownWitnesses!, cutoff, now))
+                    {
+                        return NetworkTrustStatus.Mismatch(status.Entry, wire.NetworkId);
+                    }
+                }
+                return status;
             }
         }
 
