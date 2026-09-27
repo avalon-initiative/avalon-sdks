@@ -22,7 +22,8 @@ import {
 import { revocationSigningBytes } from '../src/integratorAccount.js'
 import { sign, verify } from '../src/crypto/signing.js'
 import { signingMessage } from '../src/network/sthMessage.js'
-import type { SignedTreeHeadResponse } from '../src/types.js'
+import type { CosignedTreeHead, KnownWitness, SignedTreeHeadResponse } from '../src/types.js'
+import { findEquivocatingWitnesses, verifyCosignedTreeHead } from '../src/network/witness.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const VECTORS_DIR = path.resolve(__dirname, '../../../conformance/vectors')
@@ -231,6 +232,63 @@ describe('conformance: Signed Tree Head signing', () => {
 
       expect(bytesToHex(bytes)).toBe(expected.signingBytesHex)
       expect(verify(publicKey, bytes, hexToBytes(expected.signatureHex))).toBe(true)
+    })
+  }
+})
+
+describe('conformance: witness-cosigned tree head', () => {
+  const doc = loadVector('witness-cosigned-tree-head.json')
+  const keys: Record<string, string> = doc.witnessVerifyingKeysHex
+  const iso = (seconds: number) => new Date(seconds * 1000).toISOString()
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function toHead(raw: any): CosignedTreeHead {
+    const sth: SignedTreeHeadResponse = {
+      tree_size: raw.sth.treeSize,
+      root_hash: raw.sth.rootHashHex,
+      network_id: doc.networkId,
+      signing_key_id: 'author',
+      signature: raw.sth.signatureHex,
+      created_at: iso(raw.sth.createdAtUnixSeconds),
+      protocol_version: 'v1',
+    }
+    return {
+      sth,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      cosignatures: raw.cosignatures.map((c: any) => ({
+        tree_size: sth.tree_size,
+        root_hash: sth.root_hash,
+        network_id: sth.network_id,
+        author_created_at: sth.created_at,
+        witness_key_id: c.witnessKeyId,
+        observed_at: iso(c.observedAtUnixSeconds),
+        signature: c.signatureHex,
+      })),
+    }
+  }
+
+  const known = (ids: string[]): KnownWitness[] => ids.map((id) => ({ witnessKeyId: id, key: keys[id] }))
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const vector of doc.vectors as any[]) {
+    it(`matches the shared vector: ${vector.name}`, () => {
+      const { input, expected } = vector
+      const cutoff = new Date(input.freshnessCutoffUnixSeconds * 1000)
+      const now = new Date(input.nowUnixSeconds * 1000)
+      const list = known(input.knownList)
+      if (input.headA) {
+        const a = toHead(input.headA)
+        const b = toHead(input.headB)
+        expect(verifyCosignedTreeHead(doc.authorVerifyingKeyHex, a, list, cutoff, now)).toBe(expected.headAAccepted)
+        expect(verifyCosignedTreeHead(doc.authorVerifyingKeyHex, b, list, cutoff, now)).toBe(expected.headBAccepted)
+        expect(findEquivocatingWitnesses(doc.authorVerifyingKeyHex, list, cutoff, now, a, b)).toEqual(
+          expected.equivocatingWitnesses,
+        )
+      } else {
+        expect(verifyCosignedTreeHead(doc.authorVerifyingKeyHex, toHead(input), list, cutoff, now)).toBe(
+          expected.accepted,
+        )
+      }
     })
   }
 })

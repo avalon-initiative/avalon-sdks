@@ -165,7 +165,32 @@ it can't be fetched, network verification and discovery fail rather than fall
 back to a stale copy. A fork running its own network repoints that constant at
 its own repo.
 
-## Witness-cosigned tree heads
+### Witness-cosigned tree heads (TypeScript)
+
+The TypeScript SDK can require that a tree head is also cosigned by a majority of a known
+list of witnesses the caller supplies (`verifyCosignedTreeHead`, or the `knownWitnesses` option of
+`verifyNetwork`). The list is never taken from the node being checked, cosignatures must be
+fresh (default 600 seconds), and a list of zero or one witnesses is the plain trust-anchor check.
+Building the list from discovery is not implemented. Shared vectors live in
+`conformance/vectors/witness-cosigned-tree-head.json`.
+
+### Witness-cosigned tree heads (C#)
+
+A verifier can require that the tree head it trusts was also cosigned by a majority of
+witnesses it chose itself. In C#, `AvalonClient.GetCosignedTreeHeadAsync(shardId, treeSize)`
+fetches a head with its cosignatures (`?witnesses=1`), `WitnessCosigning.VerifyCosignedTreeHead`
+and `FindEquivocatingWitnesses` check heads against a known list of `KnownWitness` entries, and
+`VerifyNetworkAsync(knownWitnesses, freshnessWindow)` applies the same check to network
+verification. With two or more known witnesses a head is accepted only when the author signature
+verifies and `n/2 + 1` distinct listed witnesses cosigned it within the freshness window
+(default 600 seconds); a head that falls short is reported as `Mismatch`. With none or one, verification behaves as
+before. The known list is always supplied by the caller and is never taken from the node being
+checked. Building the list automatically from discovery is not implemented yet. This is
+resistance to a single compromised author key, not proof: the guarantee is only as strong as the
+independence of the witnesses on the list. Shared vectors live in
+`conformance/vectors/witness-cosigned-tree-head.json`.
+
+### Witness-cosigned tree heads (Rust)
 
 An author-signed tree head can also be checked against a witness list the caller supplies. With a
 known list of two or more witnesses, a head is accepted only when the author signature verifies and a
