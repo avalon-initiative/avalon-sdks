@@ -445,3 +445,80 @@ fn bip39_mnemonic_derivation_is_a_known_rust_sdk_gap() {
         .expect("notSupported.rust must explain why rust is missing");
     println!("SKIP conformance/vectors/bip39-mnemonic.json for rust: {gap}");
 }
+
+#[test]
+fn witness_announce_matches_shared_vectors() {
+    use avalon_sdk::witness::{verify_witness_announce, witness_announce_message};
+    let doc = load("witness-announce.json");
+    let parse =
+        |s: &str| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).unwrap();
+    for vector in doc["vectors"].as_array().unwrap() {
+        let name = vector["name"].as_str().unwrap();
+        let input = &vector["input"];
+        let base_url = input["baseUrl"].as_str().unwrap();
+        let key_id = input["witnessKeyId"].as_str().unwrap();
+        let announced_at = parse(input["announcedAt"].as_str().unwrap());
+        if let Some(message_hex) = input.get("messageHex").and_then(Value::as_str) {
+            assert_eq!(
+                hex::encode(witness_announce_message(base_url, key_id, announced_at)),
+                message_hex,
+                "[{name}] message bytes"
+            );
+        }
+        assert_eq!(
+            verify_witness_announce(
+                base_url,
+                key_id,
+                announced_at,
+                input["proofHex"].as_str().unwrap(),
+                parse(input["now"].as_str().unwrap()),
+            ),
+            vector["expected"]["accepted"].as_bool().unwrap(),
+            "[{name}]"
+        );
+    }
+}
+
+#[test]
+fn known_list_selection_matches_shared_vectors() {
+    use avalon_sdk::known_list::{diversity_prefix_for_url, select_known_list, Candidate};
+    let doc = load("known-list-selection.json");
+    for vector in doc["prefixVectors"].as_array().unwrap() {
+        let name = vector["name"].as_str().unwrap();
+        assert_eq!(
+            diversity_prefix_for_url(vector["input"]["baseUrl"].as_str().unwrap()),
+            vector["expected"]["prefix"].as_str().map(str::to_string),
+            "[{name}]"
+        );
+    }
+    for vector in doc["selectionVectors"].as_array().unwrap() {
+        let name = vector["name"].as_str().unwrap();
+        let input = &vector["input"];
+        let candidates: Vec<Candidate> = input["candidates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| Candidate {
+                witness_key_id: c["witnessKeyId"].as_str().unwrap().to_string(),
+                base_url: c["baseUrl"].as_str().unwrap().to_string(),
+                is_anchor: c["isAnchor"].as_bool().unwrap(),
+            })
+            .collect();
+        let want: Vec<String> = vector["expected"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            select_known_list(
+                &candidates,
+                input["capacity"].as_u64().unwrap() as usize,
+                input["anchorCapacity"].as_u64().unwrap() as usize,
+                input["maxPerPrefix"].as_u64().unwrap() as usize,
+            ),
+            want,
+            "[{name}]"
+        );
+    }
+}

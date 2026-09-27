@@ -63,6 +63,7 @@ pub mod guilds;
 mod http;
 pub mod integrators;
 pub mod issuer_registration;
+pub mod known_list;
 pub mod managed_hosting;
 pub mod network;
 pub mod nodes;
@@ -266,6 +267,8 @@ pub struct AvalonConfig {
 pub struct AvalonClient {
     config: AvalonConfig,
     http: reqwest::Client,
+    witness_policy: crate::known_list::WitnessPolicy,
+    auto_known_list: tokio::sync::OnceCell<Vec<crate::known_list::KnownWitness>>,
 }
 
 #[derive(Deserialize)]
@@ -294,7 +297,16 @@ impl AvalonClient {
         Self {
             config,
             http: reqwest::Client::new(),
+            witness_policy: crate::known_list::WitnessPolicy::default(),
+            auto_known_list: tokio::sync::OnceCell::new(),
         }
+    }
+
+    /// Sets the witness policy [`AvalonClient::verify_network`] applies (default
+    /// [`crate::known_list::WitnessPolicy::Auto`]).
+    pub fn with_witness_policy(mut self, policy: crate::known_list::WitnessPolicy) -> Self {
+        self.witness_policy = policy;
+        self
     }
 
     /// Exchanges an identity's existing Avalon session token (obtained via
