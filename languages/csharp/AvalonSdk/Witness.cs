@@ -276,7 +276,7 @@ namespace Avalon.Sdk
                 if (cosig.TreeSize != head.Sth.TreeSize
                     || cosig.RootHash != head.Sth.RootHash
                     || cosig.NetworkId != head.Sth.NetworkId
-                    || cosig.AuthorCreatedAt != head.Sth.CreatedAt)
+                    || cosig.AuthorCreatedAt.ToUnixTimeSeconds() != head.Sth.CreatedAt.ToUnixTimeSeconds())
                 {
                     continue;
                 }
