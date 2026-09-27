@@ -10,7 +10,7 @@ and `FindEquivocatingWitnesses` check heads against a known list of `KnownWitnes
 verification. With two or more known witnesses a head is accepted only when the author signature
 verifies and `n/2 + 1` distinct listed witnesses cosigned it within the freshness window
 (default 600 seconds); a head that falls short is reported as `Mismatch`. With none or one, verification behaves as
-before. The known list is always supplied by the caller and is never taken from the node being
+before. The known list is the caller's own (or built by the SDK, see below) and is never taken from the node being
 checked. This is
 resistance to a single compromised author key, not proof: the guarantee is only as strong as the
 independence of the witnesses on the list. Shared vectors:
