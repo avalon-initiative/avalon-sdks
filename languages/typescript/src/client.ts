@@ -34,7 +34,8 @@ import { authenticate as authenticateIntegrator, type AuthenticateOptions, type 
 import { getNodeStatus } from './nodeStatus.js'
 import type { NodeStatusResponse } from './types.js'
 import { fetchTrustAnchors, type TrustAnchorEntry } from './network/trustAnchors.js'
-import { fetchNetworkTrustStatus, type NetworkTrustStatus } from './network/verifyNetwork.js'
+import type { NetworkTrustStatus } from './network/verifyNetwork.js'
+import { fetchCosignedNetworkTrustStatus, type CosignedVerifyOptions } from './network/cosignedTrust.js'
 import { discover } from './network/discover.js'
 import type { TargetNetwork } from './network/targetNetwork.js'
 
@@ -243,15 +244,18 @@ export class AvalonClient {
    *
    * Never throws: an unreachable/unparseable server resolves to
    * `{ kind: 'unreachable' }`, since "is this the real network" is a
-   * question with an answer even when that answer is "no signal at all." */
-  async verifyNetwork(): Promise<NetworkTrustStatus> {
+   * question with an answer even when that answer is "no signal at all."
+   *
+   * With `options.knownWitnesses` of two or more, the head must also be cosigned by a majority of
+   * that caller-supplied list (fails closed as `mismatch`); with none or one it is the plain check. */
+  async verifyNetwork(options: CosignedVerifyOptions = {}): Promise<NetworkTrustStatus> {
     let anchors: TrustAnchorEntry[]
     try {
       anchors = await fetchTrustAnchors()
     } catch (err) {
       return { kind: 'unreachable', detail: `trust-anchor list unavailable: ${String(err)}` }
     }
-    return fetchNetworkTrustStatus(anchors, this.serverUrl)
+    return fetchCosignedNetworkTrustStatus(anchors, this.serverUrl, options)
   }
 
   /** Builds and returns a client with no server URL supplied up front —

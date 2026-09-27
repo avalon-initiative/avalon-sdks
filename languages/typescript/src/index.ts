@@ -88,14 +88,25 @@ export type {
   BulkClaimInput,
 } from './integratorSession.js'
 
-export type { Identity, Profile, Genre, SignedTreeHeadResponse, NodeStatusResponse } from './types.js'
+export type {
+  Identity,
+  Profile,
+  Genre,
+  SignedTreeHeadResponse,
+  NodeStatusResponse,
+  WitnessCosignature,
+  WitnessCosignatureWire,
+  CosignedTreeHead,
+  CosignedTreeHeadResponse,
+  KnownWitness,
+} from './types.js'
 
 // Issue #735: the info.version of the openapi.json schema this build's
 // generated types were built from, so a caller can report/log which
 // schema version this SDK build targets.
 export { OPENAPI_SCHEMA_VERSION } from './generated.js'
 
-export { getLatestSth } from './ledger.js'
+export { getLatestSth, getCosignedTreeHead } from './ledger.js'
 export { getNodeStatus } from './nodeStatus.js'
 export { getTopology, probeNode, traceRoute } from './nodeTopology.js'
 export { resolveName, listShardNames, submitNameClaim } from './shardNames.js'
@@ -144,6 +155,14 @@ export {
   discover,
   discoverAmong,
   DiscoveryFailedError,
+  witnessSigningMessage,
+  verifyWitnessCosignature,
+  majorityThreshold,
+  isCosignedByMajority,
+  verifyCosignedTreeHead,
+  findEquivocatingWitnesses,
+  fetchCosignedNetworkTrustStatus,
+  DEFAULT_COSIGN_FRESHNESS_SECONDS,
 } from './network/index.js'
 export type {
   TrustAnchorEntry,
@@ -155,6 +174,7 @@ export type {
   DiscoverOptions,
   DiscoverResult,
   VerifiedCandidate,
+  CosignedVerifyOptions,
 } from './network/index.js'
 
 export {

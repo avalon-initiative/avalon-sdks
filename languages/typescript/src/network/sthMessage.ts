@@ -7,7 +7,7 @@ import type { SignedTreeHeadResponse } from '../types.js'
 const DOMAIN_TAG = new TextEncoder().encode('avalon-settlement-sth-v1')
 
 /** Big-endian two's-complement 8-byte encoding of a (possibly negative) i64. */
-function i64BigEndian(value: bigint): Uint8Array {
+export function i64BigEndian(value: bigint): Uint8Array {
   const bytes = new Uint8Array(8)
   // Two's complement via BigInt's own wraparound at 2^64, matching Rust's
   // `i64::to_be_bytes` bit pattern for any value in i64's range.
@@ -20,7 +20,7 @@ function i64BigEndian(value: bigint): Uint8Array {
 }
 
 /** Big-endian 4-byte encoding of a u32 length. */
-function u32BigEndian(value: number): Uint8Array {
+export function u32BigEndian(value: number): Uint8Array {
   const bytes = new Uint8Array(4)
   new DataView(bytes.buffer).setUint32(0, value, false)
   return bytes
