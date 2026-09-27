@@ -174,6 +174,10 @@ fresh (default 600 seconds), and a list of zero or one witnesses is the plain tr
 Building the list from discovery is not implemented. Shared vectors live in
 `conformance/vectors/witness-cosigned-tree-head.json`.
 
+### Automatic known list (TypeScript)
+
+`verifyNetwork()` builds its witness known list from discovery by default and requires a cosigned majority when the list has two or more witnesses. The seeds in the trust-anchor entry are queried for `/nodes/discover`, adverts are proof-checked, candidates are probed for liveness and selected with a diversity-prefix rule (at most 2 per prefix, 2 anchor slots, 5 total). Pass `witnessPolicy: 'none'` to keep the plain author-signature check, or supply your own list. The prefix comes from URL text only, so many domains pointing at one machine look diverse; the seeds are the floor. A failed cosigned check reports the same `mismatch` status as before. Vectors: `conformance/vectors/witness-announce.json`, `known-list-selection.json`.
+
 ### Witness-cosigned tree heads (C#)
 
 A verifier can require that the tree head it trusts was also cosigned by a majority of

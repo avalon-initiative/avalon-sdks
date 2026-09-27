@@ -22,3 +22,14 @@ export {
 } from './witness.js'
 export { fetchCosignedNetworkTrustStatus, DEFAULT_COSIGN_FRESHNESS_SECONDS } from './cosignedTrust.js'
 export type { CosignedVerifyOptions } from './cosignedTrust.js'
+export { witnessAnnounceMessage, verifyWitnessAnnounce } from './witness.js'
+export {
+  diversityPrefixForUrl,
+  selectKnownList,
+  DEFAULT_KNOWN_LIST_CAPACITY,
+  DEFAULT_KNOWN_LIST_ANCHOR_CAPACITY,
+  DEFAULT_KNOWN_LIST_MAX_PER_PREFIX,
+} from './knownListRules.js'
+export type { KnownListCandidate } from './knownListRules.js'
+export { buildKnownList, gatherCandidates, crossCheckHead } from './knownList.js'
+export type { BuildKnownListOptions, CrossCheckOptions, DiscoveredPeer, EquivocationEvidence } from './knownList.js'

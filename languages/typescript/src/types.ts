@@ -132,6 +132,8 @@ export interface KnownWitness {
   witnessKeyId: string
   // Lowercase hex Ed25519 public key (32 bytes).
   key: string
+  /** The address the witness advertised, set for witnesses found through discovery. */
+  baseUrl?: string
 }
 
 /** `GET /nodes/status`'s wire response — matches
