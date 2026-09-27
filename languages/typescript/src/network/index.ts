@@ -11,3 +11,14 @@ export type { TargetNetwork, TargetNetworkTier, NetworkTargetError } from './tar
 
 export { discover, discoverAmong, DiscoveryFailedError } from './discover.js'
 export type { DiscoveryError, DiscoverOptions, DiscoverResult, VerifiedCandidate } from './discover.js'
+
+export {
+  witnessSigningMessage,
+  verifyWitnessCosignature,
+  majorityThreshold,
+  isCosignedByMajority,
+  verifyCosignedTreeHead,
+  findEquivocatingWitnesses,
+} from './witness.js'
+export { fetchCosignedNetworkTrustStatus, DEFAULT_COSIGN_FRESHNESS_SECONDS } from './cosignedTrust.js'
+export type { CosignedVerifyOptions } from './cosignedTrust.js'

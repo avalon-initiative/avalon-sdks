@@ -165,6 +165,15 @@ it can't be fetched, network verification and discovery fail rather than fall
 back to a stale copy. A fork running its own network repoints that constant at
 its own repo.
 
+### Witness-cosigned tree heads (TypeScript)
+
+The TypeScript SDK can require that a tree head is also cosigned by a majority of a known
+list of witnesses the caller supplies (`verifyCosignedTreeHead`, or the `knownWitnesses` option of
+`verifyNetwork`). The list is never taken from the node being checked, cosignatures must be
+fresh (default 600 seconds), and a list of zero or one witnesses is the plain trust-anchor check.
+Building the list from discovery is not implemented. Shared vectors live in
+`conformance/vectors/witness-cosigned-tree-head.json`.
+
 ## Zero-URL connect
 
 `connect()` (`AvalonClient.connect` in Rust/TypeScript, `AvalonClient.ConnectAsync` in C#) resolves a
