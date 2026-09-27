@@ -76,6 +76,7 @@ pub mod submission;
 pub mod sync_journal;
 pub mod topology_walk;
 pub mod types;
+pub mod witness;
 
 pub use account::device_login::AccountDeviceLogin;
 pub use account::{AccountCredentials, AccountSession, ProfileUpdate};

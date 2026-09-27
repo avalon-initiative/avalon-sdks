@@ -289,6 +289,108 @@ fn signed_tree_head_signing_matches_shared_vectors() {
 }
 
 #[test]
+fn witness_cosigned_tree_head_matches_shared_vectors() {
+    use avalon_sdk::sth::SignedTreeHead;
+    use avalon_sdk::witness::{
+        find_equivocating_witnesses, verify_cosigned_tree_head, CosignedTreeHead,
+        WitnessCosignature,
+    };
+    let doc = load("witness-cosigned-tree-head.json");
+    if !supported_in(&doc, "rust") {
+        println!("skipping witness-cosigned-tree-head.json: rust not in supportedIn");
+        return;
+    }
+    let ts = |secs: i64| OffsetDateTime::from_unix_timestamp(secs).unwrap();
+    let key_of = |hex_key: &str| {
+        let bytes: [u8; 32] = hex::decode(hex_key).unwrap().try_into().unwrap();
+        VerifyingKey::from_bytes(&bytes).unwrap()
+    };
+    let keys = doc["witnessVerifyingKeysHex"].as_object().unwrap();
+    let author_key = key_of(doc["authorVerifyingKeyHex"].as_str().unwrap());
+    let network_id = doc["networkId"].as_str().unwrap();
+    let head_of = |v: &Value| {
+        let sth = &v["sth"];
+        let tree_size = sth["treeSize"].as_i64().unwrap();
+        let root = sth["rootHashHex"].as_str().unwrap();
+        let created = ts(sth["createdAtUnixSeconds"].as_i64().unwrap());
+        CosignedTreeHead {
+            sth: SignedTreeHead {
+                tree_size,
+                root_hash: root.to_string(),
+                network_id: network_id.to_string(),
+                signing_key_id: "author".to_string(),
+                signature: sth["signatureHex"].as_str().unwrap().to_string(),
+                created_at: created,
+            },
+            cosignatures: v["cosignatures"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|c| WitnessCosignature {
+                    tree_size,
+                    root_hash: root.to_string(),
+                    network_id: network_id.to_string(),
+                    author_created_at: created,
+                    witness_key_id: c["witnessKeyId"].as_str().unwrap().to_string(),
+                    observed_at: ts(c["observedAtUnixSeconds"].as_i64().unwrap()),
+                    signature: c["signatureHex"].as_str().unwrap().to_string(),
+                })
+                .collect(),
+        }
+    };
+    // The vector names witnesses by label; the label is the cosignature's key id.
+    let known_of = |input: &Value| -> Vec<(String, VerifyingKey)> {
+        input["knownList"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|n| {
+                let name = n.as_str().unwrap();
+                (name.to_string(), key_of(keys[name].as_str().unwrap()))
+            })
+            .collect()
+    };
+    for vector in doc["vectors"].as_array().unwrap() {
+        let name = vector["name"].as_str().unwrap();
+        let input = &vector["input"];
+        let known = known_of(input);
+        let cutoff = ts(input["freshnessCutoffUnixSeconds"].as_i64().unwrap());
+        let now = ts(input["nowUnixSeconds"].as_i64().unwrap());
+        let expected = &vector["expected"];
+        if input.get("headA").is_some() {
+            let (a, b) = (head_of(&input["headA"]), head_of(&input["headB"]));
+            assert_eq!(
+                verify_cosigned_tree_head(&author_key, &a, &known, cutoff, now),
+                expected["headAAccepted"].as_bool().unwrap(),
+                "[{name}] head A"
+            );
+            assert_eq!(
+                verify_cosigned_tree_head(&author_key, &b, &known, cutoff, now),
+                expected["headBAccepted"].as_bool().unwrap(),
+                "[{name}] head B"
+            );
+            let want: Vec<String> = expected["equivocatingWitnesses"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|w| w.as_str().unwrap().to_string())
+                .collect();
+            assert_eq!(
+                find_equivocating_witnesses(&author_key, &known, cutoff, now, &a, &b),
+                want,
+                "[{name}] equivocating witnesses"
+            );
+        } else {
+            assert_eq!(
+                verify_cosigned_tree_head(&author_key, &head_of(input), &known, cutoff, now),
+                expected["accepted"].as_bool().unwrap(),
+                "[{name}]"
+            );
+        }
+    }
+}
+
+#[test]
 fn session_continuation_token_signing_is_a_known_rust_sdk_gap() {
     let doc = load("session-continuation.json");
     if supported_in(&doc, "rust") {
