@@ -136,3 +136,36 @@ export function findEquivocatingWitnesses(
   const b = validFreshWitnessIds(authorKeyHex, headB, knownList, freshnessCutoff, now)
   return [...a].filter((id) => b.has(id)).sort()
 }
+
+/** How far `announced_at` may differ from the verifier's clock for an advert proof to be accepted. */
+export const WITNESS_ANNOUNCE_MAX_SKEW_MS = 3_600_000
+
+/** The exact bytes a witness announce proof covers; `announcedAt` is floored to unix seconds. */
+export function witnessAnnounceMessage(baseUrl: string, witnessKeyId: string, announcedAt: Date): Uint8Array {
+  return concatBytes(
+    new TextEncoder().encode('avalon-witness-announce-v1'),
+    lengthPrefixed(baseUrl),
+    lengthPrefixed(witnessKeyId),
+    i64BigEndian(BigInt(Math.floor(announcedAt.getTime() / 1000))),
+  )
+}
+
+/** Verifies a witness advert proof for exactly this address and time. False for any malformed input; never throws. */
+export function verifyWitnessAnnounce(
+  baseUrl: string,
+  witnessKeyId: string,
+  announcedAt: Date,
+  proofHex: string,
+  now: Date,
+): boolean {
+  try {
+    const skew = Math.abs(now.getTime() - announcedAt.getTime())
+    if (Number.isNaN(skew) || skew > WITNESS_ANNOUNCE_MAX_SKEW_MS) return false
+    const key = hexToBytes(witnessKeyId)
+    const proof = hexToBytes(proofHex)
+    if (!key || key.length !== 32 || !proof || proof.length !== 64) return false
+    return ed25519.verify(proof, witnessAnnounceMessage(baseUrl, witnessKeyId, announcedAt), key)
+  } catch {
+    return false
+  }
+}
