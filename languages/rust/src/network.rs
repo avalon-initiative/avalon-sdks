@@ -411,6 +411,103 @@ impl AvalonClient {
     }
 }
 
+impl AvalonClient {
+    /// Fetches a tree head with its witness cosignatures (`?witnesses=1`) from this client's
+    /// server; `shard_id` and `tree_size` select a shard and a historical head.
+    pub async fn fetch_cosigned_tree_head(
+        &self,
+        shard_id: Option<&str>,
+        tree_size: Option<i64>,
+    ) -> Result<crate::witness::CosignedTreeHead, SdkError> {
+        let path = match tree_size {
+            Some(n) => format!("/ledger/sth/{n}"),
+            None => "/ledger/sth/latest".to_string(),
+        };
+        let mut query = vec![("witnesses", "1")];
+        if let Some(shard) = shard_id {
+            query.push(("shard_id", shard));
+        }
+        let url = format!("{}{path}", self.config.server_url);
+        let response = crate::http::send(&self.http, &self.config.retry, true, |c| {
+            c.get(&url).query(&query)
+        })
+        .await?;
+        if !response.status().is_success() {
+            return Err(crate::http::map_error_response(response).await);
+        }
+        let wire: crate::witness::CosignedTreeHeadWire = response
+            .json()
+            .await
+            .map_err(|e| SdkError::Protocol(e.to_string()))?;
+        Ok(wire.into())
+    }
+
+    /// Like [`AvalonClient::verify_network`], but with a caller-supplied known witness list. With
+    /// two or more witnesses the head must also be cosigned by a majority of the list; a head
+    /// that is not reports [`NetworkTrustStatus::Mismatch`]. With fewer it behaves exactly like
+    /// `verify_network`. `freshness` defaults to 600 seconds.
+    pub async fn verify_network_with_witnesses(
+        &self,
+        known_list: &[(String, VerifyingKey)],
+        freshness: Option<std::time::Duration>,
+    ) -> NetworkTrustStatus {
+        self.verify_network_with_witnesses_at(TRUST_ANCHORS_URL, known_list, freshness)
+            .await
+    }
+
+    async fn verify_network_with_witnesses_at(
+        &self,
+        anchors_url: &str,
+        known_list: &[(String, VerifyingKey)],
+        freshness: Option<std::time::Duration>,
+    ) -> NetworkTrustStatus {
+        if known_list.len() < 2 {
+            return self.verify_network_with(anchors_url).await;
+        }
+        let anchors = match fetch_trust_anchors(&self.http, anchors_url).await {
+            Ok(anchors) => anchors,
+            Err(err) => {
+                return NetworkTrustStatus::Unreachable {
+                    detail: format!("trust-anchor list unavailable: {err}"),
+                }
+            }
+        };
+        let head = match self.fetch_cosigned_tree_head(None, None).await {
+            Ok(head) => head,
+            Err(err) => {
+                return NetworkTrustStatus::Unreachable {
+                    detail: err.to_string(),
+                }
+            }
+        };
+        let status = evaluate_network_trust(&anchors, head.sth.clone());
+        let NetworkTrustStatus::Verified { entry } = status else {
+            return status;
+        };
+        let now = time::OffsetDateTime::now_utc();
+        let window = freshness
+            .map(|d| time::Duration::seconds(d.as_secs() as i64))
+            .unwrap_or(time::Duration::seconds(
+                crate::witness::DEFAULT_FRESHNESS_SECONDS,
+            ));
+        let author_key = hex::decode(&entry.verify_key)
+            .ok()
+            .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
+            .and_then(|a| VerifyingKey::from_bytes(&a).ok());
+        let cosigned = author_key.is_some_and(|key| {
+            crate::witness::verify_cosigned_tree_head(&key, &head, known_list, now - window, now)
+        });
+        if cosigned {
+            NetworkTrustStatus::Verified { entry }
+        } else {
+            NetworkTrustStatus::Mismatch {
+                claimed_network_id: head.sth.network_id,
+                entry,
+            }
+        }
+    }
+}
+
 /// Everything [`AvalonClient::connect`] needs besides the server URL
 /// itself, since discovery is what supplies that field.
 pub struct DiscoveryConfig {
@@ -819,6 +916,70 @@ mod tests {
                 claimed_network_id: "avalon-test".to_string(),
             }
         );
+    }
+
+    #[tokio::test]
+    async fn witness_verification_requires_a_majority_and_fails_closed() {
+        use crate::witness::sign_witness_cosignature;
+        let author = SigningKey::from_bytes(&[1; 32]);
+        let ws: Vec<SigningKey> = (2u8..5).map(|b| SigningKey::from_bytes(&[b; 32])).collect();
+        let known: Vec<(String, VerifyingKey)> = ws
+            .iter()
+            .map(|k| (hex::encode(k.verifying_key().as_bytes()), k.verifying_key()))
+            .collect();
+        let now = OffsetDateTime::now_utc();
+        let head =
+            crate::sth::sign_tree_head(&author, "k", 5, &"ab".repeat(32), "avalon-test", now);
+        let body = |signers: &[SigningKey]| {
+            let cosigs: Vec<_> = signers
+                .iter()
+                .map(|k| {
+                    let c = sign_witness_cosignature(k, &head, now);
+                    serde_json::json!({
+                        "witness_key_id": c.witness_key_id,
+                        "observed_at": c.observed_at.format(&time::format_description::well_known::Rfc3339).unwrap(),
+                        "signature": c.signature,
+                    })
+                })
+                .collect();
+            serde_json::json!({
+                "tree_size": 5, "root_hash": "ab".repeat(32), "network_id": "avalon-test",
+                "signing_key_id": "k", "signature": head.signature,
+                "created_at": now.format(&time::format_description::well_known::Rfc3339).unwrap(),
+                "cosignatures": cosigs,
+            })
+        };
+        let anchors = serde_json::json!({"networks": [{
+            "label": "t", "network_id": "avalon-test",
+            "verify_key": hex::encode(author.verifying_key().as_bytes()),
+            "signing_key_id": "k", "environment": "dev",
+        }]});
+        for (signers, expect_verified) in [(&ws[..2], true), (&ws[..1], false)] {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path("/ledger/sth/latest"))
+                .and(wiremock::matchers::query_param("witnesses", "1"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(body(signers)))
+                .mount(&server)
+                .await;
+            Mock::given(method("GET"))
+                .and(path("/trusted-networks.json"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(anchors.clone()))
+                .mount(&server)
+                .await;
+            let client = client_for(server.uri());
+            let status = client
+                .verify_network_with_witnesses_at(
+                    &format!("{}/trusted-networks.json", server.uri()),
+                    &known,
+                    None,
+                )
+                .await;
+            assert_eq!(
+                matches!(status, NetworkTrustStatus::Verified { .. }),
+                expect_verified
+            );
+        }
     }
 
     #[tokio::test]
