@@ -469,15 +469,18 @@ namespace Avalon.Sdk
         /// <see cref="NetworkTrustStatusKind.Unreachable"/>, since "is this the real network" is
         /// a question with an answer even when that answer is "no signal at all."
         ///
-        /// With <paramref name="knownWitnesses"/> of two or more entries the head must also be
-        /// cosigned by a majority of them within <paramref name="freshnessWindow"/> (default 600
-        /// seconds); a head that is not is <see cref="NetworkTrustStatusKind.Mismatch"/>. With
-        /// none or one it behaves as without. The list is the caller's own and is never taken
-        /// from the server being checked.</summary>
+        /// By default (<see cref="WitnessPolicy.Auto"/>) a known list is built once per client from
+        /// the network's trust-anchor seeds and verified witness adverts; <paramref name="knownWitnesses"/>
+        /// overrides it and <see cref="WitnessPolicy.None"/> skips it. With a list of two or more
+        /// entries the head must also be cosigned by a majority of them within
+        /// <paramref name="freshnessWindow"/> (default 600 seconds); a head that is not is
+        /// <see cref="NetworkTrustStatusKind.Mismatch"/>. With none or one it is the plain author
+        /// check. The list is never taken from the server being checked.</summary>
         public async Task<NetworkTrustStatus> VerifyNetworkAsync(
             IReadOnlyList<KnownWitness>? knownWitnesses = null,
             TimeSpan? freshnessWindow = null,
-            CancellationToken ct = default)
+            CancellationToken ct = default,
+            WitnessPolicy? witnessPolicy = null)
         {
             IReadOnlyList<TrustAnchorEntry> anchors;
             try
@@ -488,8 +491,9 @@ namespace Avalon.Sdk
             {
                 return NetworkTrustStatus.Unreachable($"trust-anchor list unavailable: {ex.Message}");
             }
+            var policy = knownWitnesses != null ? WitnessPolicy.Explicit(knownWitnesses) : witnessPolicy ?? WitnessPolicy.Auto;
             return await FetchNetworkTrustStatusAsync(
-                anchors, _http, _config.ServerUrl, ct, knownWitnesses, freshnessWindow).ConfigureAwait(false);
+                anchors, _http, _config.ServerUrl, ct, policy, freshnessWindow, _knownLists).ConfigureAwait(false);
         }
 
         /// <summary>GET /ledger/sth/latest, or /ledger/sth/{treeSize} when given, with
@@ -552,9 +556,10 @@ namespace Avalon.Sdk
         /// (server URL, entry) with no server URL supplied up front. See
         /// <see cref="DiscoverRankedAsync"/> for how candidates are verified and ranked.</summary>
         public static async Task<(string ServerUrl, TrustAnchorEntry Entry)> DiscoverAsync(
-            TargetNetwork target, HttpClient? httpClient = null, CancellationToken ct = default)
+            TargetNetwork target, HttpClient? httpClient = null, CancellationToken ct = default,
+            WitnessPolicy? witnessPolicy = null)
         {
-            var result = await DiscoverRankedAsync(target, httpClient, null, ct).ConfigureAwait(false);
+            var result = await DiscoverRankedAsync(target, httpClient, null, ct, witnessPolicy).ConfigureAwait(false);
             return (result.ServerUrl, result.Entry);
         }
 
@@ -572,8 +577,14 @@ namespace Avalon.Sdk
         /// extra request is made. The extra time over first-verified selection is bounded by
         /// <see cref="DiscoveryRankOptions.CollectWindow"/> (2s of further verification after
         /// the first success) plus <see cref="DiscoveryRankOptions.ProbeTimeout"/> (2s).</summary>
-        public static async Task<DiscoveryResult> DiscoverRankedAsync(
-            TargetNetwork target, HttpClient? httpClient = null, DiscoveryRankOptions? rank = null, CancellationToken ct = default)
+        public static Task<DiscoveryResult> DiscoverRankedAsync(
+            TargetNetwork target, HttpClient? httpClient = null, DiscoveryRankOptions? rank = null, CancellationToken ct = default,
+            WitnessPolicy? witnessPolicy = null)
+            => DiscoverRankedCoreAsync(target, httpClient, rank, ct, witnessPolicy, new KnownListCache());
+
+        private static async Task<DiscoveryResult> DiscoverRankedCoreAsync(
+            TargetNetwork target, HttpClient? httpClient, DiscoveryRankOptions? rank, CancellationToken ct,
+            WitnessPolicy? witnessPolicy, KnownListCache cache)
         {
             var http = httpClient ?? new HttpClient();
             IReadOnlyList<TrustAnchorEntry> anchors;
@@ -585,7 +596,7 @@ namespace Avalon.Sdk
             {
                 throw DiscoveryException.AnchorsUnavailable(target.ToString(), ex.Message);
             }
-            return await DiscoverAmongAsync(anchors, target, http, ct, rank).ConfigureAwait(false);
+            return await DiscoverAmongAsync(anchors, target, http, ct, rank, witnessPolicy ?? WitnessPolicy.Auto, cache).ConfigureAwait(false);
         }
 
         /// <summary>Builds and returns a client with no server URL supplied up front — resolves
@@ -593,13 +604,17 @@ namespace Avalon.Sdk
         /// then constructs exactly as the <see cref="AvalonClient"/> constructor would with the
         /// discovered URL.</summary>
         public static async Task<AvalonClient> ConnectAsync(
-            TargetNetwork target, DiscoveryConfig config, HttpClient? httpClient = null, CancellationToken ct = default)
+            TargetNetwork target, DiscoveryConfig config, HttpClient? httpClient = null, CancellationToken ct = default,
+            WitnessPolicy? witnessPolicy = null)
         {
             var http = httpClient ?? new HttpClient();
-            var (serverUrl, _) = await DiscoverAsync(target, http, ct).ConfigureAwait(false);
-            return new AvalonClient(
-                new AvalonConfig(serverUrl, config.IntegratorCredentialKeyId, config.IntegratorSlug, config.SigningKey),
+            var cache = new KnownListCache();
+            var found = await DiscoverRankedCoreAsync(target, http, null, ct, witnessPolicy, cache).ConfigureAwait(false);
+            var client = new AvalonClient(
+                new AvalonConfig(found.ServerUrl, config.IntegratorCredentialKeyId, config.IntegratorSlug, config.SigningKey),
                 http);
+            client._knownLists = cache;
+            return client;
         }
 
         /// <summary><see cref="DiscoverRankedAsync"/>'s actual logic, taking
@@ -608,7 +623,7 @@ namespace Avalon.Sdk
         /// entry.</summary>
         internal static async Task<DiscoveryResult> DiscoverAmongAsync(
             IReadOnlyList<TrustAnchorEntry> anchors, TargetNetwork target, HttpClient http, CancellationToken ct,
-            DiscoveryRankOptions? rank = null)
+            DiscoveryRankOptions? rank = null, WitnessPolicy? witnessPolicy = null, KnownListCache? cache = null)
         {
             rank ??= new DiscoveryRankOptions();
             var attempts = new List<(string CandidateUrl, string Outcome)>();
@@ -654,7 +669,7 @@ namespace Avalon.Sdk
                         }
                         window.CancelAfter(remaining);
                     }
-                    var status = await FetchNetworkTrustStatusAsync(anchors, http, candidate, window.Token).ConfigureAwait(false);
+                    var status = await FetchNetworkTrustStatusAsync(anchors, http, candidate, window.Token, witnessPolicy, null, cache).ConfigureAwait(false);
                     if (window.IsCancellationRequested)
                     {
                         ct.ThrowIfCancellationRequested();
@@ -724,14 +739,15 @@ namespace Avalon.Sdk
         /// throws: any failure becomes <see cref="NetworkTrustStatusKind.Unreachable"/>.</summary>
         internal static async Task<NetworkTrustStatus> FetchNetworkTrustStatusAsync(
             IReadOnlyList<TrustAnchorEntry> anchors, HttpClient http, string serverUrl, CancellationToken ct,
-            IReadOnlyList<KnownWitness>? knownWitnesses = null, TimeSpan? freshnessWindow = null)
+            WitnessPolicy? policy = null, TimeSpan? freshnessWindow = null, KnownListCache? cache = null)
         {
-            var requireCosigned = knownWitnesses != null && knownWitnesses.Count >= 2;
+            policy ??= WitnessPolicy.None;
+            var wantWitnesses = !policy.IsNone && (policy.List == null || policy.List.Count >= 2);
             HttpResponseMessage response;
             try
             {
                 using var request = new HttpRequestMessage(
-                    HttpMethod.Get, $"{serverUrl}/ledger/sth/latest{(requireCosigned ? "?witnesses=1" : "")}");
+                    HttpMethod.Get, $"{serverUrl}/ledger/sth/latest{(wantWitnesses ? "?witnesses=1" : "")}");
                 response = await http.SendAsync(request, ct).ConfigureAwait(false);
             }
             catch (Exception ex)
@@ -757,12 +773,18 @@ namespace Avalon.Sdk
                 }
 
                 var status = EvaluateNetworkTrust(anchors, wire);
-                if (requireCosigned && status.Kind == NetworkTrustStatusKind.Verified)
+                if (wantWitnesses && status.Kind == NetworkTrustStatusKind.Verified)
                 {
+                    var list = policy.List
+                        ?? await (cache ?? new KnownListCache()).GetAsync(http, status.Entry!, policy.Options).ConfigureAwait(false);
+                    if (list.Count < 2)
+                    {
+                        return status;
+                    }
                     var now = DateTimeOffset.UtcNow;
                     var cutoff = now - (freshnessWindow ?? WitnessCosigning.DefaultFreshnessWindow);
                     if (!WitnessCosigning.VerifyCosignedTreeHead(
-                            status.Entry!.VerifyKey, wire.ToCosignedTreeHead(), knownWitnesses!, cutoff, now))
+                            status.Entry!.VerifyKey, wire.ToCosignedTreeHead(), list, cutoff, now))
                     {
                         return NetworkTrustStatus.Mismatch(status.Entry, wire.NetworkId);
                     }

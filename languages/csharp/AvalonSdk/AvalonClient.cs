@@ -69,6 +69,7 @@ namespace Avalon.Sdk
     {
         private readonly AvalonConfig _config;
         private readonly HttpClient _http;
+        internal KnownListCache _knownLists = new KnownListCache();
 
         /// <summary>See <see cref="AvalonConfig.ServerUrl"/> — exposed internally so
         /// <see cref="CrossNodeLogin"/> (a separate class, not a partial member of this one) can

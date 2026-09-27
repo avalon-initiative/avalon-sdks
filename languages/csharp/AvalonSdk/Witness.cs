@@ -41,11 +41,15 @@ namespace Avalon.Sdk
     /// that must verify them.</summary>
     public sealed class KnownWitness
     {
-        public KnownWitness(string witnessKeyId, string verifyKeyHex)
+        public KnownWitness(string witnessKeyId, string verifyKeyHex, string? baseUrl = null)
         {
             WitnessKeyId = witnessKeyId;
             VerifyKeyHex = verifyKeyHex;
+            BaseUrl = baseUrl;
         }
+
+        /// <summary>Where this witness's node was found, when the list was built by discovery.</summary>
+        public string? BaseUrl { get; }
 
         /// <summary>The id cosignatures use to name this witness.</summary>
         public string WitnessKeyId { get; }
@@ -293,7 +297,7 @@ namespace Avalon.Sdk
             return verified;
         }
 
-        private static void AddLengthPrefixed(List<byte> message, string value)
+        internal static void AddLengthPrefixed(List<byte> message, string value)
         {
             var bytes = Encoding.UTF8.GetBytes(value);
             var length = BitConverter.GetBytes((uint)bytes.Length);
@@ -305,7 +309,7 @@ namespace Avalon.Sdk
             message.AddRange(bytes);
         }
 
-        private static byte[] BigEndian(long value)
+        internal static byte[] BigEndian(long value)
         {
             var bytes = BitConverter.GetBytes(value);
             if (BitConverter.IsLittleEndian)
@@ -315,7 +319,7 @@ namespace Avalon.Sdk
             return bytes;
         }
 
-        private static byte[]? TryHex(string? hex)
+        internal static byte[]? TryHex(string? hex)
         {
             if (hex == null || hex.Length % 2 != 0)
             {
