@@ -101,6 +101,14 @@ describe('verifyCosignedTreeHead', () => {
     expect(accept([cosign(2, sth), { ...cosign(3, sth), signature: 'ff' }], known)).toBe(false)
   })
 
+  it('binds a cosignature to the head by whole seconds and rejects an unparseable time', () => {
+    const known = list(2, 3)
+    const sameSecond = { ...cosign(3, sth), author_created_at: sth.created_at.replace(/(\.\d+)?Z$/, '.500Z') }
+    expect(accept([cosign(2, sth), sameSecond], known)).toBe(true)
+    const garbage = { ...cosign(3, sth), author_created_at: 'not-a-time' }
+    expect(accept([cosign(2, sth), garbage], known)).toBe(false)
+  })
+
   it('counts the author key as a known witness', () => {
     const known: KnownWitness[] = [{ witnessKeyId: 'author', key: author }, ...list(2)]
     expect(accept([], known)).toBe(false)

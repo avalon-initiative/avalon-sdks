@@ -57,6 +57,14 @@ export function isCosignedByMajority(listSize: number, distinctWitnesses: number
   return distinctWitnesses >= majorityThreshold(listSize)
 }
 
+function seconds(timestamp: string): bigint | null {
+  try {
+    return unixSecondsFromRfc3339(timestamp)
+  } catch {
+    return null
+  }
+}
+
 function ms(timestamp: string): number {
   return Date.parse(timestamp)
 }
@@ -73,6 +81,7 @@ function validFreshWitnessIds(
   for (const witness of knownList) {
     if (witness.key.toLowerCase() === author) verified.add(witness.witnessKeyId)
   }
+  const authorTime = seconds(head.sth.created_at)
   const cutoff = freshnessCutoff.getTime()
   const latest = now.getTime()
   for (const cosig of head.cosignatures) {
@@ -80,7 +89,8 @@ function validFreshWitnessIds(
       cosig.tree_size !== head.sth.tree_size ||
       cosig.root_hash !== head.sth.root_hash ||
       cosig.network_id !== head.sth.network_id ||
-      ms(cosig.author_created_at) !== ms(head.sth.created_at)
+      authorTime === null ||
+      seconds(cosig.author_created_at) !== authorTime
     ) {
       continue
     }
