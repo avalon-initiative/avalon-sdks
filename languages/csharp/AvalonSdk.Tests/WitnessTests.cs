@@ -188,6 +188,10 @@ public class WitnessTests
         var wrongAuthorTime = Sigs(1)[0];
         wrongAuthorTime.AuthorCreatedAt += TimeSpan.FromSeconds(1);
         Assert.False(Check(new List<WitnessCosignature> { Sigs(0)[0], wrongAuthorTime }));
+        var sameSecondAuthorTime = Sigs(1)[0];
+        sameSecondAuthorTime.AuthorCreatedAt = sameSecondAuthorTime.AuthorCreatedAt.AddTicks(1);
+        Assert.Equal(sth.CreatedAt.ToUnixTimeSeconds(), sameSecondAuthorTime.AuthorCreatedAt.ToUnixTimeSeconds());
+        Assert.True(Check(new List<WitnessCosignature> { Sigs(0)[0], sameSecondAuthorTime }));
 
         var badSig = Sigs(1)[0];
         badSig.Signature = "00";
