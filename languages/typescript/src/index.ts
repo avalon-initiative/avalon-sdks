@@ -98,6 +98,8 @@ export { OPENAPI_SCHEMA_VERSION } from './generated.js'
 export { getLatestSth } from './ledger.js'
 export { getNodeStatus } from './nodeStatus.js'
 export { getTopology, probeNode, traceRoute } from './nodeTopology.js'
+export { resolveName, listShardNames, submitNameClaim } from './shardNames.js'
+export type { NameClaim, NameClaimRequest } from './shardNames.js'
 export {
   walkTopology,
   normalizeNodeUrl,

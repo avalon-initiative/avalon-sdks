@@ -69,6 +69,7 @@ pub mod nodes;
 pub mod recovery;
 pub mod registry;
 pub mod schema;
+pub mod shard_names;
 pub mod social;
 pub mod sth;
 pub mod submission;
@@ -84,6 +85,7 @@ pub use account::{AccountCredentials, AccountSession, ProfileUpdate};
 pub use generated::OPENAPI_SCHEMA_VERSION;
 pub use http::RetryConfig;
 pub use nodes::{ProbeResult, StopReason, Topology, TraceHop, TraceResult};
+pub use shard_names::{NameClaim, NameClaimRequest};
 pub use topology_walk::{
     normalize_node_url, ProgressCallback, TopologyGraph, WalkEdge, WalkEdgeKind, WalkEvent,
     WalkFailure, WalkFailureReason, WalkNode, WalkNodeStatus, WalkOptions, WalkTruncation,

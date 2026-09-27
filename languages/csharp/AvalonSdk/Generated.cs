@@ -2253,6 +2253,51 @@ namespace Avalon.Sdk.Generated
 
     }
 
+    /// <summary>
+    /// Wire shape of a `NameBindingClaim` — the server's own DTO (rather than
+    /// <br/>deriving `ToSchema` on the protocol type directly) so the OpenAPI schema
+    /// <br/>stays owned by `crates/server`, matching every other request DTO in this
+    /// <br/>module family (e.g. `crate::integrators::CreateIntegratorRequest`).
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class NameClaimRequest
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("created_at")]
+        public System.DateTimeOffset CreatedAt { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("name")]
+        public string Name { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("public_key")]
+        public string PublicKey { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("self_certifying_id")]
+        public string SelfCertifyingId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("signature")]
+        public string Signature { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class NameClaimResponse
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("name")]
+        public string Name { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("proof_method")]
+        public string ProofMethod { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("self_certifying_id")]
+        public string SelfCertifyingId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("verified_at")]
+        public System.DateTimeOffset VerifiedAt { get; set; } = default!;
+
+    }
+
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class Neighbor
     {
@@ -4419,6 +4464,6 @@ namespace Avalon.Sdk
         /// <summary>Issue #735/#725: the docs/generated/openapi.json `info.version`
         /// this file's generated types were produced from — generated straight from
         /// the same schema file, so it can't drift by construction.</summary>
-        public const string OpenApiSchemaVersion = "0.6.0";
+        public const string OpenApiSchemaVersion = "0.7.0";
     }
 }

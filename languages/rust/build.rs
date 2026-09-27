@@ -179,6 +179,8 @@ const SCHEMA_NAMES: &[&str] = &[
     "TraceResponse",
     "TraceHop",
     "StopReason",
+    "NameClaimRequest",
+    "NameClaimResponse",
 ];
 
 /// Typify hardcodes `"format": "date-time"` to `chrono::DateTime<Utc>`,
