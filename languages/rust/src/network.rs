@@ -14,6 +14,10 @@
 //! keeps via its own build-time mirror).
 
 use ed25519_dalek::VerifyingKey;
+
+use crate::known_list::{
+    build_known_list, known_pairs, BuildKnownListOptions, KnownWitness, WitnessPolicy,
+};
 use serde::Deserialize;
 
 use crate::{AvalonClient, AvalonConfig, SdkError};
@@ -204,6 +208,40 @@ fn evaluate_network_trust(
     }
 }
 
+/// The cosigned-majority decision for a head whose author signature already verified against
+/// `entry`; a list of fewer than two entries is the author check alone.
+fn check_cosigned(
+    entry: TrustAnchorEntry,
+    head: crate::witness::CosignedTreeHead,
+    known_list: &[(String, VerifyingKey)],
+    freshness: Option<std::time::Duration>,
+) -> NetworkTrustStatus {
+    if known_list.len() < 2 {
+        return NetworkTrustStatus::Verified { entry };
+    }
+    let now = time::OffsetDateTime::now_utc();
+    let window = freshness
+        .map(|d| time::Duration::seconds(d.as_secs() as i64))
+        .unwrap_or(time::Duration::seconds(
+            crate::witness::DEFAULT_FRESHNESS_SECONDS,
+        ));
+    let author_key = hex::decode(&entry.verify_key)
+        .ok()
+        .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
+        .and_then(|a| VerifyingKey::from_bytes(&a).ok());
+    let cosigned = author_key.is_some_and(|key| {
+        crate::witness::verify_cosigned_tree_head(&key, &head, known_list, now - window, now)
+    });
+    if cosigned {
+        NetworkTrustStatus::Verified { entry }
+    } else {
+        NetworkTrustStatus::Mismatch {
+            claimed_network_id: head.sth.network_id,
+            entry,
+        }
+    }
+}
+
 /// One of the three real deployment tiers a caller can declare intent for
 /// without spelling out an exact `network_id` (issue #483) — resolved
 /// against whichever pinned entry the server's STH actually verified
@@ -388,8 +426,81 @@ impl AvalonClient {
     /// [`NetworkTrustStatus::Unreachable`], since "is this the real
     /// network" is a question with an answer even when that answer is "no
     /// signal at all."
+    ///
+    /// Applies this client's witness policy (default `Auto`: a known list built once from the
+    /// trust-anchor seeds' verified witness adverts; a list of fewer than two is the plain
+    /// author check). See [`AvalonClient::verify_network_with_policy`].
     pub async fn verify_network(&self) -> NetworkTrustStatus {
-        self.verify_network_with(TRUST_ANCHORS_URL).await
+        self.verify_network_with_policy(&self.witness_policy, None)
+            .await
+    }
+
+    /// [`AvalonClient::verify_network`] with an explicit witness policy and optional cosignature
+    /// freshness (default 600 seconds). Failed cosigned verification is
+    /// [`NetworkTrustStatus::Mismatch`].
+    pub async fn verify_network_with_policy(
+        &self,
+        policy: &WitnessPolicy,
+        freshness: Option<std::time::Duration>,
+    ) -> NetworkTrustStatus {
+        self.verify_with_policy_at(TRUST_ANCHORS_URL, policy, freshness)
+            .await
+    }
+
+    async fn verify_with_policy_at(
+        &self,
+        anchors_url: &str,
+        policy: &WitnessPolicy,
+        freshness: Option<std::time::Duration>,
+    ) -> NetworkTrustStatus {
+        match policy {
+            WitnessPolicy::None => self.verify_network_with(anchors_url).await,
+            WitnessPolicy::Explicit(list) => {
+                self.verify_network_with_witnesses_at(anchors_url, list, freshness)
+                    .await
+            }
+            WitnessPolicy::Auto => self.verify_auto_at(anchors_url, freshness).await,
+        }
+    }
+
+    async fn verify_auto_at(
+        &self,
+        anchors_url: &str,
+        freshness: Option<std::time::Duration>,
+    ) -> NetworkTrustStatus {
+        let anchors = match fetch_trust_anchors(&self.http, anchors_url).await {
+            Ok(anchors) => anchors,
+            Err(err) => {
+                return NetworkTrustStatus::Unreachable {
+                    detail: format!("trust-anchor list unavailable: {err}"),
+                }
+            }
+        };
+        let head = match self.fetch_cosigned_tree_head(None, None).await {
+            Ok(head) => head,
+            Err(err) => {
+                return NetworkTrustStatus::Unreachable {
+                    detail: err.to_string(),
+                }
+            }
+        };
+        let NetworkTrustStatus::Verified { entry } =
+            evaluate_network_trust(&anchors, head.sth.clone())
+        else {
+            return evaluate_network_trust(&anchors, head.sth);
+        };
+        let list = self.auto_known_list(&entry).await;
+        check_cosigned(entry, head, &known_pairs(list), freshness)
+    }
+
+    /// The list built once for this client from `entry`'s seeds.
+    pub async fn auto_known_list(&self, entry: &TrustAnchorEntry) -> &[KnownWitness] {
+        self.auto_known_list
+            .get_or_init(|| async {
+                let options = BuildKnownListOptions::for_entry(entry);
+                build_known_list(&self.http, &options).await
+            })
+            .await
     }
 
     async fn verify_network_with(&self, anchors_url: &str) -> NetworkTrustStatus {
@@ -484,27 +595,7 @@ impl AvalonClient {
         let NetworkTrustStatus::Verified { entry } = status else {
             return status;
         };
-        let now = time::OffsetDateTime::now_utc();
-        let window = freshness
-            .map(|d| time::Duration::seconds(d.as_secs() as i64))
-            .unwrap_or(time::Duration::seconds(
-                crate::witness::DEFAULT_FRESHNESS_SECONDS,
-            ));
-        let author_key = hex::decode(&entry.verify_key)
-            .ok()
-            .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
-            .and_then(|a| VerifyingKey::from_bytes(&a).ok());
-        let cosigned = author_key.is_some_and(|key| {
-            crate::witness::verify_cosigned_tree_head(&key, &head, known_list, now - window, now)
-        });
-        if cosigned {
-            NetworkTrustStatus::Verified { entry }
-        } else {
-            NetworkTrustStatus::Mismatch {
-                claimed_network_id: head.sth.network_id,
-                entry,
-            }
-        }
+        check_cosigned(entry, head, known_list, freshness)
     }
 }
 
@@ -520,6 +611,9 @@ pub struct DiscoveryConfig {
     pub signing_key: Option<[u8; 32]>,
     /// See [`crate::AvalonConfig::retry`].
     pub retry: crate::RetryConfig,
+    /// Witness policy applied to the selected server and to later
+    /// [`AvalonClient::verify_network`] calls (default `Auto`).
+    pub witness_policy: WitnessPolicy,
 }
 
 /// Why [`discover`]/[`AvalonClient::connect`] couldn't resolve `target` to
@@ -764,13 +858,21 @@ impl AvalonClient {
         config: DiscoveryConfig,
     ) -> Result<Self, DiscoveryError> {
         let (server_url, _entry) = discover(&target, &config.retry).await?;
-        Ok(Self::new(AvalonConfig {
-            server_url,
+        let client = Self::new(AvalonConfig {
+            server_url: server_url.clone(),
             integrator_credential_key_id: config.integrator_credential_key_id,
             integrator_slug: config.integrator_slug,
             signing_key: config.signing_key,
             retry: config.retry,
-        }))
+        })
+        .with_witness_policy(config.witness_policy.clone());
+        match client.verify_network().await {
+            NetworkTrustStatus::Verified { .. } => Ok(client),
+            other => Err(DiscoveryError::NoneVerified {
+                target: target.to_string(),
+                attempts: vec![(server_url, format!("{other:?}"))],
+            }),
+        }
     }
 }
 
@@ -980,6 +1082,162 @@ mod tests {
                 expect_verified
             );
         }
+    }
+
+    struct AutoWorld {
+        node: MockServer,
+        witnesses: Vec<MockServer>,
+        keys: Vec<SigningKey>,
+        anchors_url: String,
+    }
+
+    fn rfc3339(t: OffsetDateTime) -> String {
+        t.format(&time::format_description::well_known::Rfc3339)
+            .unwrap()
+    }
+
+    /// A network whose only seed is also the connected node; `advertised` witnesses are
+    /// discoverable and live, `cosigners` of them cosign the served head.
+    async fn auto_world(advertised: usize, cosigners: usize, discover_calls: u64) -> AutoWorld {
+        use crate::witness::{sign_witness_cosignature, witness_announce_message};
+        use ed25519_dalek::Signer;
+        let author = SigningKey::from_bytes(&[1; 32]);
+        let now = OffsetDateTime::now_utc();
+        let node = MockServer::start().await;
+        let mut witnesses = Vec::new();
+        let mut keys = Vec::new();
+        let mut peers = Vec::new();
+        for i in 0..advertised {
+            let key = SigningKey::from_bytes(&[10 + i as u8; 32]);
+            let w = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path("/ledger/sth/latest"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(
+                    serde_json::json!({"network_id": "avalon-test", "tree_size": 5}),
+                ))
+                .mount(&w)
+                .await;
+            let key_id = hex::encode(key.verifying_key().as_bytes());
+            let proof = hex::encode(
+                key.sign(&witness_announce_message(&w.uri(), &key_id, now))
+                    .to_bytes(),
+            );
+            peers.push(
+                serde_json::json!({"base_url": w.uri(), "network_id": "avalon-test",
+                "witness": {"key_id": key_id, "announced_at": rfc3339(now), "proof": proof}}),
+            );
+            witnesses.push(w);
+            keys.push(key);
+        }
+        Mock::given(method("GET"))
+            .and(path("/nodes/discover"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"self_status": {}, "peers": peers})),
+            )
+            .expect(discover_calls)
+            .mount(&node)
+            .await;
+        let head =
+            crate::sth::sign_tree_head(&author, "k", 5, &"ab".repeat(32), "avalon-test", now);
+        let cosigs: Vec<_> = keys[..cosigners]
+            .iter()
+            .map(|k| {
+                let c = sign_witness_cosignature(k, &head, now);
+                serde_json::json!({"witness_key_id": c.witness_key_id,
+                    "observed_at": rfc3339(now), "signature": c.signature})
+            })
+            .collect();
+        Mock::given(method("GET"))
+            .and(path("/ledger/sth/latest"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "tree_size": 5, "root_hash": "ab".repeat(32), "network_id": "avalon-test",
+                "signing_key_id": "k", "signature": head.signature,
+                "created_at": rfc3339(now), "cosignatures": cosigs,
+            })))
+            .mount(&node)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/trusted-networks.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "networks": [{
+                    "label": "t", "network_id": "avalon-test",
+                    "verify_key": hex::encode(author.verifying_key().as_bytes()),
+                    "signing_key_id": "k", "environment": "dev",
+                    "seed_nodes": [node.uri()],
+                }]
+            })))
+            .mount(&node)
+            .await;
+        let anchors_url = format!("{}/trusted-networks.json", node.uri());
+        AutoWorld {
+            node,
+            witnesses,
+            keys,
+            anchors_url,
+        }
+    }
+
+    fn verified(status: &NetworkTrustStatus) -> bool {
+        matches!(status, NetworkTrustStatus::Verified { .. })
+    }
+
+    #[tokio::test]
+    async fn auto_policy_builds_the_list_once_and_requires_a_majority() {
+        let world = auto_world(2, 2, 1).await;
+        let client = client_for(world.node.uri());
+        for _ in 0..2 {
+            let status = client
+                .verify_with_policy_at(&world.anchors_url, &WitnessPolicy::Auto, None)
+                .await;
+            assert!(verified(&status), "{status:?}");
+        }
+        assert_eq!(world.witnesses.len(), world.keys.len());
+    }
+
+    #[tokio::test]
+    async fn auto_policy_with_two_witnesses_and_one_cosignature_fails_closed() {
+        let world = auto_world(2, 1, 1).await;
+        let client = client_for(world.node.uri());
+        let status = client
+            .verify_with_policy_at(&world.anchors_url, &WitnessPolicy::Auto, None)
+            .await;
+        assert!(matches!(status, NetworkTrustStatus::Mismatch { .. }));
+        let none = client
+            .verify_with_policy_at(&world.anchors_url, &WitnessPolicy::None, None)
+            .await;
+        assert!(verified(&none));
+    }
+
+    #[tokio::test]
+    async fn auto_policy_with_zero_or_one_witness_is_the_plain_author_check() {
+        for advertised in [0, 1] {
+            let world = auto_world(advertised, 0, 1).await;
+            let client = client_for(world.node.uri());
+            let status = client
+                .verify_with_policy_at(&world.anchors_url, &WitnessPolicy::Auto, None)
+                .await;
+            assert!(verified(&status), "{advertised}: {status:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn explicit_policy_never_consults_discovery() {
+        let world = auto_world(2, 0, 0).await;
+        let client = client_for(world.node.uri());
+        let known: Vec<(String, VerifyingKey)> = world
+            .keys
+            .iter()
+            .map(|k| (hex::encode(k.verifying_key().as_bytes()), k.verifying_key()))
+            .collect();
+        let status = client
+            .verify_with_policy_at(&world.anchors_url, &WitnessPolicy::Explicit(known), None)
+            .await;
+        assert!(matches!(status, NetworkTrustStatus::Mismatch { .. }));
+        let none = client
+            .verify_with_policy_at(&world.anchors_url, &WitnessPolicy::None, None)
+            .await;
+        assert!(verified(&none));
     }
 
     #[tokio::test]

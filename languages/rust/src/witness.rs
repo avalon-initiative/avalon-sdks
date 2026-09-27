@@ -173,6 +173,55 @@ pub fn verify_witness_cosignature(key: &VerifyingKey, cosig: &WitnessCosignature
     key.verify(&message, &Signature::from_bytes(&array)).is_ok()
 }
 
+/// How far `announced_at` may differ from the verifier's clock for an advert proof to verify.
+pub const WITNESS_ANNOUNCE_MAX_SKEW: time::Duration = time::Duration::hours(1);
+
+/// The exact bytes a witness advert proof covers.
+pub fn witness_announce_message(
+    base_url: &str,
+    witness_key_id: &str,
+    announced_at: OffsetDateTime,
+) -> Vec<u8> {
+    let mut message = Vec::new();
+    message.extend_from_slice(b"avalon-witness-announce-v1");
+    message.extend_from_slice(&(base_url.len() as u32).to_be_bytes());
+    message.extend_from_slice(base_url.as_bytes());
+    message.extend_from_slice(&(witness_key_id.len() as u32).to_be_bytes());
+    message.extend_from_slice(witness_key_id.as_bytes());
+    message.extend_from_slice(&announced_at.unix_timestamp().to_be_bytes());
+    message
+}
+
+/// Verifies that the holder of `witness_key_id` advertised `base_url` at `announced_at`, within
+/// [`WITNESS_ANNOUNCE_MAX_SKEW`] of `now`. `false` for any malformed input; never panics.
+pub fn verify_witness_announce(
+    base_url: &str,
+    witness_key_id: &str,
+    announced_at: OffsetDateTime,
+    proof_hex: &str,
+    now: OffsetDateTime,
+) -> bool {
+    if (now - announced_at).abs() > WITNESS_ANNOUNCE_MAX_SKEW {
+        return false;
+    }
+    let Some(key) = hex::decode(witness_key_id)
+        .ok()
+        .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
+        .and_then(|a| VerifyingKey::from_bytes(&a).ok())
+    else {
+        return false;
+    };
+    let Some(signature) = hex::decode(proof_hex)
+        .ok()
+        .and_then(|b| <[u8; 64]>::try_from(b.as_slice()).ok())
+    else {
+        return false;
+    };
+    let message = witness_announce_message(base_url, witness_key_id, announced_at);
+    key.verify(&message, &Signature::from_bytes(&signature))
+        .is_ok()
+}
+
 /// Cosignatures needed for a known list of `list_size`: 0 for an empty list, else `n/2 + 1`.
 pub fn majority_threshold(list_size: usize) -> usize {
     if list_size == 0 {
