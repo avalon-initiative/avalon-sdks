@@ -16,7 +16,8 @@
 use ed25519_dalek::VerifyingKey;
 
 use crate::known_list::{
-    build_known_list, known_pairs, BuildKnownListOptions, KnownWitness, WitnessPolicy,
+    build_known_list, known_pairs, BuildKnownListOptions, KnownListCache, KnownWitness,
+    WitnessPolicy,
 };
 use serde::Deserialize;
 
@@ -380,14 +381,29 @@ pub fn check_target_network<'a>(
 /// against the published trust-anchor list — the shared fetch-then-evaluate path
 /// behind both [`AvalonClient::verify_network`] (a known server) and
 /// [`discover`] (candidate servers with no known-good one yet).
+///
+/// A policy with fewer than two witnesses is the plain author check; otherwise the head must
+/// also be cosigned by a majority of the list (built once through `cache` for `Auto`).
 async fn fetch_network_trust_status(
     anchors: &[TrustAnchorEntry],
     http: &reqwest::Client,
     retry: &crate::RetryConfig,
     server_url: &str,
+    policy: &WitnessPolicy,
+    cache: &KnownListCache,
 ) -> NetworkTrustStatus {
+    let want_witnesses = match policy {
+        WitnessPolicy::None => false,
+        WitnessPolicy::Explicit(list) => list.len() >= 2,
+        WitnessPolicy::Auto => true,
+    };
     let response = match crate::http::send(http, retry, true, |c| {
-        c.get(format!("{server_url}/ledger/sth/latest"))
+        let request = c.get(format!("{server_url}/ledger/sth/latest"));
+        if want_witnesses {
+            request.query(&[("witnesses", "1")])
+        } else {
+            request
+        }
     })
     .await
     {
@@ -404,15 +420,35 @@ async fn fetch_network_trust_status(
             detail: err.to_string(),
         };
     }
-    let wire: SignedTreeHeadWire = match response.json().await {
-        Ok(wire) => wire,
+    let head: crate::witness::CosignedTreeHead = match response
+        .json::<crate::witness::CosignedTreeHeadWire>()
+        .await
+    {
+        Ok(wire) => wire.into(),
         Err(err) => {
             return NetworkTrustStatus::Unreachable {
                 detail: err.to_string(),
             }
         }
     };
-    evaluate_network_trust(anchors, wire.into())
+    let status = evaluate_network_trust(anchors, head.sth.clone());
+    if !want_witnesses {
+        return status;
+    }
+    let NetworkTrustStatus::Verified { entry } = status else {
+        return status;
+    };
+    let list = match policy {
+        WitnessPolicy::Explicit(list) => list.clone(),
+        _ => known_pairs(
+            cache
+                .get_or_init(|| async {
+                    build_known_list(http, &BuildKnownListOptions::for_entry(&entry)).await
+                })
+                .await,
+        ),
+    };
+    check_cosigned(entry, head, &list, None)
 }
 
 impl AvalonClient {
@@ -517,6 +553,8 @@ impl AvalonClient {
             &self.http,
             &self.config.retry,
             &self.config.server_url,
+            &WitnessPolicy::None,
+            &self.auto_known_list,
         )
         .await
     }
@@ -693,12 +731,22 @@ pub struct Discovered {
 /// entry)` with no server URL supplied up front: a caller who only knows
 /// which network they want to join, not which of its nodes to talk to.
 ///
-/// See [`discover_ranked`] for how candidates are verified and ranked.
+/// Applies the default (`Auto`) witness policy; see [`discover_ranked`] for how candidates are
+/// verified and ranked and [`discover_with_policy`] for the other policies.
 pub async fn discover(
     target: &TargetNetwork,
     retry: &crate::RetryConfig,
 ) -> Result<(String, TrustAnchorEntry), DiscoveryError> {
-    let found = discover_ranked(target, retry, &RankConfig::default()).await?;
+    discover_with_policy(target, retry, &WitnessPolicy::default()).await
+}
+
+/// [`discover`] with an explicit witness policy.
+pub async fn discover_with_policy(
+    target: &TargetNetwork,
+    retry: &crate::RetryConfig,
+    policy: &WitnessPolicy,
+) -> Result<(String, TrustAnchorEntry), DiscoveryError> {
+    let found = discover_ranked_with_policy(target, retry, &RankConfig::default(), policy).await?;
     Ok((found.server_url, found.entry))
 }
 
@@ -707,7 +755,9 @@ pub async fn discover(
 /// Candidates come only from the published trust-anchor list's own
 /// `server_url`/`seed_nodes` fields for every entry matching `target`, so
 /// discovery can't be tricked into contacting an unpinned host. They are
-/// verified exactly like [`AvalonClient::verify_network`] would, in list
+/// verified with the witness-aware check of [`AvalonClient::verify_network`] (default `Auto`
+/// policy: a list of fewer than two witnesses is the plain author check, otherwise the head
+/// must also be cosigned by a majority, and a candidate that is not is skipped), in list
 /// order (each entry's `server_url` before its `seed_nodes`). Only verified
 /// candidates are eligible; up to `max_timed` (5) of them are timed with one
 /// `GET /nodes/status` each, in parallel, and the lowest round trip wins. A
@@ -721,7 +771,25 @@ pub async fn discover_ranked(
     retry: &crate::RetryConfig,
     rank: &RankConfig,
 ) -> Result<Discovered, DiscoveryError> {
-    discover_from(TRUST_ANCHORS_URL, target, retry, rank).await
+    discover_ranked_with_policy(target, retry, rank, &WitnessPolicy::default()).await
+}
+
+/// [`discover_ranked`] with an explicit witness policy.
+pub async fn discover_ranked_with_policy(
+    target: &TargetNetwork,
+    retry: &crate::RetryConfig,
+    rank: &RankConfig,
+    policy: &WitnessPolicy,
+) -> Result<Discovered, DiscoveryError> {
+    discover_from(
+        TRUST_ANCHORS_URL,
+        target,
+        retry,
+        rank,
+        policy,
+        &KnownListCache::default(),
+    )
+    .await
 }
 
 async fn discover_from(
@@ -729,13 +797,15 @@ async fn discover_from(
     target: &TargetNetwork,
     retry: &crate::RetryConfig,
     rank: &RankConfig,
+    policy: &WitnessPolicy,
+    cache: &KnownListCache,
 ) -> Result<Discovered, DiscoveryError> {
     let anchors = fetch_trust_anchors(&reqwest::Client::new(), anchors_url)
         .await
         .map_err(|err| DiscoveryError::TrustAnchorsUnavailable {
             detail: err.to_string(),
         })?;
-    discover_among(&anchors, target, retry, rank).await
+    discover_among(&anchors, target, retry, rank, policy, cache).await
 }
 
 async fn time_probe(
@@ -759,6 +829,8 @@ async fn discover_among(
     target: &TargetNetwork,
     retry: &crate::RetryConfig,
     rank: &RankConfig,
+    policy: &WitnessPolicy,
+    cache: &KnownListCache,
 ) -> Result<Discovered, DiscoveryError> {
     let http = reqwest::Client::new();
     let mut attempts = Vec::new();
@@ -780,7 +852,7 @@ async fn discover_among(
                 break 'collect;
             }
             tried_any = true;
-            let check = fetch_network_trust_status(anchors, &http, retry, candidate);
+            let check = fetch_network_trust_status(anchors, &http, retry, candidate, policy, cache);
             let status = match first_verified_at {
                 None => check.await,
                 Some(start) => {
@@ -849,7 +921,8 @@ async fn discover_among(
 
 impl AvalonClient {
     /// Builds and returns a client with no server URL supplied up front —
-    /// resolves `target` to a live, verified server via [`discover`], then
+    /// resolves `target` to a live, verified server via [`discover`] (each
+    /// candidate is checked under `config.witness_policy`), then
     /// constructs exactly as [`AvalonClient::new`] would with the
     /// discovered URL. See [`discover`] for how candidates are chosen and
     /// verified.
@@ -857,22 +930,26 @@ impl AvalonClient {
         target: TargetNetwork,
         config: DiscoveryConfig,
     ) -> Result<Self, DiscoveryError> {
-        let (server_url, _entry) = discover(&target, &config.retry).await?;
-        let client = Self::new(AvalonConfig {
-            server_url: server_url.clone(),
+        let cache = KnownListCache::default();
+        let found = discover_from(
+            TRUST_ANCHORS_URL,
+            &target,
+            &config.retry,
+            &RankConfig::default(),
+            &config.witness_policy,
+            &cache,
+        )
+        .await?;
+        let mut client = Self::new(AvalonConfig {
+            server_url: found.server_url,
             integrator_credential_key_id: config.integrator_credential_key_id,
             integrator_slug: config.integrator_slug,
             signing_key: config.signing_key,
             retry: config.retry,
         })
-        .with_witness_policy(config.witness_policy.clone());
-        match client.verify_network().await {
-            NetworkTrustStatus::Verified { .. } => Ok(client),
-            other => Err(DiscoveryError::NoneVerified {
-                target: target.to_string(),
-                attempts: vec![(server_url, format!("{other:?}"))],
-            }),
-        }
+        .with_witness_policy(config.witness_policy);
+        client.auto_known_list = cache;
+        Ok(client)
     }
 }
 
@@ -1269,6 +1346,8 @@ mod tests {
             &target,
             &RetryConfig::default(),
             &RankConfig::default(),
+            &WitnessPolicy::None,
+            &KnownListCache::default(),
         )
         .await
         .unwrap_err();
@@ -1429,6 +1508,8 @@ mod tests {
             &target,
             &retry,
             &RankConfig::default(),
+            &WitnessPolicy::None,
+            &KnownListCache::default(),
         )
         .await
         .expect("the live seed node should verify");
@@ -1440,9 +1521,16 @@ mod tests {
     async fn discover_reports_no_candidates_for_an_unpinned_target() {
         let target = TargetNetwork::NetworkId("avalon-nowhere".to_string());
         let retry = RetryConfig::default();
-        let err = discover_among(&[], &target, &retry, &RankConfig::default())
-            .await
-            .unwrap_err();
+        let err = discover_among(
+            &[],
+            &target,
+            &retry,
+            &RankConfig::default(),
+            &WitnessPolicy::None,
+            &KnownListCache::default(),
+        )
+        .await
+        .unwrap_err();
         assert!(matches!(err, DiscoveryError::NoCandidates { .. }));
     }
 
@@ -1469,6 +1557,8 @@ mod tests {
             &target,
             &retry,
             &RankConfig::default(),
+            &WitnessPolicy::None,
+            &KnownListCache::default(),
         )
         .await
         .unwrap_err();
@@ -1553,7 +1643,15 @@ mod tests {
         cfg: &RankConfig,
     ) -> Result<Discovered, DiscoveryError> {
         let target = TargetNetwork::NetworkId("avalon-test".to_string());
-        discover_among(std::slice::from_ref(entry), &target, &quick_retry(), cfg).await
+        discover_among(
+            std::slice::from_ref(entry),
+            &target,
+            &quick_retry(),
+            cfg,
+            &WitnessPolicy::None,
+            &KnownListCache::default(),
+        )
+        .await
     }
 
     #[tokio::test]
@@ -1666,5 +1764,178 @@ mod tests {
         assert!(start.elapsed() < std::time::Duration::from_secs(1));
         assert_eq!(found.server_url, first.server.uri());
         assert_eq!(found.verified.len(), 1);
+    }
+
+    /// Serves a head authored by `author` on `server`, cosigned by the first `cosigners` keys.
+    async fn mount_head(
+        server: &MockServer,
+        author: &SigningKey,
+        keys: &[SigningKey],
+        cosigners: usize,
+    ) {
+        use crate::witness::sign_witness_cosignature;
+        let now = OffsetDateTime::now_utc();
+        let head = crate::sth::sign_tree_head(author, "k", 5, &"ab".repeat(32), "avalon-test", now);
+        let cosigs: Vec<_> = keys[..cosigners]
+            .iter()
+            .map(|k| {
+                let c = sign_witness_cosignature(k, &head, now);
+                serde_json::json!({"witness_key_id": c.witness_key_id,
+                    "observed_at": rfc3339(now), "signature": c.signature})
+            })
+            .collect();
+        Mock::given(method("GET"))
+            .and(path("/ledger/sth/latest"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "tree_size": 5, "root_hash": "ab".repeat(32), "network_id": "avalon-test",
+                "signing_key_id": "k", "signature": head.signature,
+                "created_at": rfc3339(now), "cosignatures": cosigs,
+            })))
+            .mount(server)
+            .await;
+    }
+
+    async fn silent_discover(server: &MockServer) {
+        Mock::given(method("GET"))
+            .and(path("/nodes/discover"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"self_status": {}, "peers": []})),
+            )
+            .mount(server)
+            .await;
+    }
+
+    fn avalon_target() -> TargetNetwork {
+        TargetNetwork::NetworkId("avalon-test".to_string())
+    }
+
+    #[tokio::test]
+    async fn discovery_skips_a_candidate_without_a_cosigned_majority() {
+        let world = auto_world(2, 2, 1).await;
+        let author = SigningKey::from_bytes(&[1; 32]);
+        let weak = MockServer::start().await;
+        mount_head(&weak, &author, &world.keys, 1).await;
+        silent_discover(&weak).await;
+        let entry = entry_for(&author, vec![weak.uri(), world.node.uri()]);
+        let found = discover_among(
+            std::slice::from_ref(&entry),
+            &avalon_target(),
+            &quick_retry(),
+            &rank_config(),
+            &WitnessPolicy::Auto,
+            &KnownListCache::default(),
+        )
+        .await
+        .expect("the cosigned candidate should win");
+        assert_eq!(found.server_url, world.node.uri());
+        assert_eq!(found.verified.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn discovery_reports_every_attempt_when_no_candidate_is_cosigned() {
+        let world = auto_world(2, 1, 1).await;
+        let author = SigningKey::from_bytes(&[1; 32]);
+        let other = MockServer::start().await;
+        mount_head(&other, &author, &world.keys, 0).await;
+        silent_discover(&other).await;
+        let entry = entry_for(&author, vec![world.node.uri(), other.uri()]);
+        let err = discover_among(
+            std::slice::from_ref(&entry),
+            &avalon_target(),
+            &quick_retry(),
+            &rank_config(),
+            &WitnessPolicy::Auto,
+            &KnownListCache::default(),
+        )
+        .await
+        .unwrap_err();
+        let DiscoveryError::NoneVerified { attempts, .. } = err else {
+            panic!("expected NoneVerified, got {err:?}");
+        };
+        let urls: Vec<_> = attempts.iter().map(|(u, _)| u.clone()).collect();
+        assert_eq!(urls, vec![world.node.uri(), other.uri()]);
+    }
+
+    #[tokio::test]
+    async fn auto_discovery_builds_the_list_once_and_the_client_reuses_it() {
+        let world = auto_world(2, 2, 1).await;
+        let author = SigningKey::from_bytes(&[1; 32]);
+        let second = MockServer::start().await;
+        mount_head(&second, &author, &world.keys, 2).await;
+        silent_discover(&second).await;
+        let entry = entry_for(&author, vec![world.node.uri(), second.uri()]);
+        let cache = KnownListCache::default();
+        let found = discover_among(
+            std::slice::from_ref(&entry),
+            &avalon_target(),
+            &quick_retry(),
+            &rank_config(),
+            &WitnessPolicy::Auto,
+            &cache,
+        )
+        .await
+        .expect("both candidates are cosigned");
+        assert_eq!(found.verified.len(), 2);
+        let mut client = client_for(found.server_url);
+        client.auto_known_list = cache;
+        let status = client
+            .verify_with_policy_at(&world.anchors_url, &WitnessPolicy::Auto, None)
+            .await;
+        assert!(verified(&status), "{status:?}");
+    }
+
+    #[tokio::test]
+    async fn none_and_explicit_policies_do_not_consult_discovery() {
+        let world = auto_world(2, 0, 0).await;
+        let author = SigningKey::from_bytes(&[1; 32]);
+        let entry = entry_for(&author, vec![world.node.uri()]);
+        let plain = discover_among(
+            std::slice::from_ref(&entry),
+            &avalon_target(),
+            &quick_retry(),
+            &rank_config(),
+            &WitnessPolicy::None,
+            &KnownListCache::default(),
+        )
+        .await
+        .expect("none is the plain author check");
+        assert_eq!(plain.server_url, world.node.uri());
+        let known: Vec<(String, VerifyingKey)> = world
+            .keys
+            .iter()
+            .map(|k| (hex::encode(k.verifying_key().as_bytes()), k.verifying_key()))
+            .collect();
+        let err = discover_among(
+            std::slice::from_ref(&entry),
+            &avalon_target(),
+            &quick_retry(),
+            &rank_config(),
+            &WitnessPolicy::Explicit(known),
+            &KnownListCache::default(),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, DiscoveryError::NoneVerified { .. }));
+    }
+
+    #[tokio::test]
+    async fn discovery_with_zero_or_one_witness_is_the_plain_check() {
+        for advertised in [0, 1] {
+            let world = auto_world(advertised, 0, 1).await;
+            let author = SigningKey::from_bytes(&[1; 32]);
+            let entry = entry_for(&author, vec![world.node.uri()]);
+            let found = discover_among(
+                std::slice::from_ref(&entry),
+                &avalon_target(),
+                &quick_retry(),
+                &rank_config(),
+                &WitnessPolicy::Auto,
+                &KnownListCache::default(),
+            )
+            .await
+            .unwrap_or_else(|e| panic!("{advertised}: {e:?}"));
+            assert_eq!(found.server_url, world.node.uri());
+        }
     }
 }

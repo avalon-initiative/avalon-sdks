@@ -268,7 +268,7 @@ pub struct AvalonClient {
     config: AvalonConfig,
     http: reqwest::Client,
     witness_policy: crate::known_list::WitnessPolicy,
-    auto_known_list: tokio::sync::OnceCell<Vec<crate::known_list::KnownWitness>>,
+    auto_known_list: crate::known_list::KnownListCache,
 }
 
 #[derive(Deserialize)]
@@ -298,7 +298,7 @@ impl AvalonClient {
             config,
             http: reqwest::Client::new(),
             witness_policy: crate::known_list::WitnessPolicy::default(),
-            auto_known_list: tokio::sync::OnceCell::new(),
+            auto_known_list: crate::known_list::KnownListCache::default(),
         }
     }
 

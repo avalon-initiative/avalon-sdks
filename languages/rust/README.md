@@ -29,6 +29,13 @@ probed with `GET {base_url}/ledger/sth/latest?shard_id=core` (5 seconds, 4 in fl
 The list is built once per client and cached. A list of fewer than two is the plain author check; two
 or more fail closed exactly as an explicit list does (`Mismatch`).
 
+`discover`, `discover_ranked` and `AvalonClient::connect` apply the same policy to every candidate
+during discovery (`discover_with_policy` / `discover_ranked_with_policy` take it explicitly; the plain
+functions use `Auto`, `connect` uses `DiscoveryConfig::witness_policy`). A list of fewer than two is the
+plain author check; otherwise a candidate whose head lacks the cosigned majority is recorded as a failed
+attempt and skipped so the next verified candidate can win. The auto list is built once per discovery
+and `connect` hands it to the returned client, whose `verify_network` reuses it.
+
 Opt out with `WitnessPolicy::None` or pass your own list with `WitnessPolicy::Explicit`, either on
 `AvalonClient::with_witness_policy`, `verify_network_with_policy` or `DiscoveryConfig::witness_policy`.
 The prefix rule needs no DNS (IPv4 /24, IPv6 /48, or a hostname's last two labels), so it stops one

@@ -65,6 +65,10 @@ pub enum WitnessPolicy {
     None,
 }
 
+/// A known list built at most once and shared between discovery and the client it produces;
+/// concurrent callers wait for the single build.
+pub type KnownListCache = Arc<tokio::sync::OnceCell<Vec<KnownWitness>>>;
+
 /// One discovered witness whose advert proof verified.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Candidate {
