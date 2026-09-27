@@ -2,8 +2,7 @@
 // join, not which of its nodes to talk to.
 import { fetchTrustAnchors } from './trustAnchors.js'
 import type { TrustAnchorEntry } from './trustAnchors.js'
-import { fetchNetworkTrustStatus } from './verifyNetwork.js'
-import type { NetworkTrustStatus } from './verifyNetwork.js'
+import { fetchPolicyNetworkTrustStatus, type PolicyVerifyOptions } from './cosignedTrust.js'
 import { checkTargetNetwork, NetworkTargetMismatchError, type TargetNetwork } from './targetNetwork.js'
 
 /** Why `discover` couldn't resolve `target` to a live, verified server. */
@@ -47,13 +46,15 @@ function entryMatchesTarget(entry: TrustAnchorEntry, target: TargetNetwork): boo
 }
 
 /** Bounds on the latency ranking `discover` applies among verified candidates. */
-export interface DiscoverOptions {
+export interface DiscoverOptions extends Pick<PolicyVerifyOptions, 'witnessPolicy' | 'knownListOptions' | 'knownLists' | 'freshnessSeconds'> {
   /** At most this many verified candidates are collected and timed. Default 5. */
   maxTimed?: number
   /** Timeout for each timing request, in milliseconds. Default 2000. */
   probeTimeoutMs?: number
   /** After the first candidate verifies, how long to keep verifying further ones. Default 2000. */
   collectWindowMs?: number
+  /** `discover` defaults to `'auto'`; `discoverAmong` defaults to `'none'`. A cache passed as `knownLists` is filled and can be reused. */
+  witnessPolicy?: PolicyVerifyOptions['witnessPolicy']
 }
 
 /** A verified candidate and its measured `GET /nodes/status` round trip; `null` when not measured or the probe failed. */
@@ -117,6 +118,12 @@ export async function discoverAmong(
   const verified: Array<{ serverUrl: string; entry: TrustAnchorEntry }> = []
   let triedAny = false
   let firstVerifiedAt = 0
+  const policyOptions: PolicyVerifyOptions = {
+    witnessPolicy: options.witnessPolicy ?? 'none',
+    knownListOptions: options.knownListOptions,
+    knownLists: options.knownLists ?? new Map(),
+    freshnessSeconds: options.freshnessSeconds,
+  }
 
   collect: for (const entry of anchors) {
     if (!entryMatchesTarget(entry, target)) continue
@@ -124,8 +131,8 @@ export async function discoverAmong(
     for (const candidate of candidates) {
       if (verified.length >= maxTimed) break collect
       triedAny = true
-      const pending = fetchNetworkTrustStatus(anchors, candidate)
-      let status: NetworkTrustStatus | undefined
+      const pending = fetchPolicyNetworkTrustStatus(anchors, candidate, policyOptions)
+      let status: Awaited<typeof pending> | undefined
       if (verified.length === 0) {
         status = await pending
       } else {
@@ -189,7 +196,9 @@ export async function discoverAmong(
  * candidate order. With one verified candidate no extra request is made.
  * Extra time over plain first-verified selection is bounded by
  * `collectWindowMs` (2s of further verification after the first success)
- * plus `probeTimeoutMs` (2s).
+ * plus `probeTimeoutMs` (2s). Each candidate is checked under `options.witnessPolicy`
+ * (default `'auto'`): the known list is built once per call and never from the candidate, and
+ * a candidate that lacks the cosigned majority of a list of two or more counts as a mismatch.
  */
 export async function discover(
   target: TargetNetwork,
@@ -201,5 +210,5 @@ export async function discover(
   } catch (err) {
     throw new DiscoveryFailedError({ kind: 'anchors-unavailable', target: describeTarget(target), reason: String(err) })
   }
-  return discoverAmong(anchors, target, options)
+  return discoverAmong(anchors, target, { ...options, witnessPolicy: options.witnessPolicy ?? 'auto' })
 }
