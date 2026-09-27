@@ -106,7 +106,7 @@ impl AvalonClient {
     }
 }
 
-async fn decode<R: serde::de::DeserializeOwned>(
+pub(crate) async fn decode<R: serde::de::DeserializeOwned>(
     response: reqwest::Response,
 ) -> Result<R, SdkError> {
     if !response.status().is_success() {

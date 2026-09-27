@@ -43,6 +43,21 @@ Until real cross-repo tooling exists, resyncing any of these is a manual
 copy from the corresponding path in `avalon-protocol`, then this repo's
 own test suites (all three languages) to confirm nothing broke.
 
+## Shard names
+
+A shard can bind a human-readable name (such as a domain it controls) to its
+self-certifying id. All three SDKs expose the read calls and a pass-through for
+submitting an already-signed claim (`GET /shards/name/{name}`,
+`GET /shards/{id}/name-claims`, `POST /shards/{id}/name-claims`), typed from the
+generated schema. Path values are percent-encoded. The SDKs do not sign claims yet:
+`submit` takes a claim signed with the shard's own key, and the node checks the proof.
+
+| | Resolve a name | List a shard's names | Submit a signed claim |
+| --- | --- | --- | --- |
+| Rust | `resolve_name(node_url, name)` | `list_shard_names(node_url, id)` | `submit_name_claim(node_url, &claim)` |
+| C# | `ResolveNameAsync(name, nodeUrl?)` | `ListShardNamesAsync(id, nodeUrl?)` | `SubmitNameClaimAsync(claim, nodeUrl?)` |
+| TypeScript | `resolveName(nodeUrl, name)` | `listShardNames(nodeUrl, id)` | `submitNameClaim(nodeUrl, claim)` |
+
 ## Node topology, probe and trace
 
 All three SDKs expose the node's read-only topology view and its probe and trace

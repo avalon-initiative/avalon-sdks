@@ -2994,6 +2994,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/shards/name/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Resolves a verified name to its self-certifying shard id. */
+        get: operations["resolve_name"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shards/{self_certifying_id}/name-claims": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lists every verified name currently bound to `self_certifying_id`. */
+        get: operations["list_names_for_shard"];
+        put?: never;
+        /**
+         * Submits a signed name-binding claim and, if its domain proof checks out,
+         *     records it as this name's verified binding — replacing a previously
+         *     verified claim for the same name only when the new one wins the
+         *     deterministic contest (`avalon_protocol::domain_proof::
+         *     contested_name_winner`).
+         */
+        post: operations["submit_name_claim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4180,6 +4221,27 @@ export interface components {
             joined_at: string;
             /** Format: int32 */
             role_index: number;
+        };
+        /**
+         * @description Wire shape of a `NameBindingClaim` — the server's own DTO (rather than
+         *     deriving `ToSchema` on the protocol type directly) so the OpenAPI schema
+         *     stays owned by `crates/server`, matching every other request DTO in this
+         *     module family (e.g. `crate::integrators::CreateIntegratorRequest`).
+         */
+        NameClaimRequest: {
+            /** Format: date-time */
+            created_at: string;
+            name: string;
+            public_key: string;
+            self_certifying_id: string;
+            signature: string;
+        };
+        NameClaimResponse: {
+            name: string;
+            proof_method: string;
+            self_certifying_id: string;
+            /** Format: date-time */
+            verified_at: string;
         };
         Neighbor: {
             base_url: string;
@@ -8956,7 +9018,109 @@ export interface operations {
             };
         };
     };
+    resolve_name: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NameClaimResponse"];
+                };
+            };
+            /** @description no verified claim for this name */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_names_for_shard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                self_certifying_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NameClaimResponse"][];
+                };
+            };
+        };
+    };
+    submit_name_claim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                self_certifying_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NameClaimRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NameClaimResponse"];
+                };
+            };
+            /** @description malformed claim, id mismatch, or a name with no domain shape */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description name already verified for a different, contest-winning claim */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description domain proof did not match the claim */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Rate limit or in-flight cap hit; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
 }
 
 // Issue #735: the info.version this file's types were generated from.
-export const OPENAPI_SCHEMA_VERSION = "0.6.0" as const
+export const OPENAPI_SCHEMA_VERSION = "0.7.0" as const
