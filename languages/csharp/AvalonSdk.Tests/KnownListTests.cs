@@ -17,11 +17,11 @@ namespace Avalon.Sdk.Tests;
 
 public class KnownListTests
 {
-    private const string Net = "avalon-test";
-    private const string Seed = "http://seed.s0.example";
-    private static readonly string Root = string.Concat(Enumerable.Repeat("ab", 32));
+    internal const string Net = "avalon-test";
+    internal const string Seed = "http://seed.s0.example";
+    internal static readonly string Root = string.Concat(Enumerable.Repeat("ab", 32));
 
-    private sealed class FuncHandler : HttpMessageHandler
+    internal sealed class FuncHandler : HttpMessageHandler
     {
         private readonly Func<Uri, (HttpStatusCode, string)> _route;
         public List<string> Urls { get; } = new();
@@ -53,8 +53,8 @@ public class KnownListTests
         return (Ed25519PrivateKeyParameters)generator.GenerateKeyPair().Private;
     }
 
-    private static string Hex(byte[] bytes) => string.Concat(bytes.Select(b => b.ToString("x2")));
-    private static string PubHex(Ed25519PrivateKeyParameters key) => Hex(key.GeneratePublicKey().GetEncoded());
+    internal static string Hex(byte[] bytes) => string.Concat(bytes.Select(b => b.ToString("x2")));
+    internal static string PubHex(Ed25519PrivateKeyParameters key) => Hex(key.GeneratePublicKey().GetEncoded());
 
     private static byte[] Sign(Ed25519PrivateKeyParameters key, byte[] message)
     {
@@ -64,7 +64,7 @@ public class KnownListTests
         return signer.GenerateSignature();
     }
 
-    private sealed class Witness
+    internal sealed class Witness
     {
         public Ed25519PrivateKeyParameters Key = NewKey();
         public string Id => PubHex(Key);
@@ -90,16 +90,16 @@ public class KnownListTests
         }
     }
 
-    private static Witness W(int i, string? host = null) => new Witness { Url = $"http://{host ?? $"w{i}.d{i}.example"}" };
+    internal static Witness W(int i, string? host = null) => new Witness { Url = $"http://{host ?? $"w{i}.d{i}.example"}" };
 
-    private static TrustAnchorEntry Entry(string key, params string[] seeds) => new TrustAnchorEntry
+    internal static TrustAnchorEntry Entry(string key, params string[] seeds) => new TrustAnchorEntry
     {
         NetworkId = Net,
         VerifyKey = key,
         SeedNodes = seeds.ToList(),
     };
 
-    private static KnownListOptions Options(int capacity = 5) => new KnownListOptions
+    internal static KnownListOptions Options(int capacity = 5) => new KnownListOptions
     {
         Capacity = capacity,
         RandomInt = _ => 0,
@@ -112,7 +112,7 @@ public class KnownListTests
     private static string LatestBody(string network) =>
         JsonSerializer.Serialize(new { network_id = network, tree_size = 5 });
 
-    private static Func<Uri, (HttpStatusCode, string)> Network(
+    internal static Func<Uri, (HttpStatusCode, string)> Network(
         Dictionary<string, IEnumerable<Witness>> seeds, IEnumerable<Witness> all, Func<Uri, (HttpStatusCode, string)?>? extra = null)
     {
         var now = DateTimeOffset.UtcNow;
@@ -224,7 +224,7 @@ public class KnownListTests
 
     // Verification integration
 
-    private sealed class NetFixture
+    internal sealed class NetFixture
     {
         public Ed25519PrivateKeyParameters Author = NewKey();
         public List<Witness> Witnesses = Enumerable.Range(0, 3).Select(i => W(i)).ToList();
