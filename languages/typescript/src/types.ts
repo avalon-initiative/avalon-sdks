@@ -90,6 +90,50 @@ export interface SignedTreeHeadResponse {
   protocol_version: string
 }
 
+/** One witness cosignature as served by `?witnesses=1`: it is over the head
+ * it is attached to, so the head's own fields are not repeated. */
+export interface WitnessCosignatureWire {
+  // Lowercase hex Ed25519 public key of the witness.
+  witness_key_id: string
+  // RFC 3339.
+  observed_at: string
+  // Lowercase hex Ed25519 signature (64 bytes).
+  signature: string
+}
+
+/** `GET /ledger/sth/latest?witnesses=1` (or `/ledger/sth/{n}`): the signed tree head plus its cosignatures. */
+export interface CosignedTreeHeadResponse extends SignedTreeHeadResponse {
+  cosignatures: WitnessCosignatureWire[]
+}
+
+/** A cosignature bound to the exact head fields it covers. */
+export interface WitnessCosignature {
+  tree_size: number
+  root_hash: string
+  network_id: string
+  // RFC 3339; the author's own head timestamp.
+  author_created_at: string
+  // Lowercase hex Ed25519 public key of the witness.
+  witness_key_id: string
+  // RFC 3339.
+  observed_at: string
+  // Lowercase hex Ed25519 signature (64 bytes).
+  signature: string
+}
+
+/** An author-signed tree head with the cosignatures backing it. */
+export interface CosignedTreeHead {
+  sth: SignedTreeHeadResponse
+  cosignatures: WitnessCosignature[]
+}
+
+/** A witness the verifier trusts, chosen by the verifier and never taken from the node being checked. */
+export interface KnownWitness {
+  witnessKeyId: string
+  // Lowercase hex Ed25519 public key (32 bytes).
+  key: string
+}
+
 /** `GET /nodes/status`'s wire response — matches
  * `crates/server/src/nodes.rs::NodeStatusResponse`. Only the fields this
  * SDK consumes; the real response also carries `resources` and
