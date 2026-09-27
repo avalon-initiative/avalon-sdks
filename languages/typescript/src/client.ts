@@ -34,11 +34,15 @@ import { authenticate as authenticateIntegrator, type AuthenticateOptions, type 
 import { getNodeStatus } from './nodeStatus.js'
 import type { NodeStatusResponse } from './types.js'
 import { fetchTrustAnchors, type TrustAnchorEntry } from './network/trustAnchors.js'
-import { fetchNetworkTrustStatus, type NetworkTrustStatus } from './network/verifyNetwork.js'
-import { buildKnownList, type BuildKnownListOptions } from './network/knownList.js'
+import type { NetworkTrustStatus } from './network/verifyNetwork.js'
+import type { BuildKnownListOptions } from './network/knownList.js'
 import type { KnownWitness } from './types.js'
-import { fetchCosignedNetworkTrustStatus, type CosignedVerifyOptions } from './network/cosignedTrust.js'
-import { discover } from './network/discover.js'
+import {
+  fetchPolicyNetworkTrustStatus,
+  type CosignedVerifyOptions,
+  type KnownListCache,
+} from './network/cosignedTrust.js'
+import { discover, type DiscoverOptions } from './network/discover.js'
 import type { TargetNetwork } from './network/targetNetwork.js'
 
 export interface AvalonClientConfig {
@@ -70,7 +74,7 @@ export interface VerifyNetworkOptions extends CosignedVerifyOptions {
 
 export class AvalonClient {
   private readonly serverUrl: string
-  private readonly knownLists = new Map<string, Promise<KnownWitness[]>>()
+  private knownLists: KnownListCache = new Map()
 
   constructor(config: AvalonClientConfig) {
     this.serverUrl = config.serverUrl
@@ -268,33 +272,22 @@ export class AvalonClient {
     } catch (err) {
       return { kind: 'unreachable', detail: `trust-anchor list unavailable: ${String(err)}` }
     }
-    const { witnessPolicy, knownListOptions, ...cosigned } = options
-    const policy = cosigned.knownWitnesses ?? witnessPolicy ?? 'auto'
-    if (Array.isArray(policy)) {
-      return fetchCosignedNetworkTrustStatus(anchors, this.serverUrl, { ...cosigned, knownWitnesses: policy })
-    }
-    if (policy === 'none') return fetchNetworkTrustStatus(anchors, this.serverUrl)
-    const plain = await fetchNetworkTrustStatus(anchors, this.serverUrl)
-    if (plain.kind !== 'verified') return plain
-    const networkId = plain.entry.network_id
-    let list = this.knownLists.get(networkId)
-    if (!list) {
-      list = buildKnownList({ ...knownListOptions, entry: plain.entry })
-      this.knownLists.set(networkId, list)
-    }
-    const known = await list
-    if (known.length < 2) return plain
-    return fetchCosignedNetworkTrustStatus(anchors, this.serverUrl, { ...cosigned, knownWitnesses: known })
+    return fetchPolicyNetworkTrustStatus(anchors, this.serverUrl, { ...options, knownLists: this.knownLists })
   }
 
   /** Builds and returns a client with no server URL supplied up front —
    * resolves `target` to a live, verified server via `discover`, then
    * constructs exactly as `new AvalonClient(...)` would with the
    * discovered URL. See `discover` for how candidates are chosen and
-   * verified. */
-  static async connect(target: TargetNetwork): Promise<AvalonClient> {
-    const { serverUrl } = await discover(target)
-    return new AvalonClient({ serverUrl })
+   * verified. Candidates are checked under `options.witnessPolicy` (default `'auto'`, `'none'` to
+   * opt out, or an explicit list); the list built during discovery is handed to the returned
+   * client so its `verifyNetwork()` reuses it. */
+  static async connect(target: TargetNetwork, options: DiscoverOptions = {}): Promise<AvalonClient> {
+    const knownLists: KnownListCache = options.knownLists ?? new Map()
+    const { serverUrl } = await discover(target, { ...options, knownLists })
+    const client = new AvalonClient({ serverUrl })
+    client.knownLists = knownLists
+    return client
   }
 }
 

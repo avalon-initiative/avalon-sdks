@@ -20,8 +20,12 @@ export {
   verifyCosignedTreeHead,
   findEquivocatingWitnesses,
 } from './witness.js'
-export { fetchCosignedNetworkTrustStatus, DEFAULT_COSIGN_FRESHNESS_SECONDS } from './cosignedTrust.js'
-export type { CosignedVerifyOptions } from './cosignedTrust.js'
+export {
+  fetchCosignedNetworkTrustStatus,
+  fetchPolicyNetworkTrustStatus,
+  DEFAULT_COSIGN_FRESHNESS_SECONDS,
+} from './cosignedTrust.js'
+export type { CosignedVerifyOptions, PolicyVerifyOptions, WitnessPolicy, KnownListCache } from './cosignedTrust.js'
 export { witnessAnnounceMessage, verifyWitnessAnnounce } from './witness.js'
 export {
   diversityPrefixForUrl,

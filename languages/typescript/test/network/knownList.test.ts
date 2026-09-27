@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AvalonClient } from '../../src/client.js'
 import type { CosignedTreeHead, KnownWitness, SignedTreeHeadResponse } from '../../src/types.js'
 import { signingMessage } from '../../src/network/sthMessage.js'
+import type { TrustAnchorEntry } from '../../src/network/trustAnchors.js'
+import { discover, discoverAmong, DiscoveryFailedError } from '../../src/network/discover.js'
 import { buildKnownList, crossCheckHead, gatherCandidates } from '../../src/network/knownList.js'
 import { witnessAnnounceMessage, witnessSigningMessage } from '../../src/network/witness.js'
 
@@ -199,6 +201,82 @@ describe('verifyNetwork witness policy', () => {
         : original(input),
     )
     expect((await client().verifyNetwork()).kind).toBe('verified')
+  })
+})
+
+describe('discovery and connect witness policy', () => {
+  const anchorEntry: TrustAnchorEntry = { label: 'x', network_id: NET, verify_key: hexKey(1), signing_key_id: 'op', environment: 'dev', seed_nodes: ['http://10.0.0.1:8080'] }
+  const target = { kind: 'network-id', networkId: NET } as const
+  const sth = makeHead('aa'.repeat(32))
+  const witnessPeers = [2, 3, 4].map((n) => advert(n, `http://w${n}.net${n}.example`))
+  const explicit: KnownWitness[] = [2, 3, 4].map((n) => ({ witnessKeyId: hexKey(n), key: hexKey(n) }))
+  const discoverCalls = () => calls.filter((u) => u.includes('/nodes/discover')).length
+  const cosignedFetches = () => calls.filter((u) => u.includes('/ledger/sth/latest') && u.includes('witnesses=1')).length
+
+  function world(cosigs: number[], peers: unknown[] = witnessPeers) {
+    stub({
+      discover: { 'http://10.0.0.1:8080': { peers } },
+      head: () => ({ ...sth, cosignatures: cosigs.map((w) => cosignWire(w, sth)) }),
+    })
+    const original = globalThis.fetch
+    vi.stubGlobal('fetch', async (input: string | URL) => {
+      if (String(input).includes('trusted-networks')) return new Response(JSON.stringify({ version: 1, networks: [anchorEntry] }), { status: 200 })
+      return original(input)
+    })
+  }
+
+  it('connect builds the list once and the returned client reuses it', async () => {
+    world([2, 3])
+    const client = await AvalonClient.connect(target)
+    expect(discoverCalls()).toBe(1)
+    expect((await client.verifyNetwork()).kind).toBe('verified')
+    expect(discoverCalls()).toBe(1)
+  })
+
+  it('discovery builds one list across several candidates', async () => {
+    world([2, 3])
+    const entry2 = { ...anchorEntry, seed_nodes: ['http://10.0.0.1:8080', 'http://10.0.9.1:8080'] }
+    const knownLists = new Map()
+    const found = await discoverAmong([entry2], target, { witnessPolicy: 'auto', knownLists, probeTimeoutMs: 50 })
+    expect(found.verified).toHaveLength(2)
+    expect(calls.filter((u) => u.startsWith('http://10.0.0.1:8080/nodes/discover'))).toHaveLength(1)
+    expect(knownLists.size).toBe(1)
+  })
+
+  it('a candidate without a cosigned majority is rejected under auto and an explicit list', async () => {
+    world([])
+    await expect(AvalonClient.connect(target)).rejects.toThrow(DiscoveryFailedError)
+    await expect(AvalonClient.connect(target, { witnessPolicy: explicit })).rejects.toThrow(DiscoveryFailedError)
+    await expect(discover(target)).rejects.toThrow(DiscoveryFailedError)
+  })
+
+  it('none and the plain-check lists connect as before without building a list', async () => {
+    world([])
+    await AvalonClient.connect(target, { witnessPolicy: 'none' })
+    await AvalonClient.connect(target, { witnessPolicy: explicit.slice(0, 1) })
+    await AvalonClient.connect(target, { witnessPolicy: [] })
+    expect(discoverCalls()).toBe(0)
+    expect(cosignedFetches()).toBe(0)
+  })
+
+  it('an explicit list with a majority connects without discovery', async () => {
+    world([2, 3])
+    await AvalonClient.connect(target, { witnessPolicy: explicit })
+    expect(discoverCalls()).toBe(0)
+  })
+
+  it('a single-signer network connects as before under auto', async () => {
+    world([], [witnessPeers[0]])
+    const client = await AvalonClient.connect(target)
+    expect((await client.verifyNetwork()).kind).toBe('verified')
+    world([], [])
+    await AvalonClient.connect(target)
+  })
+
+  it('discoverAmong without a policy is the plain check', async () => {
+    world([])
+    expect((await discoverAmong([anchorEntry], target)).serverUrl).toBe('http://10.0.0.1:8080')
+    expect(discoverCalls()).toBe(0)
   })
 })
 

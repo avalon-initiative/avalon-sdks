@@ -3,6 +3,7 @@ import { getCosignedTreeHead } from '../ledger.js'
 import { verifyCosignedTreeHead } from './witness.js'
 import { fetchNetworkTrustStatus, evaluateNetworkTrust, type NetworkTrustStatus } from './verifyNetwork.js'
 import type { TrustAnchorEntry } from './trustAnchors.js'
+import { buildKnownList, type BuildKnownListOptions } from './knownList.js'
 import type { KnownWitness } from '../types.js'
 
 export const DEFAULT_COSIGN_FRESHNESS_SECONDS = 600
@@ -40,4 +41,48 @@ export async function fetchCosignedNetworkTrustStatus(
   } catch (err) {
     return { kind: 'unreachable', detail: err instanceof Error ? err.message : String(err) }
   }
+}
+
+/** `'auto'` builds the known list from discovery, `'none'` is the plain author check, an array is the caller's own list. */
+export type WitnessPolicy = 'auto' | 'none' | KnownWitness[]
+
+/** Built known lists keyed by network id, shared so a list is built once per caller. */
+export type KnownListCache = Map<string, Promise<KnownWitness[]>>
+
+export interface PolicyVerifyOptions extends CosignedVerifyOptions {
+  witnessPolicy?: WitnessPolicy
+  /** Tuning for the automatic list (capacity, anchor slots, prefix cap, random source). */
+  knownListOptions?: Omit<BuildKnownListOptions, 'entry'>
+  /** Defaults to a fresh cache, so a list is only reused when the caller passes one. */
+  knownLists?: KnownListCache
+}
+
+/**
+ * Trust check under a witness policy. An explicit `knownWitnesses` wins over `witnessPolicy`, which
+ * defaults to `'auto'`. A list of fewer than two is exactly the plain author check; two or more
+ * require the cosigned majority and fail closed as `mismatch`. Never throws.
+ */
+export async function fetchPolicyNetworkTrustStatus(
+  anchors: TrustAnchorEntry[],
+  serverUrl: string,
+  options: PolicyVerifyOptions = {},
+): Promise<NetworkTrustStatus> {
+  const { witnessPolicy, knownListOptions, knownLists, ...cosigned } = options
+  const policy = cosigned.knownWitnesses ?? witnessPolicy ?? 'auto'
+  if (Array.isArray(policy)) {
+    return fetchCosignedNetworkTrustStatus(anchors, serverUrl, { ...cosigned, knownWitnesses: policy })
+  }
+  if (policy === 'none') return fetchNetworkTrustStatus(anchors, serverUrl)
+  const plain = await fetchNetworkTrustStatus(anchors, serverUrl)
+  if (plain.kind !== 'verified') return plain
+  const cache = knownLists ?? new Map()
+  const networkId = plain.entry.network_id
+  let list = cache.get(networkId)
+  if (!list) {
+    list = buildKnownList({ ...knownListOptions, entry: plain.entry })
+    cache.set(networkId, list)
+  }
+  const known = await list
+  if (known.length < 2) return plain
+  return fetchCosignedNetworkTrustStatus(anchors, serverUrl, { ...cosigned, knownWitnesses: known })
 }
