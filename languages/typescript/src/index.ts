@@ -3,7 +3,7 @@
 // avalon-protocol's docs/projects/sdks/architecture/sdk.md for the full
 // surface.
 export { AvalonClient } from './client.js'
-export type { AvalonClientConfig } from './client.js'
+export type { AvalonClientConfig, VerifyNetworkOptions } from './client.js'
 
 export { AccountSession, AccountDeviceLogin } from './accountSession/index.js'
 export type {
@@ -163,6 +163,13 @@ export {
   findEquivocatingWitnesses,
   fetchCosignedNetworkTrustStatus,
   DEFAULT_COSIGN_FRESHNESS_SECONDS,
+  witnessAnnounceMessage,
+  verifyWitnessAnnounce,
+  diversityPrefixForUrl,
+  selectKnownList,
+  buildKnownList,
+  gatherCandidates,
+  crossCheckHead,
 } from './network/index.js'
 export type {
   TrustAnchorEntry,
@@ -175,6 +182,11 @@ export type {
   DiscoverResult,
   VerifiedCandidate,
   CosignedVerifyOptions,
+  KnownListCandidate,
+  BuildKnownListOptions,
+  CrossCheckOptions,
+  DiscoveredPeer,
+  EquivocationEvidence,
 } from './network/index.js'
 
 export {
