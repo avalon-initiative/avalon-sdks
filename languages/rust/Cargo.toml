@@ -4,6 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "README.md"
+keywords = ["avalon", "sdk", "identity", "games"]
+categories = ["api-bindings"]
+# The tests listed last read files outside this directory (the shared conformance vectors and
+# fixtures) and are left out of the package; the other tests are self-contained.
+exclude = ["tests/conformance.rs", "tests/nodes_topology.rs", "tests/topology_walk.rs"]
 description = "Rust reference SDK for integrating a game with Avalon. Talks to the avalon-server API over its published schema and owns its own wire types — no dependency on any other crate in this workspace, and it never exposes internal database structures. The C# SDK (bindings/csharp) is the flagship developer-facing surface; this crate is both the reference implementation and directly usable by Rust-based games/tools."
 
 [dependencies]
@@ -11,7 +17,7 @@ description = "Rust reference SDK for integrating a game with Avalon. Talks to t
 # Nested workspace member (#772) — this crate has no dependency on the core
 # protocol crates, only on this SDK, so it lives under rust/ rather
 # than alongside protocol/chain/indexer/server.
-avalon-schema-derive = { path = "schema-derive" }
+avalon-schema-derive.workspace = true
 async-trait.workspace = true
 thiserror.workspace = true
 reqwest.workspace = true
@@ -23,7 +29,7 @@ tokio-tungstenite.workspace = true
 futures-util.workspace = true
 # "time" is for the device-login poll loop's backoff sleep
 # (`device_login::DeviceLogin::wait`, #398).
-tokio = { workspace = true, features = ["sync", "time"] }
+tokio = { workspace = true, features = ["sync", "time", "rt"] }
 # Achievements issuance (#34) signs attestations locally, in-process — the
 # server never sees this integrator's private key, only a detached
 # signature.
@@ -33,6 +39,8 @@ base64.workspace = true
 rand.workspace = true
 # Hex-decoding trust-anchor verify keys and STH signatures (issue #482).
 hex.workspace = true
+# SHA-256 of a presented key for self-certifying shard ids.
+sha2.workspace = true
 # `AccountSession` (#699) drives a real WebAuthn registration/login
 # ceremony client-side against a virtual authenticator — the same
 # `testable`-feature approach `crates/cli/src/dev_tools.rs` already proved

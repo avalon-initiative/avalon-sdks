@@ -16,6 +16,21 @@ resistance to a single compromised author key, not proof: the guarantee is only 
 independence of the witnesses on the list. Shared vectors:
 `conformance/vectors/witness-cosigned-tree-head.json`.
 
+## Self-certifying shard heads
+
+`AvalonClient.GetShardTreeHeadAsync(shardId, treeSize)` fetches a head of one shard; `SignedTreeHeadWire.SigningPublicKey`
+holds the optional `signing_public_key` a node serves for `node:<sha256-of-key>` shards (absent from older nodes).
+`SelfCertifying.Verify(shardId, head, key?)` verifies with only that key: it must be 64 lowercase hex characters
+decoding to a canonical Ed25519 point of non-small order, hash to the id and have signed the head. The result is a `SelfCertifyingResult` with
+`Verified` and, when false, the first `Failure` (`NotSelfCertifying`, `MissingKey`, `MalformedKey`, `KeyIdMismatch`,
+`BadSignature`). `SelfCertifying.ShardCheckFor(shardId)` returns `ShardCheck.SelfCertifying`, `CoreNetwork` (use
+`VerifyNetworkAsync`) or `Unsupported`; unsupported kinds never verify. No trust anchor or witness list is involved.
+Shared vectors: `conformance/vectors/self-certifying-tree-head.json`.
+
+## Tracing a real call
+
+`AvalonTrace.WithTraceAsync(() => client.GetNodeStatusAsync())` runs any SDK call with `X-Avalon-Trace` on each request and returns `Traced<T>` (`Value`, `Requests`). Each `RequestTrace` has the `TraceId` sent and either a decoded `Trace` (`Branches` of `PathHop`, which extends the `TraceHop` that `TraceAsync` returns and keeps unknown fields in `Extra`) or a `Problem` (`Missing`, `Oversized`, `Malformed`, `TraceIdMismatch`). Opt-in and read-only; a missing or malformed header never fails the call. Hops are self-reported by the nodes on the path and are advisory. Requests are traced through an `HttpClient` built on `AvalonTraceHandler`, which the SDK's default clients use; for your own client, wrap its handler: `new HttpClient(new AvalonTraceHandler(inner))`. See the root README.
+
 ## Known list and default-on witness verification (C#)
 
 By default `VerifyNetworkAsync` and `ConnectAsync` build the witness list themselves. Each seed node in

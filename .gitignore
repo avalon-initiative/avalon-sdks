@@ -10,3 +10,5 @@ languages/csharp/**/obj/
 # Node (languages/typescript/)
 languages/typescript/node_modules/
 languages/typescript/dist/
+out/
+release-assets/

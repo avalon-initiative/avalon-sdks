@@ -19,13 +19,64 @@ API, one directory per language under `languages/`.
 
 **Status:** all three official SDKs' real source lives here.
 
+## Installing the Rust SDK
+
+The Rust SDK is not on crates.io. The project is public but used internally for now, so it is
+distributed through the organization's own channels (publishing to public registries is a later,
+deliberate step tracked in [#64](https://github.com/avalon-initiative/avalon-sdks/issues/64)).
+GitHub Packages carries the npm and NuGet packages only: it has no cargo registry, so the crates
+cannot be published there. Use the release tag, or the `.crate` files attached to the release.
+
+Use the tag of the release you want (`v0.1.3` below). Add the SDK as a pinned git dependency; cargo
+finds `avalon-sdk` by name inside the repository and builds its `avalon-schema-derive` proc-macro
+dependency from the same checkout:
+
+```toml
+[dependencies]
+avalon-sdk = { git = "https://github.com/avalon-initiative/avalon-sdks", tag = "v0.1.3" }
+```
+
+#### From the `.crate` files on the release page
+
+Releases after `v0.1.3` also attach `avalon-sdk-X.Y.Z.crate`, `avalon-schema-derive-X.Y.Z.crate`,
+and a `SHA256SUMS` file covering every file on the release. `cargo` cannot install a `.crate` from a
+URL, so for offline or vendored use unpack both and point cargo at them (replace `X.Y.Z` with the
+release version):
+
+```bash
+gh release download vX.Y.Z --repo avalon-initiative/avalon-sdks --pattern '*.crate' --pattern SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS
+mkdir -p vendor && for c in *.crate; do tar xzf "$c" -C vendor; done
+```
+
+```toml
+[dependencies]
+avalon-sdk = { path = "vendor/avalon-sdk-X.Y.Z" }
+
+# avalon-sdk depends on avalon-schema-derive by version, so resolve it from the unpacked copy.
+[patch.crates-io]
+avalon-schema-derive = { path = "vendor/avalon-schema-derive-X.Y.Z" }
+```
+
+Both crates build from the unpacked sources with no other repository files; the OpenAPI document the
+build script reads is packaged inside `avalon-sdk`.
+
+#### crates.io (not published yet)
+
+```toml
+avalon-sdk = "X.Y.Z"   # not published yet: tracked in #64
+```
+
+The npm and NuGet packages are installed from GitHub Packages (see "CI and releases" below).
+
 ## Vendored files
 
 This repo has no live link back to `avalon-protocol` — two sets of files are
 checked-in copies, kept in sync by hand whenever the upstream schema changes:
 
 - `docs/generated/openapi.json` — `avalon-protocol`'s
-  `docs/generated/openapi.json` (`make openapi` there). Each language's
+  `docs/generated/openapi.json` (`make openapi` there;
+  `languages/rust/openapi.json` is a symlink to it so the Rust crate packages its own copy). Each language's
   own codegen (`languages/rust/build.rs`, `languages/csharp/codegen`,
   `languages/typescript/scripts/generate-types.mjs`) generates its SDK's
   wire types from this same copy.
@@ -58,6 +109,33 @@ generated schema. Path values are percent-encoded. The SDKs do not sign claims y
 | C# | `ResolveNameAsync(name, nodeUrl?)` | `ListShardNamesAsync(id, nodeUrl?)` | `SubmitNameClaimAsync(claim, nodeUrl?)` |
 | TypeScript | `resolveName(nodeUrl, name)` | `listShardNames(nodeUrl, id)` | `submitNameClaim(nodeUrl, claim)` |
 
+## Self-certifying shard heads
+
+A shard whose id is `node:<sha256-of-key>` is named by the hash of the Ed25519 public key that signs its
+tree heads (lowercase hex SHA-256 of the raw 32 bytes). A node serves that key as the optional
+`signing_public_key` on `GET /ledger/sth/latest?shard_id=...` and `GET /ledger/sth/{tree_size}?shard_id=...`; it is
+not part of the signed bytes and older nodes omit it. All three SDKs verify such a head with only that key and the
+id, with no trust anchor, registry or witness list: the key must be exactly 64 lowercase hex characters decoding to
+a canonical Ed25519 point of non-small order, must hash to the id, and must have signed the head (the same signing
+bytes as every other tree head). Signature verification is cofactorless with S below the group order and R compared
+byte for byte, identically in all three SDKs and the server; in TypeScript this also applies to the `core` network
+check, so signatures that only a cofactored verifier accepts no longer verify. The first failing check is reported as one of `not_self_certifying` (the id is not a valid `node:` id),
+`missing_key`, `malformed_key`, `key_id_mismatch` or `bad_signature`. A separate dispatcher says which check a shard
+id gets: `node:` ids use this one, `core` uses the network and witness verification (`verify_network`), and every
+other id kind or malformed id is `unsupported` and never verifies here. Nothing existing changes: `verify_network`,
+`connect()` and the existing tree-head types behave as before, and parsing tolerates the field being absent.
+
+| | Fetch a shard's head | Verify | Which check applies |
+| --- | --- | --- | --- |
+| Rust | `AvalonClient::fetch_shard_tree_head(shard_id, tree_size)` | `self_certifying::verify_self_certifying_head(shard_id, &sth, key)` or `SelfCertifyingTreeHead::verify(shard_id)` | `self_certifying::shard_check(shard_id)` |
+| C# | `GetShardTreeHeadAsync(shardId, treeSize?)` | `SelfCertifying.Verify(shardId, head, key?)` | `SelfCertifying.ShardCheckFor(shardId)` |
+| TypeScript | `getShardTreeHead(nodeUrl, shardId, { treeSize? })` | `verifySelfCertifyingTreeHead(shardId, sth, key?)` | `shardCheck(shardId)` |
+
+In C# and TypeScript `SigningPublicKey` / `signing_public_key` is an optional field on the existing tree-head type; in
+Rust the existing `sth::SignedTreeHead` is unchanged and `self_certifying::SelfCertifyingTreeHead` carries the head plus
+the key. A verified head proves the key holder signed it and that the key belongs to the id; it says nothing about
+whether the shard is honest or current. Shared vectors: `conformance/vectors/self-certifying-tree-head.json`.
+
 ## Node topology, probe and trace
 
 All three SDKs expose the node's read-only topology view and its probe and trace
@@ -73,8 +151,52 @@ endpoints, typed from the generated schema (`GET /nodes/topology`,
 Probe and trace run on the node the client points at (`target` must be in that node's
 peer table for probe). Hop and latency data is self-reported by the nodes on the path
 and is advisory, not verified. A rate-limited call surfaces through each SDK's existing
-429 error with the server's `Retry-After`. Recorded real-node responses used by each
-language's tests live in `conformance/fixtures/nodes/`.
+429 error with the server's `Retry-After`. Recorded real-node responses (topology, probe, trace) used by each
+language's tests live in `conformance/fixtures/nodes/`; `op-trace.json` there is synthetic, built
+from the documented wire format, and also holds the shared invalid-header cases.
+
+### Tracing a real call
+
+A real SDK call can also report the path it took. Off by default: a call made outside the
+wrapper below is unchanged. Inside it, each request carries `X-Avalon-Trace: <uuid>` and the
+answer in `X-Avalon-Trace-Hops` (unpadded base64url JSON) is decoded next to the call's result:
+
+| | Trace a real call |
+| --- | --- |
+| Rust | `with_trace(client.node_status()).await` returns `Traced { value, requests }` |
+| C# | `AvalonTrace.WithTraceAsync(() => client.GetNodeStatusAsync())` returns `Traced<T>` (`Value`, `Requests`) |
+| TypeScript | `withTrace(() => getNodeStatus(url))` resolves `{ value, requests }` |
+
+`requests` has one entry per HTTP request sent while tracing was on. Each carries the id
+sent, the decoded `trace` (`trace_id`, `branches`, `truncated`; a fan-out reports one branch per
+target, and every branch is a list of hops shaped like the hops `trace()` returns, plus any field a
+newer node adds, passed through unchanged) or a non-fatal `problem` (`missing`, `oversized`,
+`malformed`, `trace_id_mismatch`). A missing, oversized or malformed header, or one the platform
+does not expose, never fails the call. Only some operations report hops (a realtime relay
+fan-out and a remote settlement submit); any other request comes back as `missing`. Hops are
+self-reported by the nodes on the path and are advisory, not verified.
+
+- The header goes to every URL requested through the client while tracing is on, including redirect
+  targets and the trust-anchor fetch made by discovery; each such request adds an entry, usually
+  `missing`. Keep traced operations to calls against nodes you intend to trace.
+- At most 256 entries are kept per traced operation; when more requests are made, later ones are
+  dropped and `requests_truncated` (`RequestsTruncated`, `requestsTruncated`) is set.
+- A `trace_id` that is missing or not a UUID is `malformed`; `trace_id_mismatch` is only a valid
+  UUID that differs from the one sent.
+- Browsers: the node does not yet expose the response header to cross-origin pages, so a browser
+  reads no hops, and a cross-origin request with the header needs the node to allow it. The
+  TypeScript SDK therefore does not send the header in a browser unless `withTrace(fn, { sendHeader: true })`.
+- Rust scopes tracing to the current task (requests made from a spawned task are not traced) and
+  covers requests sent through the SDK's shared request path.
+- C# traces requests sent through an `HttpClient` built on `AvalonTraceHandler`, which the SDK's
+  own default clients use; wrap a caller-supplied client's handler with it
+  (`new HttpClient(new AvalonTraceHandler(inner))`). Scope follows the async flow.
+- TypeScript scopes to the async flow where `AsyncLocalStorage` is reachable through
+  `process.getBuiltinModule` (Node 20.16+ and 22.3+); elsewhere (older Node, Workers, React Native)
+  the scope is shared while any traced operation runs, so overlapping traced operations mix, but
+  nothing stays active after the last one ends. `package.json` declares no `engines` range.
+- An error thrown by the wrapped call propagates as usual (Rust returns the result inside
+  `value`, so its `requests` are kept even on error).
 
 ### Walking the whole overlay
 
@@ -143,15 +265,27 @@ git push origin v0.2.0-Optional-title
 
 `release-tag` refuses to run unless `HEAD` is `origin/main`, every SDK's version matches the tag and the checks pass.
 Pushing the tag starts the release workflow (`.github/workflows/release.yml`), which verifies the tag against all
-three version files and that the commit is on `main`, reruns the checks, packs both packages, and only then publishes:
+three version files and that the commit is on `main`, reruns the checks, packs the npm and NuGet packages and the two Rust crates, and only then publishes:
 
 | Published | Where |
 |---|---|
 | `@avalon-initiative/protocol-sdk` | GitHub Packages (`https://npm.pkg.github.com`) |
 | `Avalon.Sdk` | the GitHub Packages NuGet feed |
-| Rust SDK | not on a registry yet (GitHub Packages has no cargo registry and the crate depends on its sibling `avalon-schema-derive` by path); the release's source archive is the Rust release |
+| Rust SDK (`avalon-sdk`, `avalon-schema-derive`) | not on a registry: GitHub Packages has no cargo registry. Obtained from the release tag as a git dependency, or from the `.crate` files on the release (see "Installing the Rust SDK") |
 
-One GitHub Release (`v0.2.0`) carries the packed npm tarball and the `.nupkg`.
+One GitHub Release (`v0.2.0`) carries the packed npm tarball, the `.nupkg`, the two `.crate` files and a
+`SHA256SUMS` file covering all of them. `scripts/release-assets.sh` builds that set (`cargo package
+--workspace --locked`, copy, checksum) into `release-assets/`; the workflow runs it and so can you.
+
+To exercise the pipeline without tagging, run the workflow manually (Actions, "Release SDKs", "Run
+workflow", or `gh workflow run release.yml`). A manual run does the same checks and packs and uploads
+the release files as the `release-files` workflow artifact; it never publishes, pushes a package or
+creates a release. Only a `v*` tag push publishes.
+
+Publishing the crates to crates.io is not part of the release and has no automation; the manual
+procedure for when it is approved (tracked in
+[#64](https://github.com/avalon-initiative/avalon-sdks/issues/64)) is in
+[`docs/crates-io-publication.md`](docs/crates-io-publication.md).
 
 Published versions are immutable: ship a fix as a new version. Installing a GitHub Packages
 package needs a token with `read:packages`, even though the packages are public.

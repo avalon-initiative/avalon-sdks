@@ -140,6 +140,12 @@ namespace Avalon.Sdk
 
         [JsonPropertyName("created_at")]
         public DateTimeOffset CreatedAt { get; set; }
+
+        /// <summary>Lowercase hex Ed25519 public key that signed the head, served for
+        /// self-certifying <c>node:</c> shards only (older nodes omit it). Not part of the
+        /// signed bytes; see <see cref="SelfCertifying.Verify"/>.</summary>
+        [JsonPropertyName("signing_public_key")]
+        public string? SigningPublicKey { get; set; }
     }
 
     /// <summary>Which of the four outcomes a <see cref="NetworkTrustStatus"/> is. A caller must
@@ -586,7 +592,7 @@ namespace Avalon.Sdk
             TargetNetwork target, HttpClient? httpClient, DiscoveryRankOptions? rank, CancellationToken ct,
             WitnessPolicy? witnessPolicy, KnownListCache cache)
         {
-            var http = httpClient ?? new HttpClient();
+            var http = httpClient ?? AvalonTraceHandler.NewDefaultClient();
             IReadOnlyList<TrustAnchorEntry> anchors;
             try
             {
@@ -607,7 +613,7 @@ namespace Avalon.Sdk
             TargetNetwork target, DiscoveryConfig config, HttpClient? httpClient = null, CancellationToken ct = default,
             WitnessPolicy? witnessPolicy = null)
         {
-            var http = httpClient ?? new HttpClient();
+            var http = httpClient ?? AvalonTraceHandler.NewDefaultClient();
             var cache = new KnownListCache();
             var found = await DiscoverRankedCoreAsync(target, http, null, ct, witnessPolicy, cache).ConfigureAwait(false);
             var client = new AvalonClient(
@@ -811,35 +817,24 @@ namespace Avalon.Sdk
             return NetworkTrustStatus.Verified(entry);
         }
 
-        /// <summary>Verifies <paramref name="verifyKeyHex"/> (lowercase hex, 32 bytes) against
-        /// <paramref name="wire"/>'s signature — false for any malformed input (bad hex,
+        /// <summary>Verifies <paramref name="verifyKeyHex"/> (hex, 32 bytes) against
+        /// <paramref name="wire"/>'s signature, cofactorless with S below the group order and R
+        /// compared byte for byte like the server — false for any malformed input (bad hex,
         /// wrong-length key) as well as an outright-invalid signature, never throws.</summary>
         internal static bool VerifyTreeHeadHex(string verifyKeyHex, SignedTreeHeadWire wire)
         {
-            byte[] keyBytes;
-            byte[] signatureBytes;
-            try
-            {
-                keyBytes = HexDecode(verifyKeyHex);
-                signatureBytes = HexDecode(wire.Signature);
-            }
-            catch (FormatException)
-            {
-                return false;
-            }
-            if (keyBytes.Length != 32 || signatureBytes.Length != 64)
+            var keyBytes = WitnessCosigning.TryHex(verifyKeyHex);
+            var signatureBytes = WitnessCosigning.TryHex(wire?.Signature);
+            if (keyBytes == null || signatureBytes == null || wire == null
+                || keyBytes.Length != 32 || signatureBytes.Length != 64)
             {
                 return false;
             }
 
             try
             {
-                var publicKey = new Ed25519PublicKeyParameters(keyBytes, 0);
-                var signer = new Ed25519Signer();
-                signer.Init(false, publicKey);
                 var message = SthSigningMessage(wire.TreeSize, wire.RootHash, wire.NetworkId, wire.CreatedAt);
-                signer.BlockUpdate(message, 0, message.Length);
-                return signer.VerifySignature(signatureBytes);
+                return StrictEd25519.Verify(keyBytes, message, signatureBytes);
             }
             catch (Exception)
             {
@@ -857,8 +852,9 @@ namespace Avalon.Sdk
             var message = new List<byte>();
             message.AddRange(Encoding.UTF8.GetBytes("avalon-settlement-sth-v1"));
             message.AddRange(BigEndian(treeSize));
-            message.AddRange(BigEndian((uint)rootHashHex.Length));
-            message.AddRange(Encoding.UTF8.GetBytes(rootHashHex));
+            var rootHashBytes = Encoding.UTF8.GetBytes(rootHashHex);
+            message.AddRange(BigEndian((uint)rootHashBytes.Length));
+            message.AddRange(rootHashBytes);
             message.AddRange(Encoding.UTF8.GetBytes(networkId));
             message.AddRange(BigEndian(createdAt.ToUnixTimeSeconds()));
             return message.ToArray();
@@ -880,20 +876,6 @@ namespace Avalon.Sdk
             if (BitConverter.IsLittleEndian)
             {
                 Array.Reverse(bytes);
-            }
-            return bytes;
-        }
-
-        private static byte[] HexDecode(string hex)
-        {
-            if (hex.Length % 2 != 0)
-            {
-                throw new FormatException("odd-length hex string");
-            }
-            var bytes = new byte[hex.Length / 2];
-            for (var i = 0; i < bytes.Length; i++)
-            {
-                bytes[i] = Convert.ToByte(hex.Substring(i * 2, 2), 16);
             }
             return bytes;
         }
