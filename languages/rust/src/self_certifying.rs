@@ -27,7 +27,8 @@ pub enum SelfCertifyingFailure {
     /// No signing key was presented with the head.
     #[error("no signing public key was presented with the head")]
     MissingKey,
-    /// The key is not exactly 64 lowercase hex characters decoding to a valid Ed25519 point.
+    /// The key is not exactly 64 lowercase hex characters decoding to a canonical Ed25519 point
+    /// of non-small order.
     #[error("presented signing public key is malformed")]
     MalformedKey,
     /// SHA-256 of the key does not equal the hash in the shard id.
@@ -98,7 +99,12 @@ fn parse_key(key_hex: &str) -> Option<VerifyingKey> {
         return None;
     }
     let bytes: [u8; 32] = hex::decode(key_hex).ok()?.try_into().ok()?;
-    VerifyingKey::from_bytes(&bytes).ok()
+    let key = VerifyingKey::from_bytes(&bytes).ok()?;
+    // p = 2^255 - 19, so y >= p iff the low 255 bits are ff..ff with a first byte >= 0xed.
+    let non_canonical_y =
+        bytes[0] >= 0xed && bytes[1..31].iter().all(|b| *b == 0xff) && bytes[31] & 0x7f == 0x7f;
+    // Small order covers x = 0 with the sign bit set, which only occurs at the order-1 and order-2 points.
+    (!non_canonical_y && !key.is_weak()).then_some(key)
 }
 
 /// Verifies `sth` as a head of the self-certifying shard `shard_id` using only
@@ -290,6 +296,26 @@ mod tests {
                 verify_self_certifying_head(&id, &sth, Some(&bad)),
                 Err(SelfCertifyingFailure::MalformedKey),
                 "{bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_weak_and_non_canonical_keys_even_when_they_hash_to_the_id() {
+        let sth = head(&key(1));
+        let mut identity = [0u8; 32];
+        identity[0] = 1;
+        let mut order_two_signed = [0xffu8; 32];
+        order_two_signed[0] = 0xec;
+        let mut wrapped_y3 = [0xffu8; 32];
+        wrapped_y3[0] = 0xed + 3;
+        wrapped_y3[31] = 0x7f;
+        for bytes in [identity, [0u8; 32], order_two_signed, wrapped_y3] {
+            let id = format!("node:{}", hex::encode(Sha256::digest(bytes)));
+            assert_eq!(
+                verify_self_certifying_head(&id, &sth, Some(&hex::encode(bytes))),
+                Err(SelfCertifyingFailure::MalformedKey),
+                "{bytes:02x?}"
             );
         }
     }

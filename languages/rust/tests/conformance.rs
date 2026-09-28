@@ -546,7 +546,10 @@ fn self_certifying_tree_head_matches_shared_vectors() {
         let shard_id = input["shardId"].as_str().unwrap();
         let head = &input["head"];
         let sth = avalon_sdk::sth::SignedTreeHead {
-            tree_size: head["treeSize"].as_i64().unwrap(),
+            tree_size: match &head["treeSize"] {
+                Value::String(decimal) => decimal.parse().unwrap(),
+                number => number.as_i64().unwrap(),
+            },
             root_hash: head["rootHashHex"].as_str().unwrap().to_string(),
             network_id: head["networkId"].as_str().unwrap().to_string(),
             signing_key_id: head["signingKeyId"].as_str().unwrap().to_string(),
@@ -556,6 +559,16 @@ fn self_certifying_tree_head_matches_shared_vectors() {
             )
             .unwrap(),
         };
+        let rfc3339 = OffsetDateTime::parse(
+            head["createdAtRfc3339"].as_str().unwrap(),
+            &time::format_description::well_known::Rfc3339,
+        )
+        .unwrap();
+        assert_eq!(
+            rfc3339.unix_timestamp(),
+            sth.created_at.unix_timestamp(),
+            "[{name}] createdAtRfc3339 floors to createdAtUnixSeconds"
+        );
         let expected = &vector["expected"];
         let check = match shard_check(shard_id) {
             ShardCheck::SelfCertifying => "self_certifying",

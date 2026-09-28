@@ -13,7 +13,6 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using Org.BouncyCastle.Math.EC.Rfc8032;
 
 namespace Avalon.Sdk
 {
@@ -27,8 +26,8 @@ namespace Avalon.Sdk
         /// <summary>No signing key was presented with the head.</summary>
         MissingKey,
 
-        /// <summary>The key is not exactly 64 lowercase hex characters decoding to a valid
-        /// Ed25519 point.</summary>
+        /// <summary>The key is not exactly 64 lowercase hex characters decoding to a canonical
+        /// Ed25519 point of non-small order.</summary>
         MalformedKey,
 
         /// <summary>SHA-256 of the key does not equal the hash in the shard id.</summary>
@@ -89,7 +88,7 @@ namespace Avalon.Sdk
             {
                 return ShardCheck.CoreNetwork;
             }
-            return NodeId.IsMatch(shardId) ? ShardCheck.SelfCertifying : ShardCheck.Unsupported;
+            return NodeId.IsMatch(shardId ?? "") ? ShardCheck.SelfCertifying : ShardCheck.Unsupported;
         }
 
         /// <summary>The <c>node:</c> id a 32-byte Ed25519 public key certifies.</summary>
@@ -110,7 +109,7 @@ namespace Avalon.Sdk
             {
                 return SelfCertifyingResult.Fail(SelfCertifyingFailure.NotSelfCertifying);
             }
-            var keyHex = signingPublicKey ?? sth.SigningPublicKey;
+            var keyHex = signingPublicKey ?? sth?.SigningPublicKey;
             if (keyHex == null)
             {
                 return SelfCertifyingResult.Fail(SelfCertifyingFailure.MissingKey);
@@ -127,14 +126,14 @@ namespace Avalon.Sdk
                     return SelfCertifyingResult.Fail(SelfCertifyingFailure.KeyIdMismatch);
                 }
             }
-            return AvalonClient.VerifyTreeHeadHex(keyHex, sth)
+            return sth != null && AvalonClient.VerifyTreeHeadHex(keyHex, sth)
                 ? SelfCertifyingResult.Ok()
                 : SelfCertifyingResult.Fail(SelfCertifyingFailure.BadSignature);
         }
 
-        private static byte[]? ParseKey(string keyHex)
+        private static byte[]? ParseKey(string? keyHex)
         {
-            if (!LowercaseKey.IsMatch(keyHex))
+            if (keyHex == null || !LowercaseKey.IsMatch(keyHex))
             {
                 return null;
             }
@@ -143,14 +142,7 @@ namespace Avalon.Sdk
             {
                 return null;
             }
-            try
-            {
-                return Ed25519.ValidatePublicKeyPartial(bytes, 0) ? bytes : null;
-            }
-            catch (Exception)
-            {
-                return null;
-            }
+            return StrictEd25519.IsAcceptableShardKey(bytes) ? bytes : null;
         }
 
         private static string Hex(byte[] bytes)

@@ -21,7 +21,7 @@ independence of the witnesses on the list. Shared vectors:
 `AvalonClient.GetShardTreeHeadAsync(shardId, treeSize)` fetches a head of one shard; `SignedTreeHeadWire.SigningPublicKey`
 holds the optional `signing_public_key` a node serves for `node:<sha256-of-key>` shards (absent from older nodes).
 `SelfCertifying.Verify(shardId, head, key?)` verifies with only that key: it must be 64 lowercase hex characters
-decoding to a valid Ed25519 point, hash to the id and have signed the head. The result is a `SelfCertifyingResult` with
+decoding to a canonical Ed25519 point of non-small order, hash to the id and have signed the head. The result is a `SelfCertifyingResult` with
 `Verified` and, when false, the first `Failure` (`NotSelfCertifying`, `MissingKey`, `MalformedKey`, `KeyIdMismatch`,
 `BadSignature`). `SelfCertifying.ShardCheckFor(shardId)` returns `ShardCheck.SelfCertifying`, `CoreNetwork` (use
 `VerifyNetworkAsync`) or `Unsupported`; unsupported kinds never verify. No trust anchor or witness list is involved.

@@ -116,8 +116,10 @@ tree heads (lowercase hex SHA-256 of the raw 32 bytes). A node serves that key a
 `signing_public_key` on `GET /ledger/sth/latest?shard_id=...` and `GET /ledger/sth/{tree_size}?shard_id=...`; it is
 not part of the signed bytes and older nodes omit it. All three SDKs verify such a head with only that key and the
 id, with no trust anchor, registry or witness list: the key must be exactly 64 lowercase hex characters decoding to
-a valid Ed25519 point, must hash to the id, and must have signed the head (the same signing bytes as every other
-tree head). The first failing check is reported as one of `not_self_certifying` (the id is not a valid `node:` id),
+a canonical Ed25519 point of non-small order, must hash to the id, and must have signed the head (the same signing
+bytes as every other tree head). Signature verification is cofactorless with S below the group order and R compared
+byte for byte, identically in all three SDKs and the server; in TypeScript this also applies to the `core` network
+check, so signatures that only a cofactored verifier accepts no longer verify. The first failing check is reported as one of `not_self_certifying` (the id is not a valid `node:` id),
 `missing_key`, `malformed_key`, `key_id_mismatch` or `bad_signature`. A separate dispatcher says which check a shard
 id gets: `node:` ids use this one, `core` uses the network and witness verification (`verify_network`), and every
 other id kind or malformed id is `unsupported` and never verifies here. Nothing existing changes: `verify_network`,

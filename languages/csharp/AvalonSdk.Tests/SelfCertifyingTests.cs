@@ -109,6 +109,22 @@ public class SelfCertifyingTests
         }
     }
 
+    [Fact]
+    public void NullInputsAreTypedFailuresNotExceptions()
+    {
+        var head = SignedHead(1);
+        Assert.Equal(ShardCheck.Unsupported, SelfCertifying.ShardCheckFor(null!));
+        AssertFails(SelfCertifyingFailure.NotSelfCertifying, SelfCertifying.Verify(null!, head, KeyA));
+        AssertFails(SelfCertifyingFailure.MissingKey, SelfCertifying.Verify(IdA, head, null));
+        AssertFails(SelfCertifyingFailure.MissingKey, SelfCertifying.Verify(IdA, null!, null));
+        AssertFails(SelfCertifyingFailure.BadSignature, SelfCertifying.Verify(IdA, null!, KeyA));
+        head.Signature = null!;
+        AssertFails(SelfCertifyingFailure.BadSignature, SelfCertifying.Verify(IdA, head, KeyA));
+        head.Signature = "";
+        head.RootHash = null!;
+        AssertFails(SelfCertifyingFailure.BadSignature, SelfCertifying.Verify(IdA, head, KeyA));
+    }
+
     private static string HeadJson(SignedTreeHeadWire head, string? key)
     {
         var extra = key == null ? "" : $",\"signing_public_key\":\"{key}\"";
@@ -170,21 +186,27 @@ public class SelfCertifyingTests
         Assert.Equal(root.GetProperty("otherSelfCertifyingId").GetString(),
             SelfCertifying.IdFor(WitnessCosigning.TryHex(root.GetProperty("otherPublicKeyHex").GetString())!));
 
+        var failures = new System.Collections.Generic.List<string>();
         foreach (var vector in root.GetProperty("vectors").EnumerateArray())
         {
             var name = vector.GetProperty("name").GetString();
             var input = vector.GetProperty("input");
             var expected = vector.GetProperty("expected");
             var head = input.GetProperty("head");
-            var sth = new SignedTreeHeadWire
+            // Built as wire JSON so the tree size and the RFC 3339 timestamp go through the SDK's own parsing.
+            var treeSize = head.GetProperty("treeSize");
+            var treeSizeText = treeSize.ValueKind == JsonValueKind.String ? treeSize.GetString()! : treeSize.GetRawText();
+            var wireJson = "{\"tree_size\":" + treeSizeText
+                + ",\"root_hash\":" + JsonSerializer.Serialize(head.GetProperty("rootHashHex").GetString())
+                + ",\"network_id\":" + JsonSerializer.Serialize(head.GetProperty("networkId").GetString())
+                + ",\"signing_key_id\":" + JsonSerializer.Serialize(head.GetProperty("signingKeyId").GetString())
+                + ",\"signature\":" + JsonSerializer.Serialize(head.GetProperty("signatureHex").GetString())
+                + ",\"created_at\":" + JsonSerializer.Serialize(head.GetProperty("createdAtRfc3339").GetString()) + "}";
+            var sth = JsonSerializer.Deserialize<SignedTreeHeadWire>(wireJson)!;
+            if (head.GetProperty("createdAtUnixSeconds").GetInt64() != sth.CreatedAt.ToUnixTimeSeconds())
             {
-                TreeSize = head.GetProperty("treeSize").GetInt64(),
-                RootHash = head.GetProperty("rootHashHex").GetString()!,
-                NetworkId = head.GetProperty("networkId").GetString()!,
-                SigningKeyId = head.GetProperty("signingKeyId").GetString()!,
-                Signature = head.GetProperty("signatureHex").GetString()!,
-                CreatedAt = DateTimeOffset.FromUnixTimeSeconds(head.GetProperty("createdAtUnixSeconds").GetInt64()),
-            };
+                failures.Add($"[{name}] createdAtRfc3339 floors to createdAtUnixSeconds");
+            }
             var shardId = input.GetProperty("shardId").GetString()!;
             var key = input.TryGetProperty("signingPublicKeyHex", out var k) ? k.GetString() : null;
 
@@ -195,10 +217,16 @@ public class SelfCertifyingTests
                 "unsupported" => ShardCheck.Unsupported,
                 var other => throw new InvalidOperationException(other),
             };
-            Assert.True(expectedCheck == SelfCertifying.ShardCheckFor(shardId), $"[{name}] check");
+            if (expectedCheck != SelfCertifying.ShardCheckFor(shardId))
+            {
+                failures.Add($"[{name}] check");
+            }
 
             var result = SelfCertifying.Verify(shardId, sth, key);
-            Assert.True(expected.GetProperty("verified").GetBoolean() == result.Verified, $"[{name}] verified");
+            if (expected.GetProperty("verified").GetBoolean() != result.Verified)
+            {
+                failures.Add($"[{name}] verified");
+            }
             var expectedFailure = expected.GetProperty("failure").ValueKind == JsonValueKind.Null
                 ? null
                 : expected.GetProperty("failure").GetString();
@@ -212,7 +240,11 @@ public class SelfCertifyingTests
                 SelfCertifyingFailure.BadSignature => "bad_signature",
                 _ => "unknown",
             };
-            Assert.True(expectedFailure == actualFailure, $"[{name}] failure: expected {expectedFailure}, got {actualFailure}");
+            if (expectedFailure != actualFailure)
+            {
+                failures.Add($"[{name}] failure: expected {expectedFailure}, got {actualFailure}");
+            }
         }
+        Assert.True(failures.Count == 0, string.Join("\n", failures));
     }
 }

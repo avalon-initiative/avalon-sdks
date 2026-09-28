@@ -5,37 +5,29 @@
 // network a server is. Mirrors `crates/chain/src/sth.rs::verify_tree_head`'s
 // own contract: malformed hex or a wrong-length signature/key fails closed
 // (`false`/a rejected status), never throws.
-import { ed25519 } from '@noble/curves/ed25519.js'
 import type { SignedTreeHeadResponse } from '../types.js'
 import { getLatestSth } from '../ledger.js'
 import { signingMessage } from './sthMessage.js'
+import { strictHexToBytes, verifyCofactorless } from './strictEd25519.js'
 import type { TrustAnchorEntry } from './trustAnchors.js'
-
-function hexToBytes(hex: string): Uint8Array | null {
-  if (hex.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(hex)) return null
-  const bytes = new Uint8Array(hex.length / 2)
-  for (let i = 0; i < bytes.length; i += 1) {
-    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16)
-  }
-  return bytes
-}
 
 /**
  * Verifies `sth`'s Ed25519 signature against `verifyKeyHex` (lowercase hex,
  * 32 bytes) — `false` for any malformed input (bad hex, wrong-length
- * signature or key) as well as an outright-invalid signature, never throws.
+ * signature or key) as well as an outright-invalid signature, never throws. The check is
+ * cofactorless with S below the group order and R compared byte for byte, the same rule the
+ * server applies.
  */
 export function verifyTreeHead(verifyKeyHex: string, sth: SignedTreeHeadResponse): boolean {
-  const verifyKey = hexToBytes(verifyKeyHex)
-  const signature = hexToBytes(sth.signature)
-  if (!verifyKey || verifyKey.length !== 32) return false
-  if (!signature || signature.length !== 64) return false
   try {
-    const message = signingMessage(sth)
-    return ed25519.verify(signature, message, verifyKey)
+    const verifyKey = strictHexToBytes(verifyKeyHex)
+    const signature = strictHexToBytes(sth.signature)
+    if (!verifyKey || verifyKey.length !== 32) return false
+    if (!signature || signature.length !== 64) return false
+    return verifyCofactorless(verifyKey, signingMessage(sth), signature)
   } catch {
-    // A malformed created_at, or anything else signingMessage/ed25519.verify
-    // could throw on for attacker-influenced input — fail closed.
+    // A malformed created_at or tree_size, or anything else attacker-influenced input could
+    // throw on, fails closed.
     return false
   }
 }

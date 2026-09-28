@@ -347,7 +347,8 @@ describe('conformance: self-certifying tree heads', () => {
     it(vector.name, () => {
       const { shardId, signingPublicKeyHex, head } = vector.input
       const sth: SignedTreeHeadResponse = {
-        tree_size: head.treeSize,
+        // Decimal strings carry tree sizes beyond 2^53, which a JSON double cannot hold.
+        tree_size: (typeof head.treeSize === 'string' ? BigInt(head.treeSize) : head.treeSize) as number,
         root_hash: head.rootHashHex,
         network_id: head.networkId,
         signing_key_id: head.signingKeyId,
