@@ -26,6 +26,10 @@ and signed the head; otherwise the first failure as a `SelfCertifyingFailure` (`
 `ShardCheck::SelfCertifying`, `CoreNetwork` (use `verify_network`) or `Unsupported`; unsupported kinds never verify.
 No trust anchor or witness list is involved. Shared vectors: `conformance/vectors/self-certifying-tree-head.json`.
 
+## Tracing a real call
+
+`with_trace(fut).await` runs any SDK call with `X-Avalon-Trace` on each request it sends through the shared request path and returns `Traced { value, requests }`. Each `RequestTrace` has the `trace_id` sent and either a decoded `OperationTrace` (`branches` of `PathHop`, which derefs to the `TraceHop` that `trace()` returns and keeps unknown fields in `extra`) or a `TraceProblem` (`Missing`, `Oversized`, `Malformed`, `TraceIdMismatch`). Opt-in and read-only; a missing or malformed header never fails the call, and `value` is the call's own result unchanged. Hops are self-reported by the nodes on the path and are advisory. Tracing is scoped to the current task. See the root README.
+
 ## Discovery-built known list
 
 `AvalonClient::verify_network` builds its witness list by default, so a network that runs witness

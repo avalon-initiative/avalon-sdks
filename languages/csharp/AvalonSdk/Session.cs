@@ -286,7 +286,7 @@ namespace Avalon.Sdk
                 new Identity(id, DateTimeOffset.UtcNow),
                 profile ?? new Profile(id) { DisplayName = "test" },
                 grantedCapabilities,
-                http ?? new HttpClient(),
+                http ?? AvalonTraceHandler.NewDefaultClient(),
                 serverUrl,
                 token,
                 integratorKeyId,

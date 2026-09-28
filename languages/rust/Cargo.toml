@@ -23,7 +23,7 @@ tokio-tungstenite.workspace = true
 futures-util.workspace = true
 # "time" is for the device-login poll loop's backoff sleep
 # (`device_login::DeviceLogin::wait`, #398).
-tokio = { workspace = true, features = ["sync", "time"] }
+tokio = { workspace = true, features = ["sync", "time", "rt"] }
 # Achievements issuance (#34) signs attestations locally, in-process — the
 # server never sees this integrator's private key, only a detached
 # signature.

@@ -67,6 +67,7 @@ pub mod known_list;
 pub mod managed_hosting;
 pub mod network;
 pub mod nodes;
+pub mod op_trace;
 pub mod recovery;
 pub mod registry;
 pub mod schema;
@@ -88,6 +89,9 @@ pub use account::{AccountCredentials, AccountSession, ProfileUpdate};
 pub use generated::OPENAPI_SCHEMA_VERSION;
 pub use http::RetryConfig;
 pub use nodes::{ProbeResult, StopReason, Topology, TraceHop, TraceResult};
+pub use op_trace::{
+    with_trace, OperationTrace, PathHop, RequestTrace, TraceBranch, TraceProblem, Traced,
+};
 pub use shard_names::{NameClaim, NameClaimRequest};
 pub use topology_walk::{
     normalize_node_url, ProgressCallback, TopologyGraph, WalkEdge, WalkEdgeKind, WalkEvent,
