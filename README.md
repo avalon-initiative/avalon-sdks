@@ -73,8 +73,52 @@ endpoints, typed from the generated schema (`GET /nodes/topology`,
 Probe and trace run on the node the client points at (`target` must be in that node's
 peer table for probe). Hop and latency data is self-reported by the nodes on the path
 and is advisory, not verified. A rate-limited call surfaces through each SDK's existing
-429 error with the server's `Retry-After`. Recorded real-node responses used by each
-language's tests live in `conformance/fixtures/nodes/`.
+429 error with the server's `Retry-After`. Recorded real-node responses (topology, probe, trace) used by each
+language's tests live in `conformance/fixtures/nodes/`; `op-trace.json` there is synthetic, built
+from the documented wire format, and also holds the shared invalid-header cases.
+
+### Tracing a real call
+
+A real SDK call can also report the path it took. Off by default: a call made outside the
+wrapper below is unchanged. Inside it, each request carries `X-Avalon-Trace: <uuid>` and the
+answer in `X-Avalon-Trace-Hops` (unpadded base64url JSON) is decoded next to the call's result:
+
+| | Trace a real call |
+| --- | --- |
+| Rust | `with_trace(client.node_status()).await` returns `Traced { value, requests }` |
+| C# | `AvalonTrace.WithTraceAsync(() => client.GetNodeStatusAsync())` returns `Traced<T>` (`Value`, `Requests`) |
+| TypeScript | `withTrace(() => getNodeStatus(url))` resolves `{ value, requests }` |
+
+`requests` has one entry per HTTP request sent while tracing was on. Each carries the id
+sent, the decoded `trace` (`trace_id`, `branches`, `truncated`; a fan-out reports one branch per
+target, and every branch is a list of hops shaped like the hops `trace()` returns, plus any field a
+newer node adds, passed through unchanged) or a non-fatal `problem` (`missing`, `oversized`,
+`malformed`, `trace_id_mismatch`). A missing, oversized or malformed header, or one the platform
+does not expose, never fails the call. Only some operations report hops (a realtime relay
+fan-out and a remote settlement submit); any other request comes back as `missing`. Hops are
+self-reported by the nodes on the path and are advisory, not verified.
+
+- The header goes to every URL requested through the client while tracing is on, including redirect
+  targets and the trust-anchor fetch made by discovery; each such request adds an entry, usually
+  `missing`. Keep traced operations to calls against nodes you intend to trace.
+- At most 256 entries are kept per traced operation; when more requests are made, later ones are
+  dropped and `requests_truncated` (`RequestsTruncated`, `requestsTruncated`) is set.
+- A `trace_id` that is missing or not a UUID is `malformed`; `trace_id_mismatch` is only a valid
+  UUID that differs from the one sent.
+- Browsers: the node does not yet expose the response header to cross-origin pages, so a browser
+  reads no hops, and a cross-origin request with the header needs the node to allow it. The
+  TypeScript SDK therefore does not send the header in a browser unless `withTrace(fn, { sendHeader: true })`.
+- Rust scopes tracing to the current task (requests made from a spawned task are not traced) and
+  covers requests sent through the SDK's shared request path.
+- C# traces requests sent through an `HttpClient` built on `AvalonTraceHandler`, which the SDK's
+  own default clients use; wrap a caller-supplied client's handler with it
+  (`new HttpClient(new AvalonTraceHandler(inner))`). Scope follows the async flow.
+- TypeScript scopes to the async flow where `AsyncLocalStorage` is reachable through
+  `process.getBuiltinModule` (Node 20.16+ and 22.3+); elsewhere (older Node, Workers, React Native)
+  the scope is shared while any traced operation runs, so overlapping traced operations mix, but
+  nothing stays active after the last one ends. `package.json` declares no `engines` range.
+- An error thrown by the wrapped call propagates as usual (Rust returns the result inside
+  `value`, so its `requests` are kept even on error).
 
 ### Walking the whole overlay
 

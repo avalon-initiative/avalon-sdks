@@ -586,7 +586,7 @@ namespace Avalon.Sdk
             TargetNetwork target, HttpClient? httpClient, DiscoveryRankOptions? rank, CancellationToken ct,
             WitnessPolicy? witnessPolicy, KnownListCache cache)
         {
-            var http = httpClient ?? new HttpClient();
+            var http = httpClient ?? AvalonTraceHandler.NewDefaultClient();
             IReadOnlyList<TrustAnchorEntry> anchors;
             try
             {
@@ -607,7 +607,7 @@ namespace Avalon.Sdk
             TargetNetwork target, DiscoveryConfig config, HttpClient? httpClient = null, CancellationToken ct = default,
             WitnessPolicy? witnessPolicy = null)
         {
-            var http = httpClient ?? new HttpClient();
+            var http = httpClient ?? AvalonTraceHandler.NewDefaultClient();
             var cache = new KnownListCache();
             var found = await DiscoverRankedCoreAsync(target, http, null, ct, witnessPolicy, cache).ConfigureAwait(false);
             var client = new AvalonClient(
