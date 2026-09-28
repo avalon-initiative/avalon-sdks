@@ -16,8 +16,10 @@ ts="$(node -p "require('./languages/typescript/package.json').version")"
 csharp="$(sed -nE 's|.*<Version>([^<]+)</Version>.*|\1|p' languages/csharp/AvalonSdk/AvalonSdk.csproj | head -n1)"
 rust="$(sed -n '/^\[workspace\.package\]/,/^\[/p' Cargo.toml | sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
 
+derive="$(sed -nE 's/^avalon-schema-derive = .*version = "([^"]+)".*/\1/p' Cargo.toml | head -n1)"
+
 status=0
-for entry in "TypeScript:$ts" "C#:$csharp" "Rust:$rust"; do
+for entry in "TypeScript:$ts" "C#:$csharp" "Rust:$rust" "Rust schema-derive dependency:$derive"; do
   name="${entry%%:*}"; have="${entry#*:}"
   if [[ "$have" != "$want" ]]; then
     echo "verify-release-version: tag $tag is $want but the $name SDK is $have"
