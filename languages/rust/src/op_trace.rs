@@ -100,23 +100,37 @@ pub struct RequestTrace {
 /// A call's result and the traced path of each request it made, in order.
 #[derive(Debug, Clone)]
 pub struct Traced<T> {
+    /// Set when more than the per-operation cap of requests were made and later ones were not kept.
+    pub requests_truncated: bool,
     /// What the wrapped future returned.
     pub value: T,
     /// One entry per request sent while tracing was on.
     pub requests: Vec<RequestTrace>,
 }
 
+const MAX_REQUESTS: usize = 256;
+
+#[derive(Default)]
+struct Scope {
+    requests: Vec<RequestTrace>,
+    truncated: bool,
+}
+
 tokio::task_local! {
-    static SCOPE: Arc<Mutex<Vec<RequestTrace>>>;
+    static SCOPE: Arc<Mutex<Scope>>;
 }
 
 /// Runs `fut` with tracing on. Only requests made on the same task are traced, so a
 /// call that spawns its own tasks is not.
 pub async fn with_trace<F: Future>(fut: F) -> Traced<F::Output> {
-    let scope = Arc::new(Mutex::new(Vec::new()));
+    let scope = Arc::new(Mutex::new(Scope::default()));
     let value = SCOPE.scope(scope.clone(), fut).await;
-    let requests = std::mem::take(&mut *scope.lock().unwrap_or_else(|e| e.into_inner()));
-    Traced { value, requests }
+    let done = std::mem::take(&mut *scope.lock().unwrap_or_else(|e| e.into_inner()));
+    Traced {
+        value,
+        requests: done.requests,
+        requests_truncated: done.truncated,
+    }
 }
 
 /// The trace id to send for a new request when a scope is active.
@@ -137,9 +151,10 @@ pub(crate) fn record(id: Uuid, headers: &HeaderMap) {
     };
     let _ = SCOPE.try_with(|scope| {
         let mut all = scope.lock().unwrap_or_else(|e| e.into_inner());
-        match all.iter_mut().find(|r| r.trace_id == id) {
-            Some(existing) => *existing = entry,
-            None => all.push(entry),
+        match all.requests.iter().position(|r| r.trace_id == id) {
+            Some(at) => all.requests[at] = entry,
+            None if all.requests.len() >= MAX_REQUESTS => all.truncated = true,
+            None => all.requests.push(entry),
         }
     });
 }
@@ -198,7 +213,7 @@ mod tests {
         let t = decode(f["header"].as_str().unwrap(), id).unwrap();
         assert_eq!(t.branches.len(), 2);
         assert_eq!(t.branches[0].hops.len(), 2);
-        assert_eq!(t.branches[0].hops[1].base_url, "http://192.168.7.183:8080");
+        assert_eq!(t.branches[0].hops[1].base_url, "http://node-a.example:8080");
         assert!((t.branches[0].hops[0].to_next_ms.unwrap() - 234.655411).abs() < 1e-6);
         assert_eq!(t.branches[1].outcome, "timeout");
         assert!(!t.truncated);
@@ -241,6 +256,50 @@ mod tests {
             decode(&"a".repeat(MAX_HEADER_BYTES + 1), id).unwrap_err(),
             TraceProblem::Oversized
         );
+    }
+
+    #[test]
+    fn shared_invalid_cases() {
+        let f: Value = serde_json::from_str(FIXTURE).unwrap();
+        let id: Uuid = f["request_trace_id"].as_str().unwrap().parse().unwrap();
+        for c in f["invalid_cases"].as_array().unwrap() {
+            let header = URL_SAFE_NO_PAD.encode(c["json"].as_str().unwrap());
+            let expected = match c["expected"].as_str().unwrap() {
+                "malformed" => TraceProblem::Malformed,
+                "trace_id_mismatch" => TraceProblem::TraceIdMismatch,
+                other => panic!("{other}"),
+            };
+            assert_eq!(decode(&header, id).unwrap_err(), expected, "{}", c["name"]);
+        }
+    }
+
+    #[test]
+    fn non_ascii_and_padded_headers_are_malformed() {
+        let id = Uuid::new_v4();
+        let ok = b64(&serde_json::json!({"trace_id": id, "branches": []}));
+        assert_eq!(
+            decode(&format!("{ok}="), id).unwrap_err(),
+            TraceProblem::Malformed
+        );
+        assert_eq!(
+            decode("caf\u{e9}", id).unwrap_err(),
+            TraceProblem::Malformed
+        );
+    }
+
+    #[tokio::test]
+    async fn repeated_id_replaces_and_entries_are_capped() {
+        let out = with_trace(async {
+            let id = Uuid::new_v4();
+            record(id, &HeaderMap::new());
+            record(id, &HeaderMap::new());
+            for _ in 0..MAX_REQUESTS + 5 {
+                record(Uuid::new_v4(), &HeaderMap::new());
+            }
+        })
+        .await;
+        assert_eq!(out.requests.len(), MAX_REQUESTS);
+        assert!(out.requests_truncated);
     }
 
     #[test]

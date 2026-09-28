@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getNodeStatus } from '../src/nodeStatus.js'
 import { decodeTraceHeader, withTrace } from '../src/opTrace.js'
 
@@ -11,7 +11,12 @@ afterEach(() => {
 
 const fixture = JSON.parse(
   readFileSync(fileURLToPath(new URL('../../../conformance/fixtures/nodes/op-trace.json', import.meta.url)), 'utf-8'),
-) as { request_trace_id: string; header: string; decoded: unknown }
+) as {
+  request_trace_id: string
+  header: string
+  decoded: unknown
+  invalid_cases: { name: string; json: string; expected: string }[]
+}
 
 const STATUS = JSON.stringify({ protocol_version: '0.1.0', network_id: 'n', roles: ['combined'], stale: false })
 
@@ -113,14 +118,14 @@ describe('decodeTraceHeader', () => {
     const result = decodeTraceHeader(fixture.header, fixture.request_trace_id)
     if (!('trace' in result)) throw new Error(result.problem)
     expect(result.trace.branches).toHaveLength(2)
-    expect(result.trace.branches[0].hops[1].base_url).toBe('http://192.168.7.183:8080')
+    expect(result.trace.branches[0].hops[1].base_url).toBe('http://node-a.example:8080')
     expect(result.trace.branches[0].hops[0].to_next_ms).toBeCloseTo(234.655411, 6)
     expect(result.trace.branches[1].outcome).toBe('timeout')
     expect(result.trace.truncated).toBe(false)
   })
 
   it('caps branches and hops and flags truncation', () => {
-    const id = 'a'
+    const id = fixture.request_trace_id
     const hops = Array.from({ length: 12 }, (_, i) => hop(i))
     let r = decodeTraceHeader(b64({ trace_id: id, branches: [{ hops }] }), id)
     if (!('trace' in r)) throw new Error(r.problem)
@@ -129,5 +134,61 @@ describe('decodeTraceHeader', () => {
     r = decodeTraceHeader(b64({ trace_id: id, branches: Array.from({ length: 10 }, () => ({ hops: [hop(0)] })) }), id)
     if (!('trace' in r)) throw new Error(r.problem)
     expect(r.trace.branches).toHaveLength(8)
+  })
+})
+
+describe('decodeTraceHeader edge cases', () => {
+  it('classifies the shared invalid cases', () => {
+    for (const c of fixture.invalid_cases) {
+      expect(decodeTraceHeader(b64(c.json), fixture.request_trace_id), c.name).toEqual({ problem: c.expected })
+    }
+  })
+
+  it('rejects padded base64 and non-ASCII bytes', () => {
+    const ok = b64({ trace_id: fixture.request_trace_id, branches: [] })
+    expect(decodeTraceHeader(`${ok}=`, fixture.request_trace_id)).toEqual({ problem: 'malformed' })
+    expect(decodeTraceHeader('caf\u00e9', fixture.request_trace_id)).toEqual({ problem: 'malformed' })
+  })
+})
+
+describe('request records', () => {
+  it('replaces a repeated id and caps the entries', async () => {
+    const { recordRequestTrace } = await import('../src/opTrace.js')
+    const out = await withTrace(async () => {
+      const id = crypto.randomUUID()
+      recordRequestTrace(id, new Headers())
+      recordRequestTrace(id, new Headers())
+      for (let i = 0; i < 260; i++) recordRequestTrace(crypto.randomUUID(), new Headers())
+    }, { sendHeader: true })
+    expect(out.requests).toHaveLength(256)
+    expect(out.requestsTruncated).toBe(true)
+  })
+})
+
+describe('withTrace without AsyncLocalStorage', () => {
+  it('leaves nothing active after overlapping operations end out of order', async () => {
+    const proc = process as unknown as { getBuiltinModule?: unknown }
+    const original = proc.getBuiltinModule
+    proc.getBuiltinModule = undefined
+    vi.resetModules()
+    try {
+      const { withTrace: wt } = await import('../src/opTrace.js')
+      const { getNodeStatus: status } = await import('../src/nodeStatus.js')
+      const { sent } = mockNode(() => null)
+      let releaseA!: () => void
+      let releaseB!: () => void
+      const a = wt(() => new Promise<void>((r) => (releaseA = r)), { sendHeader: true })
+      const b = wt(() => new Promise<void>((r) => (releaseB = r)), { sendHeader: true })
+      releaseA()
+      await a
+      releaseB()
+      const outB = await b
+      await status('http://node.test:8080')
+      expect(sent).toEqual([undefined])
+      expect(outB.requests).toEqual([])
+    } finally {
+      proc.getBuiltinModule = original
+      vi.resetModules()
+    }
   })
 })

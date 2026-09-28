@@ -90,11 +90,15 @@ namespace Avalon.Sdk
     /// <summary>A call's result and the traced path of each request it made, in order.</summary>
     public sealed class Traced<T>
     {
-        public Traced(T value, IReadOnlyList<RequestTrace> requests)
+        public Traced(T value, IReadOnlyList<RequestTrace> requests, bool requestsTruncated)
         {
             Value = value;
             Requests = requests;
+            RequestsTruncated = requestsTruncated;
         }
+
+        /// <summary>Set when more than the per-operation cap of requests were made and later ones were not kept.</summary>
+        public bool RequestsTruncated { get; }
 
         public T Value { get; }
         public IReadOnlyList<RequestTrace> Requests { get; }
@@ -108,10 +112,12 @@ namespace Avalon.Sdk
         private const int MaxHeaderBytes = 8 * 1024;
         private const int MaxBranches = 8;
         private const int MaxHopsPerBranch = 8;
+        internal const int MaxRequests = 256;
 
         internal sealed class Scope
         {
             public readonly List<RequestTrace> Requests = new List<RequestTrace>();
+            public bool Truncated;
         }
 
         private static readonly AsyncLocal<Scope?> Current = new AsyncLocal<Scope?>();
@@ -130,7 +136,7 @@ namespace Avalon.Sdk
             try
             {
                 var value = await operation().ConfigureAwait(false);
-                return new Traced<T>(value, Snapshot(scope));
+                return Snapshot(scope, value);
             }
             finally
             {
@@ -138,11 +144,11 @@ namespace Avalon.Sdk
             }
         }
 
-        private static IReadOnlyList<RequestTrace> Snapshot(Scope scope)
+        private static Traced<T> Snapshot<T>(Scope scope, T value)
         {
             lock (scope.Requests)
             {
-                return scope.Requests.ToList();
+                return new Traced<T>(value, scope.Requests.ToList(), scope.Truncated);
             }
         }
 
@@ -161,7 +167,19 @@ namespace Avalon.Sdk
             }
             lock (scope.Requests)
             {
-                scope.Requests.Add(entry);
+                var at = scope.Requests.FindIndex(r => r.TraceId == id);
+                if (at >= 0)
+                {
+                    scope.Requests[at] = entry;
+                }
+                else if (scope.Requests.Count >= MaxRequests)
+                {
+                    scope.Truncated = true;
+                }
+                else
+                {
+                    scope.Requests.Add(entry);
+                }
             }
         }
 
@@ -183,6 +201,16 @@ namespace Avalon.Sdk
                 }
                 b64 = b64.PadRight(b64.Length + (4 - b64.Length % 4) % 4, '=');
                 var json = new UTF8Encoding(false, true).GetString(Convert.FromBase64String(b64));
+                using (var doc = JsonDocument.Parse(json))
+                {
+                    if (doc.RootElement.ValueKind != JsonValueKind.Object
+                        || !doc.RootElement.TryGetProperty("trace_id", out var idElement)
+                        || idElement.ValueKind != JsonValueKind.String
+                        || !Guid.TryParse(idElement.GetString(), out _))
+                    {
+                        return new RequestTrace(expected, null, TraceProblem.Malformed);
+                    }
+                }
                 trace = JsonSerializer.Deserialize<OperationTrace>(json);
             }
             catch (Exception ex) when (ex is FormatException || ex is JsonException || ex is ArgumentException)

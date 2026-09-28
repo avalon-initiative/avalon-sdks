@@ -133,10 +133,45 @@ public class OpTraceTests
         Assert.Null(result.Problem);
         var t = result.Trace!;
         Assert.Equal(2, t.Branches.Count);
-        Assert.Equal("http://192.168.7.183:8080", t.Branches[0].Hops[1].BaseUrl);
+        Assert.Equal("http://node-a.example:8080", t.Branches[0].Hops[1].BaseUrl);
         Assert.Equal(234.655411, t.Branches[0].Hops[0].ToNextMs!.Value, 6);
         Assert.Equal("timeout", t.Branches[1].Outcome);
         Assert.False(t.Truncated);
+    }
+
+    [Fact]
+    public void SharedInvalidCases()
+    {
+        using var doc = JsonDocument.Parse(FixtureText());
+        var id = Guid.Parse(doc.RootElement.GetProperty("request_trace_id").GetString()!);
+        foreach (var c in doc.RootElement.GetProperty("invalid_cases").EnumerateArray())
+        {
+            var result = AvalonTrace.Decode(B64(c.GetProperty("json").GetString()!), id);
+            var expected = c.GetProperty("expected").GetString() == "malformed" ? TraceProblem.Malformed : TraceProblem.TraceIdMismatch;
+            Assert.Equal(expected, result.Problem);
+        }
+    }
+
+    [Fact]
+    public void PaddedAndNonAsciiHeadersAreMalformed()
+    {
+        var id = Guid.NewGuid();
+        var ok = B64($$"""{"trace_id":"{{id}}","branches":[]}""");
+        Assert.Equal(TraceProblem.Malformed, AvalonTrace.Decode(ok + "=", id).Problem);
+        Assert.Equal(TraceProblem.Malformed, AvalonTrace.Decode("caf\u00e9", id).Problem);
+    }
+
+    [Fact]
+    public async Task EntriesAreCapped()
+    {
+        var client = ClientFor(new TracingNode(_ => null));
+        var out1 = await AvalonTrace.WithTraceAsync(async () =>
+        {
+            for (var i = 0; i < 260; i++) await client.GetNodeStatusAsync();
+            return 0;
+        });
+        Assert.Equal(256, out1.Requests.Count);
+        Assert.True(out1.RequestsTruncated);
     }
 
     [Fact]

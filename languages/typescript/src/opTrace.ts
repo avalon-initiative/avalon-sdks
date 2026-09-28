@@ -45,6 +45,8 @@ export interface RequestTrace {
 export interface Traced<T> {
   value: T
   requests: RequestTrace[]
+  /** Set when more than the per-operation cap of requests were made and later ones were not kept. */
+  requestsTruncated: boolean
 }
 
 export interface WithTraceOptions {
@@ -54,8 +56,12 @@ export interface WithTraceOptions {
   sendHeader?: boolean
 }
 
+const MAX_REQUESTS = 256
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 interface Scope {
   requests: RequestTrace[]
+  requestsTruncated: boolean
   sendHeader: boolean
 }
 
@@ -76,13 +82,13 @@ function createStorage(): Storage | undefined {
   }
 }
 
-// Where AsyncLocalStorage is unavailable the scope is process-wide, so overlapping traced
-// operations share it.
+// Where AsyncLocalStorage is unavailable, the innermost running scope is process-wide, so
+// overlapping traced operations mix; each scope is removed by identity when its operation ends.
 const storage = createStorage()
-let fallback: Scope | undefined
+const running: Scope[] = []
 
 function current(): Scope | undefined {
-  return storage ? storage.getStore() : fallback
+  return storage ? storage.getStore() : running[running.length - 1]
 }
 
 function inBrowser(): boolean {
@@ -91,20 +97,19 @@ function inBrowser(): boolean {
 
 /** Runs `fn` with tracing on and returns its result with the traced path of each request. */
 export async function withTrace<T>(fn: () => Promise<T>, options: WithTraceOptions = {}): Promise<Traced<T>> {
-  const scope: Scope = { requests: [], sendHeader: options.sendHeader ?? !inBrowser() }
+  const scope: Scope = { requests: [], requestsTruncated: false, sendHeader: options.sendHeader ?? !inBrowser() }
   let value: T
   if (storage) {
     value = await storage.run(scope, fn)
   } else {
-    const previous = fallback
-    fallback = scope
+    running.push(scope)
     try {
       value = await fn()
     } finally {
-      fallback = previous
+      running.splice(running.indexOf(scope), 1)
     }
   }
-  return { value, requests: scope.requests }
+  return { value, requests: scope.requests, requestsTruncated: scope.requestsTruncated }
 }
 
 /** The trace id to send for a new request, when tracing is on. */
@@ -128,6 +133,7 @@ export function recordRequestTrace(id: string, headers: Headers): void {
   }
   const at = scope.requests.findIndex((r) => r.trace_id === id)
   if (at >= 0) scope.requests[at] = entry
+  else if (scope.requests.length >= MAX_REQUESTS) scope.requestsTruncated = true
   else scope.requests.push(entry)
 }
 
@@ -168,7 +174,7 @@ function isObject(v: unknown): v is Record<string, unknown> {
 }
 
 function shape(v: unknown): OperationTrace | undefined {
-  if (!isObject(v) || typeof v.trace_id !== 'string' || !Array.isArray(v.branches)) return undefined
+  if (!isObject(v) || typeof v.trace_id !== 'string' || !UUID.test(v.trace_id) || !Array.isArray(v.branches)) return undefined
   const branches: TraceBranch[] = []
   for (const b of v.branches) {
     if (!isObject(b) || !Array.isArray(b.hops) || !b.hops.every(isHop)) return undefined

@@ -137,24 +137,41 @@ async fn bad_headers_never_fail_the_call() {
 
 #[tokio::test]
 async fn recorded_header_decodes_through_a_call() {
-    let f: Value = serde_json::from_str(FIXTURE).unwrap();
-    let header = f["header"].as_str().unwrap().to_string();
-    let server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/nodes/status"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(status_body())
-                .insert_header("x-avalon-trace-hops", header.as_str()),
-        )
-        .mount(&server)
-        .await;
-    // The recorded header names a fixed trace id, so a random request id mismatches;
-    // the direct decoder is what checks the payload.
-    let id = f["request_trace_id"].as_str().unwrap().parse().unwrap();
-    let t = avalon_sdk::op_trace::decode(&header, id).unwrap();
-    assert_eq!(t.branches[1].outcome, "timeout");
-    let out = with_trace(client(server.uri()).node_status()).await;
+    // The fixture's hops are served under whatever trace id the request sent.
+    let node = node(|id| {
+        let f: Value = serde_json::from_str(FIXTURE).unwrap();
+        let mut decoded = f["decoded"].clone();
+        decoded["trace_id"] = id.into();
+        Some(encode(&decoded))
+    })
+    .await;
+    let out = with_trace(client(node.uri()).node_status()).await;
     assert!(out.value.is_ok());
-    assert_eq!(out.requests[0].problem, Some(TraceProblem::TraceIdMismatch));
+    let trace = out.requests[0].trace.as_ref().unwrap();
+    assert_eq!(trace.branches.len(), 2);
+    assert_eq!(
+        trace.branches[0].hops[1].base_url,
+        "http://node-a.example:8080"
+    );
+    assert_eq!(trace.branches[1].outcome, "timeout");
+}
+
+#[tokio::test]
+async fn concurrent_scopes_stay_apart() {
+    let server = node(valid).await;
+    let one = client(server.uri());
+    let (a, b) = tokio::join!(
+        with_trace(one.node_status()),
+        with_trace(async {
+            let c = client(server.uri());
+            c.node_status().await.unwrap();
+            c.node_status().await
+        })
+    );
+    assert_eq!(a.requests.len(), 1);
+    assert_eq!(b.requests.len(), 2);
+    assert!(b
+        .requests
+        .iter()
+        .all(|r| r.trace_id != a.requests[0].trace_id));
 }
