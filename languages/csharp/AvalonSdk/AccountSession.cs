@@ -468,7 +468,7 @@ namespace Avalon.Sdk
             return new AccountSession(
                 new Identity(id, DateTimeOffset.UtcNow),
                 profile ?? new Profile(id) { DisplayName = "test" },
-                http ?? new HttpClient(),
+                http ?? AvalonTraceHandler.NewDefaultClient(),
                 serverUrl,
                 token,
                 signing);
