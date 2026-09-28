@@ -105,6 +105,7 @@ namespace Avalon.Sdk
                 SigningKeyId = SigningKeyId,
                 Signature = Signature,
                 CreatedAt = CreatedAt,
+                SigningPublicKey = SigningPublicKey,
             };
             var cosignatures = (Cosignatures ?? new List<WitnessCosignatureWire>())
                 .Select(c => new WitnessCosignature

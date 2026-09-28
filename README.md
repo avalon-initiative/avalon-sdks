@@ -58,6 +58,31 @@ generated schema. Path values are percent-encoded. The SDKs do not sign claims y
 | C# | `ResolveNameAsync(name, nodeUrl?)` | `ListShardNamesAsync(id, nodeUrl?)` | `SubmitNameClaimAsync(claim, nodeUrl?)` |
 | TypeScript | `resolveName(nodeUrl, name)` | `listShardNames(nodeUrl, id)` | `submitNameClaim(nodeUrl, claim)` |
 
+## Self-certifying shard heads
+
+A shard whose id is `node:<sha256-of-key>` is named by the hash of the Ed25519 public key that signs its
+tree heads (lowercase hex SHA-256 of the raw 32 bytes). A node serves that key as the optional
+`signing_public_key` on `GET /ledger/sth/latest?shard_id=...` and `GET /ledger/sth/{tree_size}?shard_id=...`; it is
+not part of the signed bytes and older nodes omit it. All three SDKs verify such a head with only that key and the
+id, with no trust anchor, registry or witness list: the key must be exactly 64 lowercase hex characters decoding to
+a valid Ed25519 point, must hash to the id, and must have signed the head (the same signing bytes as every other
+tree head). The first failing check is reported as one of `not_self_certifying` (the id is not a valid `node:` id),
+`missing_key`, `malformed_key`, `key_id_mismatch` or `bad_signature`. A separate dispatcher says which check a shard
+id gets: `node:` ids use this one, `core` uses the network and witness verification (`verify_network`), and every
+other id kind or malformed id is `unsupported` and never verifies here. Nothing existing changes: `verify_network`,
+`connect()` and the existing tree-head types behave as before, and parsing tolerates the field being absent.
+
+| | Fetch a shard's head | Verify | Which check applies |
+| --- | --- | --- | --- |
+| Rust | `AvalonClient::fetch_shard_tree_head(shard_id, tree_size)` | `self_certifying::verify_self_certifying_head(shard_id, &sth, key)` or `SelfCertifyingTreeHead::verify(shard_id)` | `self_certifying::shard_check(shard_id)` |
+| C# | `GetShardTreeHeadAsync(shardId, treeSize?)` | `SelfCertifying.Verify(shardId, head, key?)` | `SelfCertifying.ShardCheckFor(shardId)` |
+| TypeScript | `getShardTreeHead(nodeUrl, shardId, { treeSize? })` | `verifySelfCertifyingTreeHead(shardId, sth, key?)` | `shardCheck(shardId)` |
+
+In C# and TypeScript `SigningPublicKey` / `signing_public_key` is an optional field on the existing tree-head type; in
+Rust the existing `sth::SignedTreeHead` is unchanged and `self_certifying::SelfCertifyingTreeHead` carries the head plus
+the key. A verified head proves the key holder signed it and that the key belongs to the id; it says nothing about
+whether the shard is honest or current. Shared vectors: `conformance/vectors/self-certifying-tree-head.json`.
+
 ## Node topology, probe and trace
 
 All three SDKs expose the node's read-only topology view and its probe and trace

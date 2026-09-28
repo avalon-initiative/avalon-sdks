@@ -140,6 +140,12 @@ namespace Avalon.Sdk
 
         [JsonPropertyName("created_at")]
         public DateTimeOffset CreatedAt { get; set; }
+
+        /// <summary>Lowercase hex Ed25519 public key that signed the head, served for
+        /// self-certifying <c>node:</c> shards only (older nodes omit it). Not part of the
+        /// signed bytes; see <see cref="SelfCertifying.Verify"/>.</summary>
+        [JsonPropertyName("signing_public_key")]
+        public string? SigningPublicKey { get; set; }
     }
 
     /// <summary>Which of the four outcomes a <see cref="NetworkTrustStatus"/> is. A caller must

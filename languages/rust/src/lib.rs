@@ -70,6 +70,7 @@ pub mod nodes;
 pub mod recovery;
 pub mod registry;
 pub mod schema;
+pub mod self_certifying;
 pub mod shard_names;
 pub mod social;
 pub mod sth;

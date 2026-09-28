@@ -15,6 +15,17 @@ compromised author or node, not proof against a colluding majority of the list. 
 (a head that is not cosigned reports `Mismatch`), and `witness::{verify_cosigned_tree_head,
 find_equivocating_witnesses}`. Behavior is pinned by `conformance/vectors/witness-cosigned-tree-head.json`.
 
+## Self-certifying shard heads
+
+`AvalonClient::fetch_shard_tree_head(shard_id, tree_size)` returns a `self_certifying::SelfCertifyingTreeHead`
+(the `sth::SignedTreeHead` plus the optional `signing_public_key` a node serves for `node:<sha256-of-key>` shards).
+`SelfCertifyingTreeHead::verify(shard_id)`, or `self_certifying::verify_self_certifying_head(shard_id, &sth, key)`,
+returns `Ok(())` only when the key is 64 lowercase hex characters decoding to a valid Ed25519 point, hashes to the id
+and signed the head; otherwise the first failure as a `SelfCertifyingFailure` (`NotSelfCertifying`, `MissingKey`,
+`MalformedKey`, `KeyIdMismatch`, `BadSignature`). `self_certifying::shard_check(shard_id)` returns
+`ShardCheck::SelfCertifying`, `CoreNetwork` (use `verify_network`) or `Unsupported`; unsupported kinds never verify.
+No trust anchor or witness list is involved. Shared vectors: `conformance/vectors/self-certifying-tree-head.json`.
+
 ## Discovery-built known list
 
 `AvalonClient::verify_network` builds its witness list by default, so a network that runs witness

@@ -522,3 +522,61 @@ fn known_list_selection_matches_shared_vectors() {
         );
     }
 }
+
+#[test]
+fn self_certifying_tree_head_matches_shared_vectors() {
+    use avalon_sdk::self_certifying::{
+        self_certifying_id, shard_check, verify_self_certifying_head, ShardCheck,
+    };
+    let doc = load("self-certifying-tree-head.json");
+    assert!(supported_in(&doc, "rust"));
+    let signing = SigningKey::from_bytes(
+        &hex::decode(doc["signingKeySeedHex"].as_str().unwrap())
+            .unwrap()
+            .try_into()
+            .unwrap(),
+    );
+    assert_eq!(
+        self_certifying_id(&signing.verifying_key()),
+        doc["selfCertifyingId"].as_str().unwrap()
+    );
+    for vector in doc["vectors"].as_array().unwrap() {
+        let name = vector["name"].as_str().unwrap();
+        let input = &vector["input"];
+        let shard_id = input["shardId"].as_str().unwrap();
+        let head = &input["head"];
+        let sth = avalon_sdk::sth::SignedTreeHead {
+            tree_size: head["treeSize"].as_i64().unwrap(),
+            root_hash: head["rootHashHex"].as_str().unwrap().to_string(),
+            network_id: head["networkId"].as_str().unwrap().to_string(),
+            signing_key_id: head["signingKeyId"].as_str().unwrap().to_string(),
+            signature: head["signatureHex"].as_str().unwrap().to_string(),
+            created_at: OffsetDateTime::from_unix_timestamp(
+                head["createdAtUnixSeconds"].as_i64().unwrap(),
+            )
+            .unwrap(),
+        };
+        let expected = &vector["expected"];
+        let check = match shard_check(shard_id) {
+            ShardCheck::SelfCertifying => "self_certifying",
+            ShardCheck::CoreNetwork => "core_network",
+            ShardCheck::Unsupported => "unsupported",
+        };
+        assert_eq!(check, expected["check"].as_str().unwrap(), "[{name}] check");
+        let outcome = verify_self_certifying_head(
+            shard_id,
+            &sth,
+            input.get("signingPublicKeyHex").and_then(Value::as_str),
+        );
+        assert_eq!(
+            outcome.is_ok(),
+            expected["verified"].as_bool().unwrap(),
+            "[{name}] verified"
+        );
+        assert_eq!(
+            outcome.err().map(|f| f.as_str()),
+            expected["failure"].as_str(),
+            "[{name}] failure"
+        );
+    }
+}

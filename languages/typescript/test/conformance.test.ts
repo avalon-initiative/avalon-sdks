@@ -30,6 +30,7 @@ import {
   witnessAnnounceMessage,
 } from '../src/network/witness.js'
 import { diversityPrefixForUrl, selectKnownList } from '../src/network/knownListRules.js'
+import { selfCertifyingId, shardCheck, verifySelfCertifyingTreeHead } from '../src/network/selfCertifying.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const VECTORS_DIR = path.resolve(__dirname, '../../../conformance/vectors')
@@ -326,6 +327,38 @@ describe('conformance: known-list selection', () => {
     it(`selection: ${vector.name}`, () => {
       const { candidates, capacity, anchorCapacity, maxPerPrefix } = vector.input
       expect(selectKnownList(candidates, capacity, anchorCapacity, maxPerPrefix)).toEqual(vector.expected)
+    })
+  }
+})
+
+describe('conformance: self-certifying tree heads', () => {
+  const doc = loadVector('self-certifying-tree-head.json')
+
+  it('lists typescript as supported', () => {
+    requireSupported(doc, 'typescript')
+  })
+
+  it('derives the shared keys and ids', () => {
+    expect(selfCertifyingId(hexToBytes(doc.signingPublicKeyHex))).toBe(doc.selfCertifyingId)
+    expect(selfCertifyingId(hexToBytes(doc.otherPublicKeyHex))).toBe(doc.otherSelfCertifyingId)
+  })
+
+  for (const vector of doc.vectors) {
+    it(vector.name, () => {
+      const { shardId, signingPublicKeyHex, head } = vector.input
+      const sth: SignedTreeHeadResponse = {
+        tree_size: head.treeSize,
+        root_hash: head.rootHashHex,
+        network_id: head.networkId,
+        signing_key_id: head.signingKeyId,
+        signature: head.signatureHex,
+        created_at: head.createdAtRfc3339,
+        protocol_version: '0.1',
+      }
+      expect(shardCheck(shardId)).toBe(vector.expected.check)
+      const result = verifySelfCertifyingTreeHead(shardId, sth, signingPublicKeyHex)
+      expect(result.verified).toBe(vector.expected.verified)
+      expect(result.verified ? null : result.failure).toBe(vector.expected.failure)
     })
   }
 })

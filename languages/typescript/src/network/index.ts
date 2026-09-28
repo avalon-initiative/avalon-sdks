@@ -37,3 +37,5 @@ export {
 export type { KnownListCandidate } from './knownListRules.js'
 export { buildKnownList, gatherCandidates, crossCheckHead } from './knownList.js'
 export type { BuildKnownListOptions, CrossCheckOptions, DiscoveredPeer, EquivocationEvidence } from './knownList.js'
+export { shardCheck, selfCertifyingId, verifySelfCertifyingTreeHead } from './selfCertifying.js'
+export type { SelfCertifyingFailure, SelfCertifyingResult, ShardCheck } from './selfCertifying.js'
