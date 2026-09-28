@@ -4,6 +4,7 @@
 // higher layer if it wants one; this keeps the wire layer simple and
 // dependency-free.
 import { mapErrorResponse, ProtocolError } from './errors.js'
+import { beginRequestTrace, recordRequestTrace, TRACE_HEADER } from './opTrace.js'
 
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'
@@ -45,6 +46,11 @@ export async function request<T>(serverUrl: string, path: string, options: Reque
     headers['authorization'] = `Bearer ${options.token}`
   }
 
+  const traceId = beginRequestTrace()
+  if (traceId) {
+    headers[TRACE_HEADER] = traceId
+  }
+
   const method = options.method ?? 'GET'
   const requestBody = options.body !== undefined ? JSON.stringify(options.body) : undefined
 
@@ -66,6 +72,10 @@ export async function request<T>(serverUrl: string, path: string, options: Reque
         signal: options.signal,
       })
     }
+  }
+
+  if (traceId) {
+    recordRequestTrace(traceId, response.headers)
   }
 
   if (!response.ok) {

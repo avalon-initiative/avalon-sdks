@@ -91,7 +91,7 @@ namespace Avalon.Sdk
         public AvalonClient(AvalonConfig config, HttpClient? httpClient = null)
         {
             _config = config;
-            _http = httpClient ?? new HttpClient();
+            _http = httpClient ?? AvalonTraceHandler.NewDefaultClient();
         }
 
         /// <summary>
