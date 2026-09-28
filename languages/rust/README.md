@@ -1,5 +1,53 @@
 # avalon-sdk (Rust)
 
+## Install
+
+The Rust SDK is not on crates.io. The project is public but used internally for now, so it is
+distributed through the organization's own channels (publishing to public registries is a later,
+deliberate step tracked in [#64](https://github.com/avalon-initiative/avalon-sdks/issues/64)).
+GitHub Packages carries the npm and NuGet packages only: it has no cargo registry, so the crates
+cannot be published there. Use the release tag, or the `.crate` files attached to the release.
+
+Use the tag of the release you want (`v0.1.3` below). Add the SDK as a pinned git dependency; cargo
+finds `avalon-sdk` by name inside the repository and builds its `avalon-schema-derive` proc-macro
+dependency from the same checkout:
+
+```toml
+[dependencies]
+avalon-sdk = { git = "https://github.com/avalon-initiative/avalon-sdks", tag = "v0.1.3" }
+```
+
+### From the `.crate` files on the release page
+
+Releases after `v0.1.3` also attach `avalon-sdk-X.Y.Z.crate`, `avalon-schema-derive-X.Y.Z.crate`,
+and a `SHA256SUMS` file covering every file on the release. `cargo` cannot install a `.crate` from a
+URL, so for offline or vendored use unpack both and point cargo at them (replace `X.Y.Z` with the
+release version):
+
+```bash
+gh release download vX.Y.Z --repo avalon-initiative/avalon-sdks --pattern '*.crate' --pattern SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS
+mkdir -p vendor && for c in *.crate; do tar xzf "$c" -C vendor; done
+```
+
+```toml
+[dependencies]
+avalon-sdk = { path = "vendor/avalon-sdk-X.Y.Z" }
+
+# avalon-sdk depends on avalon-schema-derive by version, so resolve it from the unpacked copy.
+[patch.crates-io]
+avalon-schema-derive = { path = "vendor/avalon-schema-derive-X.Y.Z" }
+```
+
+Both crates build from the unpacked sources with no other repository files; the OpenAPI document the
+build script reads is packaged inside `avalon-sdk`.
+
+### crates.io (not published yet)
+
+```toml
+avalon-sdk = "X.Y.Z"   # not published yet: tracked in #64
+```
+
 ## Witness-cosigned tree heads
 
 An author-signed tree head can also be checked against a witness list the caller supplies. With a

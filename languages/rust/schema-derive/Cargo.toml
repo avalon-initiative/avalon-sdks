@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "README.md"
+keywords = ["avalon", "derive", "protobuf"]
+categories = ["development-tools::procedural-macro-helpers"]
 description = "#[derive(AvalonSchema)] — generates the .proto message text, and the default_visibility/field_visibility maps, an Integrator Space schema publication (issue #386) needs from an ordinary Rust struct. Not used directly; re-exported through avalon-sdk::schema."
 
 [lib]
