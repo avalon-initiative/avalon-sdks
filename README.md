@@ -76,6 +76,40 @@ and is advisory, not verified. A rate-limited call surfaces through each SDK's e
 429 error with the server's `Retry-After`. Recorded real-node responses used by each
 language's tests live in `conformance/fixtures/nodes/`.
 
+### Tracing a real call
+
+A real SDK call can also report the path it took. Off by default: a call made outside the
+wrapper below is unchanged. Inside it, each request carries `X-Avalon-Trace: <uuid>` and the
+answer in `X-Avalon-Trace-Hops` (unpadded base64url JSON) is decoded next to the call's result:
+
+| | Trace a real call |
+| --- | --- |
+| Rust | `with_trace(client.node_status()).await` returns `Traced { value, requests }` |
+| C# | `AvalonTrace.WithTraceAsync(() => client.GetNodeStatusAsync())` returns `Traced<T>` (`Value`, `Requests`) |
+| TypeScript | `withTrace(() => getNodeStatus(url))` resolves `{ value, requests }` |
+
+`requests` has one entry per HTTP request sent while tracing was on. Each carries the id
+sent, the decoded `trace` (`trace_id`, `branches`, `truncated`; a fan-out reports one branch per
+target, and every branch is a list of hops shaped like the hops `trace()` returns, plus any field a
+newer node adds, passed through unchanged) or a non-fatal `problem` (`missing`, `oversized`,
+`malformed`, `trace_id_mismatch`). A missing, oversized or malformed header, or one the platform
+does not expose, never fails the call. Only some operations report hops (a realtime relay
+fan-out and a remote settlement submit); any other request comes back as `missing`. Hops are
+self-reported by the nodes on the path and are advisory, not verified.
+
+- Browsers: the node does not yet expose the response header to cross-origin pages, so a browser
+  reads no hops, and a cross-origin request with the header needs the node to allow it. The
+  TypeScript SDK therefore does not send the header in a browser unless `withTrace(fn, { sendHeader: true })`.
+- Rust scopes tracing to the current task (requests made from a spawned task are not traced) and
+  covers requests sent through the SDK's shared request path.
+- C# traces requests sent through an `HttpClient` built on `AvalonTraceHandler`, which the SDK's
+  own default clients use; wrap a caller-supplied client's handler with it
+  (`new HttpClient(new AvalonTraceHandler(inner))`). Scope follows the async flow.
+- TypeScript scopes to the async flow on Node; where `AsyncLocalStorage` is unavailable the
+  scope is shared, so overlapping traced operations mix.
+- An error thrown by the wrapped call propagates as usual (Rust returns the result inside
+  `value`, so its `requests` are kept even on error).
+
 ### Walking the whole overlay
 
 No node holds the whole graph, so each SDK also has a bounded, read-only walk helper that

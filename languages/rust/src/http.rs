@@ -121,10 +121,17 @@ where
 {
     let max_retries = if idempotent { retry.max_retries } else { 0 };
     let mut attempt = 0u32;
+    let trace_id = crate::op_trace::begin();
     loop {
-        let request = build(client).timeout(retry.request_timeout);
+        let mut request = build(client).timeout(retry.request_timeout);
+        if let Some(id) = trace_id {
+            request = request.header(crate::op_trace::TRACE_HEADER, id.to_string());
+        }
         match request.send().await {
             Ok(response) => {
+                if let Some(id) = trace_id {
+                    crate::op_trace::record(id, response.headers());
+                }
                 let status = response.status();
                 if is_retryable_status(status) {
                     if attempt < max_retries {

@@ -16,6 +16,10 @@ resistance to a single compromised author key, not proof: the guarantee is only 
 independence of the witnesses on the list. Shared vectors:
 `conformance/vectors/witness-cosigned-tree-head.json`.
 
+## Tracing a real call
+
+`AvalonTrace.WithTraceAsync(() => client.GetNodeStatusAsync())` runs any SDK call with `X-Avalon-Trace` on each request and returns `Traced<T>` (`Value`, `Requests`). Each `RequestTrace` has the `TraceId` sent and either a decoded `Trace` (`Branches` of `PathHop`, which extends the `TraceHop` that `TraceAsync` returns and keeps unknown fields in `Extra`) or a `Problem` (`Missing`, `Oversized`, `Malformed`, `TraceIdMismatch`). Opt-in and read-only; a missing or malformed header never fails the call. Hops are self-reported by the nodes on the path and are advisory. Requests are traced through an `HttpClient` built on `AvalonTraceHandler`, which the SDK's default clients use; for your own client, wrap its handler: `new HttpClient(new AvalonTraceHandler(inner))`. See the root README.
+
 ## Known list and default-on witness verification (C#)
 
 By default `VerifyNetworkAsync` and `ConnectAsync` build the witness list themselves. Each seed node in
