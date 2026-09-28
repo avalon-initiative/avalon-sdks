@@ -33,6 +33,7 @@ if [ "$cmd" = "bump" ]; then
     in_pkg && /^version[[:space:]]*=/ { $0 = "version = \"" ver "\"" }
     { print }' Cargo.toml > "$tmp"
   mv "$tmp" Cargo.toml
+  sed -i -E "/^avalon-schema-derive = /s/version = \"[^\"]+\"/version = \"${ver}\"/" Cargo.toml
   cargo update -q --workspace
   git add -- languages/typescript/package.json languages/typescript/package-lock.json \
     languages/csharp/AvalonSdk/AvalonSdk.csproj Cargo.toml Cargo.lock

@@ -19,13 +19,64 @@ API, one directory per language under `languages/`.
 
 **Status:** all three official SDKs' real source lives here.
 
+## Installing the Rust SDK
+
+The Rust SDK is not on crates.io. The project is public but used internally for now, so it is
+distributed through the organization's own channels (publishing to public registries is a later,
+deliberate step tracked in [#64](https://github.com/avalon-initiative/avalon-sdks/issues/64)).
+GitHub Packages carries the npm and NuGet packages only: it has no cargo registry, so the crates
+cannot be published there. Use the release tag, or the `.crate` files attached to the release.
+
+Use the tag of the release you want (`v0.1.3` below). Add the SDK as a pinned git dependency; cargo
+finds `avalon-sdk` by name inside the repository and builds its `avalon-schema-derive` proc-macro
+dependency from the same checkout:
+
+```toml
+[dependencies]
+avalon-sdk = { git = "https://github.com/avalon-initiative/avalon-sdks", tag = "v0.1.3" }
+```
+
+#### From the `.crate` files on the release page
+
+Releases after `v0.1.3` also attach `avalon-sdk-X.Y.Z.crate`, `avalon-schema-derive-X.Y.Z.crate`,
+and a `SHA256SUMS` file covering every file on the release. `cargo` cannot install a `.crate` from a
+URL, so for offline or vendored use unpack both and point cargo at them (replace `X.Y.Z` with the
+release version):
+
+```bash
+gh release download vX.Y.Z --repo avalon-initiative/avalon-sdks --pattern '*.crate' --pattern SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS
+mkdir -p vendor && for c in *.crate; do tar xzf "$c" -C vendor; done
+```
+
+```toml
+[dependencies]
+avalon-sdk = { path = "vendor/avalon-sdk-X.Y.Z" }
+
+# avalon-sdk depends on avalon-schema-derive by version, so resolve it from the unpacked copy.
+[patch.crates-io]
+avalon-schema-derive = { path = "vendor/avalon-schema-derive-X.Y.Z" }
+```
+
+Both crates build from the unpacked sources with no other repository files; the OpenAPI document the
+build script reads is packaged inside `avalon-sdk`.
+
+#### crates.io (not published yet)
+
+```toml
+avalon-sdk = "X.Y.Z"   # not published yet: tracked in #64
+```
+
+The npm and NuGet packages are installed from GitHub Packages (see "CI and releases" below).
+
 ## Vendored files
 
 This repo has no live link back to `avalon-protocol` — two sets of files are
 checked-in copies, kept in sync by hand whenever the upstream schema changes:
 
 - `docs/generated/openapi.json` — `avalon-protocol`'s
-  `docs/generated/openapi.json` (`make openapi` there). Each language's
+  `docs/generated/openapi.json` (`make openapi` there;
+  `languages/rust/openapi.json` is a symlink to it so the Rust crate packages its own copy). Each language's
   own codegen (`languages/rust/build.rs`, `languages/csharp/codegen`,
   `languages/typescript/scripts/generate-types.mjs`) generates its SDK's
   wire types from this same copy.
@@ -212,15 +263,27 @@ git push origin v0.2.0-Optional-title
 
 `release-tag` refuses to run unless `HEAD` is `origin/main`, every SDK's version matches the tag and the checks pass.
 Pushing the tag starts the release workflow (`.github/workflows/release.yml`), which verifies the tag against all
-three version files and that the commit is on `main`, reruns the checks, packs both packages, and only then publishes:
+three version files and that the commit is on `main`, reruns the checks, packs the npm and NuGet packages and the two Rust crates, and only then publishes:
 
 | Published | Where |
 |---|---|
 | `@avalon-initiative/protocol-sdk` | GitHub Packages (`https://npm.pkg.github.com`) |
 | `Avalon.Sdk` | the GitHub Packages NuGet feed |
-| Rust SDK | not on a registry yet (GitHub Packages has no cargo registry and the crate depends on its sibling `avalon-schema-derive` by path); the release's source archive is the Rust release |
+| Rust SDK (`avalon-sdk`, `avalon-schema-derive`) | not on a registry: GitHub Packages has no cargo registry. Obtained from the release tag as a git dependency, or from the `.crate` files on the release (see "Installing the Rust SDK") |
 
-One GitHub Release (`v0.2.0`) carries the packed npm tarball and the `.nupkg`.
+One GitHub Release (`v0.2.0`) carries the packed npm tarball, the `.nupkg`, the two `.crate` files and a
+`SHA256SUMS` file covering all of them. `scripts/release-assets.sh` builds that set (`cargo package
+--workspace --locked`, copy, checksum) into `release-assets/`; the workflow runs it and so can you.
+
+To exercise the pipeline without tagging, run the workflow manually (Actions, "Release SDKs", "Run
+workflow", or `gh workflow run release.yml`). A manual run does the same checks and packs and uploads
+the release files as the `release-files` workflow artifact; it never publishes, pushes a package or
+creates a release. Only a `v*` tag push publishes.
+
+Publishing the crates to crates.io is not part of the release and has no automation; the manual
+procedure for when it is approved (tracked in
+[#64](https://github.com/avalon-initiative/avalon-sdks/issues/64)) is in
+[`docs/crates-io-publication.md`](docs/crates-io-publication.md).
 
 Published versions are immutable: ship a fix as a new version. Installing a GitHub Packages
 package needs a token with `read:packages`, even though the packages are public.
