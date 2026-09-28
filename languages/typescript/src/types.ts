@@ -88,6 +88,9 @@ export interface SignedTreeHeadResponse {
   // RFC 3339.
   created_at: string
   protocol_version: string
+  // Lowercase hex Ed25519 public key that signed the head, served for self-certifying `node:` shards
+  // only (older nodes omit it). Not part of the signed bytes; see `verifySelfCertifyingTreeHead`.
+  signing_public_key?: string
 }
 
 /** One witness cosignature as served by `?witnesses=1`: it is over the head

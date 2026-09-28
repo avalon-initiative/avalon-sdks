@@ -12,6 +12,17 @@ export function getLatestSth(serverUrl: string): Promise<SignedTreeHeadResponse>
   return request<SignedTreeHeadResponse>(serverUrl, '/ledger/sth/latest')
 }
 
+/** `GET /ledger/sth/latest?shard_id=…` or `/ledger/sth/{treeSize}?shard_id=…`: a head of one shard,
+ * with `signing_public_key` when the node serves one. Unverified; see `verifySelfCertifyingTreeHead`. */
+export function getShardTreeHead(
+  serverUrl: string,
+  shardId: string,
+  options: { treeSize?: number; signal?: AbortSignal } = {},
+): Promise<SignedTreeHeadResponse> {
+  const path = options.treeSize === undefined ? '/ledger/sth/latest' : `/ledger/sth/${options.treeSize}`
+  return request<SignedTreeHeadResponse>(serverUrl, path, { query: { shard_id: shardId }, signal: options.signal })
+}
+
 /** `GET /ledger/sth/latest` or `/ledger/sth/{treeSize}` with `?witnesses=1`: the head plus the
  * cosignatures the node holds, each bound to that head. Unverified; see `verifyCosignedTreeHead`. */
 export async function getCosignedTreeHead(

@@ -39,6 +39,8 @@ base64.workspace = true
 rand.workspace = true
 # Hex-decoding trust-anchor verify keys and STH signatures (issue #482).
 hex.workspace = true
+# SHA-256 of a presented key for self-certifying shard ids.
+sha2.workspace = true
 # `AccountSession` (#699) drives a real WebAuthn registration/login
 # ceremony client-side against a virtual authenticator — the same
 # `testable`-feature approach `crates/cli/src/dev_tools.rs` already proved

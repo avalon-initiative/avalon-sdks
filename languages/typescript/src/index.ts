@@ -106,7 +106,7 @@ export type {
 // schema version this SDK build targets.
 export { OPENAPI_SCHEMA_VERSION } from './generated.js'
 
-export { getLatestSth, getCosignedTreeHead } from './ledger.js'
+export { getLatestSth, getCosignedTreeHead, getShardTreeHead } from './ledger.js'
 export { getNodeStatus } from './nodeStatus.js'
 export { getTopology, probeNode, traceRoute } from './nodeTopology.js'
 export { withTrace } from './opTrace.js'
@@ -175,6 +175,9 @@ export {
   DEFAULT_COSIGN_FRESHNESS_SECONDS,
   witnessAnnounceMessage,
   verifyWitnessAnnounce,
+  shardCheck,
+  selfCertifyingId,
+  verifySelfCertifyingTreeHead,
   diversityPrefixForUrl,
   selectKnownList,
   buildKnownList,
@@ -197,6 +200,9 @@ export type {
   CrossCheckOptions,
   DiscoveredPeer,
   EquivocationEvidence,
+  SelfCertifyingFailure,
+  SelfCertifyingResult,
+  ShardCheck,
 } from './network/index.js'
 
 export {

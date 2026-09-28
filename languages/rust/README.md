@@ -63,6 +63,17 @@ compromised author or node, not proof against a colluding majority of the list. 
 (a head that is not cosigned reports `Mismatch`), and `witness::{verify_cosigned_tree_head,
 find_equivocating_witnesses}`. Behavior is pinned by `conformance/vectors/witness-cosigned-tree-head.json`.
 
+## Self-certifying shard heads
+
+`AvalonClient::fetch_shard_tree_head(shard_id, tree_size)` returns a `self_certifying::SelfCertifyingTreeHead`
+(the `sth::SignedTreeHead` plus the optional `signing_public_key` a node serves for `node:<sha256-of-key>` shards).
+`SelfCertifyingTreeHead::verify(shard_id)`, or `self_certifying::verify_self_certifying_head(shard_id, &sth, key)`,
+returns `Ok(())` only when the key is 64 lowercase hex characters decoding to a canonical Ed25519 point of non-small order, hashes to the id
+and signed the head; otherwise the first failure as a `SelfCertifyingFailure` (`NotSelfCertifying`, `MissingKey`,
+`MalformedKey`, `KeyIdMismatch`, `BadSignature`). `self_certifying::shard_check(shard_id)` returns
+`ShardCheck::SelfCertifying`, `CoreNetwork` (use `verify_network`) or `Unsupported`; unsupported kinds never verify.
+No trust anchor or witness list is involved. Shared vectors: `conformance/vectors/self-certifying-tree-head.json`.
+
 ## Tracing a real call
 
 `with_trace(fut).await` runs any SDK call with `X-Avalon-Trace` on each request it sends through the shared request path and returns `Traced { value, requests }`. Each `RequestTrace` has the `trace_id` sent and either a decoded `OperationTrace` (`branches` of `PathHop`, which derefs to the `TraceHop` that `trace()` returns and keeps unknown fields in `extra`) or a `TraceProblem` (`Missing`, `Oversized`, `Malformed`, `TraceIdMismatch`). Opt-in and read-only; a missing or malformed header never fails the call, and `value` is the call's own result unchanged. Hops are self-reported by the nodes on the path and are advisory. Tracing is scoped to the current task. See the root README.
