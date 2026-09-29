@@ -19,6 +19,13 @@ API, one directory per language under `languages/`.
 
 **Status:** all three official SDKs' real source lives here.
 
+## Documentation
+
+How the SDKs fit into Avalon, and the language-agnostic design they share, is in the
+[Avalon documentation](https://github.com/avalon-initiative/avalon-docs/blob/main/sdk/README.md).
+Per-language guides live here: [Rust](docs/rust/README.md), [C#](docs/csharp/README.md),
+[TypeScript](docs/typescript/README.md).
+
 ## Installing the Rust SDK
 
 The Rust SDK is not on crates.io. The project is public but used internally for now, so it is
