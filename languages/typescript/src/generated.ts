@@ -3461,7 +3461,7 @@ export interface components {
             message?: string | null;
         };
         CreateRoleRequest: {
-            badge?: null | components["schemas"]["RoleBadgeRequest"];
+            badge?: components["schemas"]["RoleBadgeRequest"] | null;
             /**
              * @description Issue #152. Defaults to an empty string, same "no explicit
              *     `Option` needed, empty is a valid value" treatment `Guild.description`
@@ -4246,10 +4246,10 @@ export interface components {
         Neighbor: {
             base_url: string;
             bootstrap: boolean;
-            coordinate?: null | components["schemas"]["Coordinate"];
+            coordinate?: components["schemas"]["Coordinate"] | null;
             /** Format: date-time */
             last_announced_at: string | null;
-            latency?: null | components["schemas"]["ObservedLatency"];
+            latency?: components["schemas"]["ObservedLatency"] | null;
             libp2p_peer_id?: string | null;
             protocol_version?: string | null;
             /** @description Empty and `None` below when the peer has not yet appeared in the peer table. */
@@ -5076,7 +5076,7 @@ export interface components {
             /** @description Ordered path, first node to last, all self-reported. */
             hops: components["schemas"]["TraceHop"][];
             reached: boolean;
-            stopped_reason?: null | components["schemas"]["StopReason"];
+            stopped_reason?: components["schemas"]["StopReason"] | null;
             target: string;
             /**
              * Format: double
@@ -5323,7 +5323,7 @@ export interface components {
             timezone?: string | null;
         };
         UpdateRoleRequest: {
-            badge?: null | components["schemas"]["RoleBadgeRequest"];
+            badge?: components["schemas"]["RoleBadgeRequest"] | null;
             /**
              * @description Issue #152. `None` leaves the existing description untouched — same
              *     partial-update convention `name`/`permissions` already use.
@@ -6607,7 +6607,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": null | components["schemas"]["GuildJoinRequestResponse"];
+                    "application/json": components["schemas"]["GuildJoinRequestResponse"] | null;
                 };
             };
         };
@@ -7131,7 +7131,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": null | components["schemas"]["RecoveryRequestResponse"];
+                    "application/json": components["schemas"]["RecoveryRequestResponse"] | null;
                 };
             };
         };
@@ -8588,7 +8588,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": null | components["schemas"]["RecoveryRequestResponse"];
+                    "application/json": components["schemas"]["RecoveryRequestResponse"] | null;
                 };
             };
         };
@@ -9123,4 +9123,4 @@ export interface operations {
 }
 
 // Issue #735: the info.version this file's types were generated from.
-export const OPENAPI_SCHEMA_VERSION = "0.7.0" as const
+export const OPENAPI_SCHEMA_VERSION = "0.7.1" as const
