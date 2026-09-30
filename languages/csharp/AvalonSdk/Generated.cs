@@ -539,6 +539,27 @@ namespace Avalon.Sdk.Generated
 
     }
 
+    /// <summary>
+    /// How a node is reachable, listed in preference order (most preferred first).
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public enum Connectivity
+    {
+
+        [System.Runtime.Serialization.EnumMember(Value = @"direct")]
+        Direct = 0,
+
+        [System.Runtime.Serialization.EnumMember(Value = @"nat_traversed")]
+        Nat_traversed = 1,
+
+        [System.Runtime.Serialization.EnumMember(Value = @"relayed")]
+        Relayed = 2,
+
+        [System.Runtime.Serialization.EnumMember(Value = @"outbound_only")]
+        Outbound_only = 3,
+
+    }
+
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class ConversationMessageResponse
     {
@@ -2007,6 +2028,10 @@ namespace Avalon.Sdk.Generated
         [System.Text.Json.Serialization.JsonPropertyName("base_url")]
         public string BaseUrl { get; set; } = default!;
 
+        [System.Text.Json.Serialization.JsonPropertyName("connectivity")]
+        [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<Connectivity>))]
+        public Connectivity? Connectivity { get; set; } = default!;
+
         [System.Text.Json.Serialization.JsonPropertyName("last_announced_at")]
         public System.DateTimeOffset LastAnnouncedAt { get; set; } = default!;
 
@@ -2308,6 +2333,10 @@ namespace Avalon.Sdk.Generated
         [System.Text.Json.Serialization.JsonPropertyName("bootstrap")]
         public bool Bootstrap { get; set; } = default!;
 
+        [System.Text.Json.Serialization.JsonPropertyName("connectivity")]
+        [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<Connectivity>))]
+        public Connectivity? Connectivity { get; set; } = default!;
+
         [System.Text.Json.Serialization.JsonPropertyName("coordinate")]
         public Coordinate? Coordinate { get; set; } = default!;
 
@@ -2414,6 +2443,25 @@ namespace Avalon.Sdk.Generated
 
         [System.Text.Json.Serialization.JsonPropertyName("label")]
         public string? Label { get; set; } = default!;
+
+    }
+
+    /// <summary>
+    /// The kind of path a measurement was taken over. A relayed measurement is never reported as
+    /// <br/>direct: it includes the relay's hop.
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public enum PathType
+    {
+
+        [System.Runtime.Serialization.EnumMember(Value = @"direct")]
+        Direct = 0,
+
+        [System.Runtime.Serialization.EnumMember(Value = @"traversed")]
+        Traversed = 1,
+
+        [System.Runtime.Serialization.EnumMember(Value = @"relayed")]
+        Relayed = 2,
 
     }
 
@@ -3493,6 +3541,13 @@ namespace Avalon.Sdk.Generated
         public double? MinMs { get; set; } = default!;
 
         /// <summary>
+        /// The path the most recent successful round trip took; a relayed one includes the relay.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("path")]
+        [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<PathType>))]
+        public PathType Path { get; set; } = default!;
+
+        /// <summary>
         /// Successful round trips recorded since the peer became active.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("samples")]
@@ -3587,6 +3642,10 @@ namespace Avalon.Sdk.Generated
 
         [System.Text.Json.Serialization.JsonPropertyName("base_url")]
         public string? BaseUrl { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("connectivity")]
+        [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<Connectivity>))]
+        public Connectivity? Connectivity { get; set; } = default!;
 
         /// <summary>
         /// This node's advisory network coordinate; see `network_coordinates`.
@@ -4464,6 +4523,6 @@ namespace Avalon.Sdk
         /// <summary>Issue #735/#725: the docs/generated/openapi.json `info.version`
         /// this file's generated types were produced from — generated straight from
         /// the same schema file, so it can't drift by construction.</summary>
-        public const string OpenApiSchemaVersion = "0.7.1";
+        public const string OpenApiSchemaVersion = "0.8.1";
     }
 }

@@ -3330,6 +3330,11 @@ export interface components {
             /** Format: date-time */
             granted_at: string;
         };
+        /**
+         * @description How a node is reachable, listed in preference order (most preferred first).
+         * @enum {string}
+         */
+        Connectivity: "direct" | "nat_traversed" | "relayed" | "outbound_only";
         ConversationMessageResponse: {
             /** Format: uuid */
             author: string;
@@ -4085,6 +4090,7 @@ export interface components {
         };
         KnownPeer: {
             base_url: string;
+            connectivity?: components["schemas"]["Connectivity"] | null;
             /** Format: date-time */
             last_announced_at: string;
             libp2p_peer_id?: string | null;
@@ -4246,6 +4252,7 @@ export interface components {
         Neighbor: {
             base_url: string;
             bootstrap: boolean;
+            connectivity?: components["schemas"]["Connectivity"] | null;
             coordinate?: components["schemas"]["Coordinate"] | null;
             /** Format: date-time */
             last_announced_at: string | null;
@@ -4292,6 +4299,12 @@ export interface components {
             id: string;
             label?: string | null;
         };
+        /**
+         * @description The kind of path a measurement was taken over. A relayed measurement is never reported as
+         *     direct: it includes the relay's hop.
+         * @enum {string}
+         */
+        PathType: "direct" | "traversed" | "relayed";
         PermissionOverrideResponse: {
             allow: boolean;
             /** Format: uuid */
@@ -4854,6 +4867,8 @@ export interface components {
              * @description Minimum over the last successful round trips.
              */
             min_ms?: number | null;
+            /** @description The path the most recent successful round trip took; a relayed one includes the relay. */
+            path: components["schemas"]["PathType"];
             /**
              * Format: int64
              * @description Successful round trips recorded since the peer became active.
@@ -4898,6 +4913,7 @@ export interface components {
         };
         SelfView: {
             base_url?: string | null;
+            connectivity?: components["schemas"]["Connectivity"] | null;
             /** @description This node's advisory network coordinate; see `network_coordinates`. */
             coordinate: components["schemas"]["Coordinate"];
             libp2p_peer_id?: string | null;
@@ -5382,6 +5398,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The attestation read */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5407,6 +5424,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting revocation */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5430,6 +5448,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting deny */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5451,6 +5470,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The lookup cross node login */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5470,6 +5490,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The resulting poll cross node login */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5489,6 +5510,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The resulting start cross node login */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5512,6 +5534,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting submit grant */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5535,6 +5558,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting resolve pairing */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5558,6 +5582,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting resolve pairing */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5577,6 +5602,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The resulting poll pairing */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5596,6 +5622,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The resulting start pairing */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5615,6 +5642,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of block list entry entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5638,6 +5666,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting block */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5677,6 +5706,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of conversation entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5700,6 +5730,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting conversation */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5728,6 +5759,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of message entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5753,6 +5785,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting message */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5772,6 +5805,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of friendship entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5793,6 +5827,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The resolve handle */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5812,6 +5847,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of friend request entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5835,6 +5871,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting friend request */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5876,6 +5913,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The resulting friendship */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5919,6 +5957,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting guild */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5966,6 +6005,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The discover guilds */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5987,6 +6027,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The guild */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6012,6 +6053,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting guild */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6033,6 +6075,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of channel entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6058,6 +6101,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting channel */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6084,6 +6128,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting channel */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6106,6 +6151,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The resulting channel */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6134,6 +6180,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of message entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6160,6 +6207,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting message */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6188,6 +6236,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of archived message entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6235,6 +6284,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of event entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6260,6 +6310,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting event */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6307,6 +6358,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting event */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6333,6 +6385,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting rsvp */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6355,6 +6408,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of rsvp roster entry entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6376,6 +6430,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The favorite games */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6401,6 +6456,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting favorite games */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6423,6 +6479,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The resulting guild */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6444,6 +6501,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The game breakdown */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6469,6 +6527,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting guild invite */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6491,6 +6550,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The resulting guild member */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6533,6 +6593,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The resulting guild member */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6556,6 +6617,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of guild join request entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6581,6 +6643,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting guild join request */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6602,6 +6665,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The guild join request, or null if there is none */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6645,6 +6709,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The resulting guild member */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6707,6 +6772,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of guild member entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6754,6 +6820,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting guild member */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6777,6 +6844,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of permission override entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6802,6 +6870,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting permission override */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6848,6 +6917,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of role entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6873,6 +6943,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting role */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6924,6 +6995,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting role */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6949,6 +7021,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting guild */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6974,6 +7047,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of public profile entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6997,6 +7071,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting register finish */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7020,6 +7095,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting register start */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7042,6 +7118,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The search identities */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7063,6 +7140,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of visible integrator data instance entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7084,6 +7162,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The locations */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7105,6 +7184,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The public identity profile */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7126,6 +7206,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The recovery request, or null if there is none */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7159,6 +7240,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The list integrators */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7182,6 +7264,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting integrator */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7201,6 +7284,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The integrator whoami */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7222,6 +7306,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The integrator public */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7243,6 +7328,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of achievement definition entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7268,6 +7354,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting achievement definition */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7293,6 +7380,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting bulk issue attestation */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7319,6 +7407,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting achievement definition */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7345,6 +7434,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting attestation */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7366,6 +7456,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The resulting integrator challenge */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7391,6 +7482,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting connect */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7453,6 +7545,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of issuer key entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7478,6 +7571,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting issuer key */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7504,6 +7598,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting issuer key */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7525,6 +7620,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of integrator schema mapping entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7550,6 +7646,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting integrator schema mapping */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7572,6 +7669,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The integrator schema mapping */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7593,6 +7691,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of achievement definition entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7618,6 +7717,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting achievement definition */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7643,6 +7743,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting bulk issue attestation */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7669,6 +7770,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting achievement definition */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7695,6 +7797,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting attestation */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7716,6 +7819,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of recognition entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7741,6 +7845,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting recognition */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7786,6 +7891,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of recognition entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7807,6 +7913,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The integrator registry */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7828,6 +7935,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of integrator schema version entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7853,6 +7961,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting integrator schema version */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7875,6 +7984,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The integrator schema version */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7901,6 +8011,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting integrator data instance */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7950,6 +8061,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting issuer registration */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7973,6 +8085,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting registration challenge */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7992,6 +8105,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The profile */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8015,6 +8129,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting profile */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8056,6 +8171,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The list my achievements */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8075,6 +8191,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of connection entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8094,6 +8211,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of device entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8120,6 +8238,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of device grant entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8143,6 +8262,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting device grant */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8164,6 +8284,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The device grant */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8189,6 +8310,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting device */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8214,6 +8336,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting device */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8255,6 +8378,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The my grants */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8274,6 +8398,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of guild announcement alert entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8293,6 +8418,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of my guild invite entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8312,6 +8438,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of my guild membership entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8331,6 +8458,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of history entry entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8350,6 +8478,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of passkey entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8373,6 +8502,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting passkey */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8392,6 +8522,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The resulting add passkey start */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8417,6 +8548,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting passkey */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8464,6 +8596,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting presence */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8483,6 +8616,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of guardian of summary entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8522,6 +8656,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of guardian request summary entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8541,6 +8676,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The guardian settings */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8564,6 +8700,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting guardian settings */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8583,6 +8720,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The recovery request, or null if there is none */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8605,6 +8743,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The rollback candidates */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8630,6 +8769,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting reverse event */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8653,6 +8793,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting probe */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8741,6 +8882,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting trace */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8781,6 +8923,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The discover people */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8803,6 +8946,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of presence entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8828,6 +8972,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting presence */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8851,6 +8996,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting recovery request */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8874,6 +9020,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting recovery start */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8895,6 +9042,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The recovery request */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8916,6 +9064,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The resulting recovery request */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8941,6 +9090,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting recovery request */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8962,6 +9112,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The resulting recovery request */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8985,6 +9136,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting session finish */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9008,6 +9160,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting session start */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9029,6 +9182,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description The name claim */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9057,6 +9211,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description List of name claim entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9082,6 +9237,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The resulting name claim */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9123,4 +9279,4 @@ export interface operations {
 }
 
 // Issue #735: the info.version this file's types were generated from.
-export const OPENAPI_SCHEMA_VERSION = "0.7.1" as const
+export const OPENAPI_SCHEMA_VERSION = "0.8.1" as const
