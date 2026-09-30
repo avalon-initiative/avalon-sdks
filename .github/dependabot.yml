@@ -10,6 +10,10 @@ updates:
       - "developer-experience"
     commit-message:
       prefix: "[noissue] - "
+    ignore:
+      # build.rs uses typify 0.8, which is tied to schemars 0.8
+      - dependency-name: "schemars"
+        update-types: ["version-update:semver-major"]
     groups:
       cargo-minor-patch:
         patterns: ["*"]
