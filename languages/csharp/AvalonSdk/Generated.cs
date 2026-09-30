@@ -4464,6 +4464,6 @@ namespace Avalon.Sdk
         /// <summary>Issue #735/#725: the docs/generated/openapi.json `info.version`
         /// this file's generated types were produced from — generated straight from
         /// the same schema file, so it can't drift by construction.</summary>
-        public const string OpenApiSchemaVersion = "0.7.0";
+        public const string OpenApiSchemaVersion = "0.7.1";
     }
 }
