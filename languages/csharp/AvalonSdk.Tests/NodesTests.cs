@@ -75,6 +75,60 @@ public class NodesTests
     }
 
     [Fact]
+    public async Task TopologyAsync_ToleratesUnknownConnectivityAndPathValues()
+    {
+        var body = System.Text.Json.Nodes.JsonNode.Parse(Fixture("topology"))!.AsObject();
+        var neighbor = body["neighbors"]![0]!;
+        System.Text.Json.Nodes.JsonNode With(string connectivity, string path)
+        {
+            var n = neighbor.DeepClone();
+            n["connectivity"] = connectivity;
+            n["latency"]!["path"] = path;
+            return n;
+        }
+        body["neighbors"] = new System.Text.Json.Nodes.JsonArray(
+            With("nat_traversed", "traversed"), With("outbound_only", "relayed"), With("made_up_value", "made_up_path"));
+        var handler = new StubHttpMessageHandler().Enqueue(body.ToJsonString());
+
+        var topology = await ClientFor(handler).TopologyAsync();
+
+        Assert.Equal(
+            new Avalon.Sdk.Generated.Connectivity?[]
+            {
+                Avalon.Sdk.Generated.Connectivity.Nat_traversed,
+                Avalon.Sdk.Generated.Connectivity.Outbound_only,
+                Avalon.Sdk.Generated.Connectivity.Unknown,
+            },
+            topology.Neighbors.Select(n => n.Connectivity).ToArray());
+        Assert.Equal(
+            new[]
+            {
+                Avalon.Sdk.Generated.PathType.Traversed,
+                Avalon.Sdk.Generated.PathType.Relayed,
+                Avalon.Sdk.Generated.PathType.Unknown,
+            },
+            topology.Neighbors.Select(n => n.Latency!.Path).ToArray());
+    }
+
+    [Fact]
+    public async Task ProbeAndTrace_DecodeNewPathFieldsAndToleratesUnknownValues()
+    {
+        var probe = System.Text.Json.Nodes.JsonNode.Parse(Fixture("probe"))!.AsObject();
+        probe["path"] = "traversed";
+        var trace = System.Text.Json.Nodes.JsonNode.Parse(Fixture("trace"))!.AsObject();
+        trace["hops"]![0]!["path_to_next"] = "made_up_path";
+        var handler = new StubHttpMessageHandler().Enqueue(probe.ToJsonString()).Enqueue(trace.ToJsonString());
+        var client = ClientFor(handler);
+
+        var probed = await client.ProbeAsync("http://n:1");
+        var traced = await client.TraceAsync("http://n:1");
+
+        Assert.Equal(Avalon.Sdk.Generated.PathType.Traversed, probed.Path);
+        Assert.Equal(Avalon.Sdk.Generated.PathType.Unknown, traced.Hops.First().PathToNext);
+        Assert.Null(traced.Hops.Last().PathToNext);
+    }
+
+    [Fact]
     public async Task TopologyAsync_DefaultsToConfiguredServer()
     {
         var handler = new StubHttpMessageHandler().Enqueue(Fixture("topology"));

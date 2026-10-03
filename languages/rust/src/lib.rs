@@ -79,6 +79,7 @@ pub mod social;
 pub mod sth;
 pub mod submission;
 pub mod sync_journal;
+pub mod tolerant;
 pub mod topology_walk;
 pub mod types;
 pub mod witness;

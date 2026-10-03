@@ -558,6 +558,8 @@ namespace Avalon.Sdk.Generated
         [System.Runtime.Serialization.EnumMember(Value = @"outbound_only")]
         Outbound_only = 3,
 
+        /// <summary>A value this SDK version does not know.</summary>
+        Unknown = -1,
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
@@ -2089,7 +2091,7 @@ namespace Avalon.Sdk.Generated
         public string BaseUrl { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("connectivity")]
-        [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<Connectivity>))]
+        [System.Text.Json.Serialization.JsonConverter(typeof(Avalon.Sdk.TolerantEnumJsonConverter<Connectivity>))]
         public Connectivity? Connectivity { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("last_announced_at")]
@@ -2394,7 +2396,7 @@ namespace Avalon.Sdk.Generated
         public bool Bootstrap { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("connectivity")]
-        [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<Connectivity>))]
+        [System.Text.Json.Serialization.JsonConverter(typeof(Avalon.Sdk.TolerantEnumJsonConverter<Connectivity>))]
         public Connectivity? Connectivity { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("coordinate")]
@@ -2523,6 +2525,8 @@ namespace Avalon.Sdk.Generated
         [System.Runtime.Serialization.EnumMember(Value = @"relayed")]
         Relayed = 2,
 
+        /// <summary>A value this SDK version does not know.</summary>
+        Unknown = -1,
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
@@ -2670,7 +2674,7 @@ namespace Avalon.Sdk.Generated
         public bool Ok { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("path")]
-        [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<PathType>))]
+        [System.Text.Json.Serialization.JsonConverter(typeof(Avalon.Sdk.TolerantEnumJsonConverter<PathType>))]
         public PathType? Path { get; set; } = default!;
 
         /// <summary>
@@ -3638,7 +3642,7 @@ namespace Avalon.Sdk.Generated
         /// The path the most recent successful round trip took; a relayed one includes the relay.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("path")]
-        [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<PathType>))]
+        [System.Text.Json.Serialization.JsonConverter(typeof(Avalon.Sdk.TolerantEnumJsonConverter<PathType>))]
         public PathType Path { get; set; } = default!;
 
         /// <summary>
@@ -3738,7 +3742,7 @@ namespace Avalon.Sdk.Generated
         public string? BaseUrl { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("connectivity")]
-        [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<Connectivity>))]
+        [System.Text.Json.Serialization.JsonConverter(typeof(Avalon.Sdk.TolerantEnumJsonConverter<Connectivity>))]
         public Connectivity? Connectivity { get; set; } = default!;
 
         /// <summary>
@@ -4050,7 +4054,7 @@ namespace Avalon.Sdk.Generated
         public int Index { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("path_to_next")]
-        [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<PathType>))]
+        [System.Text.Json.Serialization.JsonConverter(typeof(Avalon.Sdk.TolerantEnumJsonConverter<PathType>))]
         public PathType? PathToNext { get; set; } = default!;
 
         /// <summary>
