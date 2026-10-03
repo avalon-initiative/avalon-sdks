@@ -17,7 +17,7 @@ Needs `.env` at the repo root with `DATABASE_URL` (a real Postgres) and
 
 ```bash
 make create-identity
-make login IDENTITY_ID=<uuid>
+make login IDENTITY_ID=<identity id>
 ```
 
 `create-identity` drives a real (software-only, no hardware) WebAuthn
@@ -68,7 +68,7 @@ make outbox-status         # pending/oldest-pending count for the settlement out
 | Command | What it does |
 | --- | --- |
 | `make create-identity` | Register a new self-custodied (passkey) identity |
-| `make login IDENTITY_ID=<uuid>` | Log in, print a session token |
+| `make login IDENTITY_ID=<identity id>` | Log in, print a session token |
 | `make register-integrator SLUG=… NAME=… OWNER=…` | Register a test integrator, save its key |
 | `make issue-achievement INTEGRATOR=… ACHIEVEMENT=… TOKEN=…` | Issue an already-defined achievement |
 | `make inspect-ledger[-full]` | Pretty-print the hash-chained ledger |

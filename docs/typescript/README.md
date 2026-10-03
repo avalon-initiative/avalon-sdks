@@ -22,6 +22,10 @@ are both implemented for real, not stubbed out.
 
 ## Shape of the API
 
+- Identity ids are branded `IdentityId` strings (64 lowercase hex characters derived from the inception key):
+  `parseIdentityId`, `deriveIdentityId`, and the v2 signing-bytes functions are exported. `register` generates the key
+  first and derives the id; see the root README's "Identity ids and registration".
+
 - `AvalonClient` — the entry point: `register(displayName)`,
   `login(credentials)`, `resumeAccountSession(token)`,
   `resumeAccountSessionWithSigningKey(token, seed)`,
