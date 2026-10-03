@@ -200,3 +200,45 @@ export function familyProofVerifies(response: ShardFamilyResponse): boolean {
   const member = response.members.find((m) => m.shard_id === proof.shard_id)
   return member !== undefined && verifyFamilyInclusion(response.owner, response.root_hash, proof, member)
 }
+
+const ROUTE_TAG = 'avalon-shard-route-v1'
+
+/** The rendezvous weight of `shardId` for `key` under `owner`: SHA-256 of `avalon-shard-route-v1`
+ * then owner, key and shard id, each as a u32 big-endian byte length and its UTF-8 bytes. */
+export function routeWeight(owner: string, key: string, shardId: string): Uint8Array {
+  return sha256(concatBytes(encoder.encode(ROUTE_TAG), text(owner), text(key), text(shardId)))
+}
+
+function compareWeights(a: Uint8Array, b: Uint8Array): number {
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i]
+  return 0
+}
+
+/** The sibling of `owner`'s family a write for `key` should go to, or null when no candidate is a
+ * family member. Highest-random-weight hashing over `routeWeight`, so the same key and set always
+ * give the same sibling and adding or removing one only moves the keys that must move. Ids outside
+ * the family are ignored, duplicates count once and the order of `siblings` does not matter. Equal
+ * weights (only possible for equal ids) go to the bytewise smaller id. This is routing only: writes
+ * to different siblings are never atomic together. */
+export function routeWrite(owner: string, key: string, siblings: readonly string[]): string | null {
+  let best: { id: string; weight: Uint8Array } | null = null
+  for (const id of siblings) {
+    if (!isFamilyMember(owner, id)) continue
+    const weight = routeWeight(owner, key, id)
+    const order = best === null ? 1 : compareWeights(weight, best.weight) || compareBytes(best.id, id)
+    if (order > 0) best = { id, weight }
+  }
+  return best === null ? null : best.id
+}
+
+/** The served members' shard ids, in shard id order. */
+export function familySiblingIds(response: ShardFamilyResponse): string[] {
+  return response.members.map((m) => m.shard_id)
+}
+
+/** The sibling a write for `key` should go to among the served members (see `routeWrite`). A
+ * `partial` response omits siblings that have no head here, so it can route differently from the
+ * full set. */
+export function familyRouteWrite(response: ShardFamilyResponse, key: string): string | null {
+  return routeWrite(response.owner, key, familySiblingIds(response))
+}
