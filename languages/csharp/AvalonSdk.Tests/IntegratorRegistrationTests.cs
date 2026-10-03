@@ -116,4 +116,28 @@ public class IntegratorRegistrationTests
         Assert.Empty(keys);
         Assert.Equal(HttpMethod.Get, handler.Requests[0].Method);
     }
+
+    [Fact]
+    public async Task ListIntegratorShardsAsync_GetsThePublicShardsRoute()
+    {
+        var handler = new StubHttpMessageHandler().Enqueue("""
+        {
+            "owner": "game:ashen-realms",
+            "shards": [{ "shard_id": "game:ashen-realms/1", "tree_size": 12, "root_hash": "ab",
+                         "signing_key_id": "k1", "created_at": "2026-01-01T00:00:00Z", "last_seen_at": null }],
+            "partial": true,
+            "missing_shard_ids": ["game:ashen-realms/2"]
+        }
+        """);
+        var session = Session.ForTesting(Array.Empty<string>(), handler.ToHttpClient(), serverUrl: "http://test");
+
+        var result = await session.ListIntegratorShardsAsync("ashen-realms");
+
+        Assert.Equal("http://test/integrations/ashen-realms/shards", handler.Requests[0].Url);
+        Assert.Equal("game:ashen-realms", result.Owner);
+        Assert.Equal(12, result.Shards.Single().TreeSize);
+        Assert.Null(result.Shards.Single().LastSeenAt);
+        Assert.True(result.Partial);
+        Assert.Equal(new[] { "game:ashen-realms/2" }, result.MissingShardIds);
+    }
 }

@@ -197,6 +197,48 @@ export async function getIntegratorRegistry(serverUrl: string, slug: string): Pr
   }
 }
 
+export interface IntegratorShard {
+  shardId: string
+  treeSize: number
+  rootHash: string
+  signingKeyId: string
+  createdAt: string
+  /** When this node last saw the shard announced; `null` when it only knows the shard from static config. */
+  lastSeenAt: string | null
+}
+
+export interface IntegratorShards {
+  /** The family owner id, `{category}:{slug}`. */
+  owner: string
+  /** Verified siblings in canonical shard id order. */
+  shards: IntegratorShard[]
+  /** `true` when `missingShardIds` is non-empty. */
+  partial: boolean
+  /** Siblings this node knows of but could not verify a head for. */
+  missingShardIds: string[]
+}
+
+type IntegratorShardsWire = components['schemas']['IntegratorShardsResponse']
+
+/** `GET /integrations/{slug}/shards` — public and advisory: only siblings this node knows of and could
+ * verify are listed. A family over 256 shards is refused with HTTP 413, not truncated. */
+export async function listIntegratorShards(serverUrl: string, slug: string): Promise<IntegratorShards> {
+  const w = await request<IntegratorShardsWire>(serverUrl, `/integrations/${slug}/shards`)
+  return {
+    owner: w.owner,
+    shards: w.shards.map((s) => ({
+      shardId: s.shard_id,
+      treeSize: s.tree_size,
+      rootHash: s.root_hash,
+      signingKeyId: s.signing_key_id,
+      createdAt: s.created_at,
+      lastSeenAt: s.last_seen_at ?? null,
+    })),
+    partial: w.partial,
+    missingShardIds: w.missing_shard_ids,
+  }
+}
+
 export interface IssuerKey {
   keyId: string
   algorithm: string
