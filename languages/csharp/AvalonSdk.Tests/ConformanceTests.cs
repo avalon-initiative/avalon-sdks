@@ -28,7 +28,7 @@ namespace Avalon.Sdk.Tests;
 /// </summary>
 public class ConformanceTests
 {
-    private static string VectorsDir()
+    internal static string VectorsDir()
     {
         // bin/Debug/net10.0 (or similar) under AvalonSdk.Tests -> walk up to the repo root,
         // then into conformance/vectors. AppContext.BaseDirectory is the build output dir.
@@ -45,7 +45,7 @@ public class ConformanceTests
         return Path.Combine(dir.FullName, "conformance", "vectors");
     }
 
-    private static JsonDocument LoadVector(string name)
+    internal static JsonDocument LoadVector(string name)
     {
         var path = Path.Combine(VectorsDir(), name);
         return JsonDocument.Parse(File.ReadAllText(path));
