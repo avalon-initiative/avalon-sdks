@@ -106,7 +106,17 @@ export type {
 // schema version this SDK build targets.
 export { OPENAPI_SCHEMA_VERSION } from './generated.js'
 
-export { getLatestSth, getCosignedTreeHead, getShardTreeHead } from './ledger.js'
+export { getLatestSth, getCosignedTreeHead, getShardTreeHead, getShardFamily } from './ledger.js'
+export {
+  shardFamilyOwner,
+  isFamilyOwnerId,
+  isFamilyMember,
+  familyRoot,
+  verifyFamilyInclusion,
+  familyRootMatches,
+  familyProofVerifies,
+} from './shardFamily.js'
+export type { FamilyHead, FamilyMember, FamilyProof, ShardFamilyResponse } from './shardFamily.js'
 export { getNodeStatus } from './nodeStatus.js'
 export { getTopology, probeNode, traceRoute } from './nodeTopology.js'
 export { withTrace } from './opTrace.js'

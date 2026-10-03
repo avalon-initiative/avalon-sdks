@@ -60,6 +60,8 @@ conversations/`sync_journal` without a full web framework:
   **`Achievements.cs`**, **`SyncJournal.cs`**, **`CrossNodeLogin.cs`** —
   the remaining domain surfaces, one file per area, mirroring the Rust
   SDK's own module split.
+- **Shard family heads** — `AvalonClient.GetShardFamilyAsync`, `ShardFamily.Root` and `ShardFamily.VerifyInclusion` fetch
+  and check an owner's `GET /ledger/shard-family` head (`RootMatches` / `ProofVerifies` on a response); see the root README.
 - **Self-certifying shard heads** — `AvalonClient.GetShardTreeHeadAsync`
   and `SelfCertifying.Verify` / `ShardCheckFor` verify a `node:<sha256-of-key>`
   shard's head from the served `SigningPublicKey` and the id alone; see

@@ -74,6 +74,15 @@ and signed the head; otherwise the first failure as a `SelfCertifyingFailure` (`
 `ShardCheck::SelfCertifying`, `CoreNetwork` (use `verify_network`) or `Unsupported`; unsupported kinds never verify.
 No trust anchor or witness list is involved. Shared vectors: `conformance/vectors/self-certifying-tree-head.json`.
 
+## Shard family head
+
+`AvalonClient::fetch_shard_family(owner, member)` returns a `shard_family::ShardFamilyResponse` (`GET /ledger/shard-family`):
+`root_hash`, `members` (`FamilyMember`, the heads the root commits to), `partial`, `missing_shard_ids` and, when `member` was
+given, a `FamilyProof`. `shard_family::family_root(owner, &heads)` recomputes the root (non-members ignored, any order),
+`shard_family::verify_family_inclusion(owner, root, &proof, &head)` checks a proof, and `ShardFamilyResponse::root_matches` /
+`proof_verifies` do both on a fetched response. `shard_family_owner`, `is_family_owner_id` and `is_family_member` implement the
+shard id grammar. The recomputed root is the check: the node does not sign it. A `partial` response means a known family member has no head on that node. Atomic writes across siblings do not exist. Shared vectors: `conformance/vectors/shard-family-head.json`.
+
 ## Tracing a real call
 
 `with_trace(fut).await` runs any SDK call with `X-Avalon-Trace` on each request it sends through the shared request path and returns `Traced { value, requests }`. Each `RequestTrace` has the `trace_id` sent and either a decoded `OperationTrace` (`branches` of `PathHop`, which derefs to the `TraceHop` that `trace()` returns and keeps unknown fields in `extra`) or a `TraceProblem` (`Missing`, `Oversized`, `Malformed`, `TraceIdMismatch`). Opt-in and read-only; a missing or malformed header never fails the call, and `value` is the call's own result unchanged. Hops are self-reported by the nodes on the path and are advisory. Tracing is scoped to the current task. See the root README.

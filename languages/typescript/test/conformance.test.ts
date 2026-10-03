@@ -31,6 +31,14 @@ import {
 } from '../src/network/witness.js'
 import { diversityPrefixForUrl, selectKnownList } from '../src/network/knownListRules.js'
 import { selfCertifyingId, shardCheck, verifySelfCertifyingTreeHead } from '../src/network/selfCertifying.js'
+import {
+  familyRoot,
+  isFamilyMember,
+  isFamilyOwnerId,
+  shardFamilyOwner,
+  verifyFamilyInclusion,
+  type FamilyHead,
+} from '../src/shardFamily.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const VECTORS_DIR = path.resolve(__dirname, '../../../conformance/vectors')
@@ -362,4 +370,50 @@ describe('conformance: self-certifying tree heads', () => {
       expect(result.verified ? null : result.failure).toBe(vector.expected.failure)
     })
   }
+})
+
+describe('conformance: shard family head', () => {
+  const doc = loadVector('shard-family-head.json')
+  // Decimal strings carry tree sizes beyond 2^53, which a JSON double cannot hold.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const head = (h: any): FamilyHead => ({
+    shard_id: h.shardId,
+    tree_size: typeof h.treeSize === 'string' ? BigInt(h.treeSize) : h.treeSize,
+    root_hash: h.rootHashHex,
+    signing_key_id: h.signingKeyId,
+    signature: h.signatureHex,
+  })
+
+  it('lists typescript as supported', () => {
+    requireSupported(doc, 'typescript')
+  })
+
+  for (const v of doc.familyVectors) {
+    it(`root: ${v.name}`, () => {
+      expect(familyRoot(v.input.owner, v.input.heads.map(head))).toBe(v.expected.rootHashHex)
+    })
+  }
+
+  for (const v of doc.proofVectors) {
+    it(`proof: ${v.name}`, () => {
+      const { owner, rootHashHex, shardId, proof } = v.input
+      const claimed = { ...head(v.input.head), shard_id: shardId }
+      const wire = { shard_id: shardId, leaf_index: proof.leafIndex, tree_size: proof.treeSize, path: proof.pathHex }
+      expect(verifyFamilyInclusion(owner, rootHashHex, wire, claimed)).toBe(v.expected.verified)
+    })
+  }
+
+  it('maps shard ids to owners', () => {
+    for (const v of doc.familyOwnerVectors) expect([v.shardId, shardFamilyOwner(v.shardId)]).toEqual([v.shardId, v.expectedOwner])
+  })
+
+  it('recognizes owner ids', () => {
+    for (const v of doc.ownerIdVectors) expect([v.owner, isFamilyOwnerId(v.owner)]).toEqual([v.owner, v.expected])
+  })
+
+  it('decides membership', () => {
+    for (const v of doc.memberVectors) {
+      expect([v.owner, v.shardId, isFamilyMember(v.owner, v.shardId)]).toEqual([v.owner, v.shardId, v.expected])
+    }
+  })
 })

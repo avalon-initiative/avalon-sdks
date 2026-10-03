@@ -2,6 +2,7 @@
 // functions, not session methods, since `GET /ledger/sth/latest` needs no
 // session at all. See crates/server/src/settlement.rs::latest_sth.
 import { request } from './http.js'
+import type { ShardFamilyResponse } from './shardFamily.js'
 import type { CosignedTreeHead, CosignedTreeHeadResponse, SignedTreeHeadResponse } from './types.js'
 
 /** `GET /ledger/sth/latest` — the network's current Signed Tree Head.
@@ -21,6 +22,18 @@ export function getShardTreeHead(
 ): Promise<SignedTreeHeadResponse> {
   const path = options.treeSize === undefined ? '/ledger/sth/latest' : `/ledger/sth/${options.treeSize}`
   return request<SignedTreeHeadResponse>(serverUrl, path, { query: { shard_id: shardId }, signal: options.signal })
+}
+
+/** `GET /ledger/shard-family?owner=…[&member=…]`: the owner's family head, with an inclusion proof for
+ * `member` when given. Unverified; see `familyRootMatches` and `familyProofVerifies`. */
+export function getShardFamily(
+  serverUrl: string,
+  owner: string,
+  options: { member?: string; signal?: AbortSignal } = {},
+): Promise<ShardFamilyResponse> {
+  const query: Record<string, string> = { owner }
+  if (options.member !== undefined) query.member = options.member
+  return request<ShardFamilyResponse>(serverUrl, '/ledger/shard-family', { query, signal: options.signal })
 }
 
 /** `GET /ledger/sth/latest` or `/ledger/sth/{treeSize}` with `?witnesses=1`: the head plus the
