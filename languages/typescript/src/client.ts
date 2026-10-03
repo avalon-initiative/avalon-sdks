@@ -29,7 +29,7 @@ import {
   identityCreatedSigningBytes,
   type SigningKeyPair,
 } from './crypto/signing.js'
-import { deriveIdentityId, parseIdentityId, type IdentityId } from './identityId.js'
+import { deriveIdentityId, identityIdMatchesKey, parseIdentityId, type IdentityId } from './identityId.js'
 import { isAcceptableShardKey } from './network/strictEd25519.js'
 import { generateMnemonicSigningKey } from './crypto/mnemonic.js'
 import { authenticate as authenticateIntegrator, type AuthenticateOptions, type IntegratorSession } from './integratorSession.js'
@@ -180,8 +180,12 @@ export class AvalonClient {
    * `credentials` is what `session.credentials()` returned from that
    * earlier registration (or a prior `login()`). */
   async login(credentials: AccountCredentials): Promise<AccountSession> {
+    const identityId = parseIdentityId(credentials.identityId)
     const secretKey = base64ToBytes(credentials.signingKeySecretBase64)
-    const session = await this.finishLogin(parseIdentityId(credentials.identityId), secretKey)
+    if (!identityIdMatchesKey(identityId, publicKeyFromSecretKey(secretKey))) {
+      throw new Error('the stored signing key does not derive to the credentials\' identity id')
+    }
+    const session = await this.finishLogin(identityId, secretKey)
     session._credentials = credentials
     return session
   }

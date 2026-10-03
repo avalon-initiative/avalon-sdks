@@ -89,7 +89,7 @@ describe('AccountSession.approveDeviceGrant key handling', () => {
   it('rejects a requested key that is not canonical base64 of 32 bytes', async () => {
     const { secretKey, publicKey } = generateSigningKey()
     const session = testSession({ secretKey, publicKey, signingKeyId: 'approver-key-id' })
-    await expect(session.approveDeviceGrant('grant-1', 'AAAA')).rejects.toBeInstanceOf(TypeError)
+    await expect(session.approveDeviceGrant(crypto.randomUUID(), 'AAAA')).rejects.toBeInstanceOf(TypeError)
   })
 })
 
@@ -100,7 +100,9 @@ describe('AccountSession.revokeDevice', () => {
 
   it('signs the v2 revocation bytes with the session key', async () => {
     const { secretKey, publicKey } = generateSigningKey()
-    const session = testSession({ secretKey, publicKey, signingKeyId: 'revoker-key-id' })
+    const revokerId = crypto.randomUUID()
+    const oldId = crypto.randomUUID()
+    const session = testSession({ secretKey, publicKey, signingKeyId: revokerId })
     let captured: { url: string; body: Record<string, unknown> } | undefined
     vi.stubGlobal(
       'fetch',
@@ -110,14 +112,37 @@ describe('AccountSession.revokeDevice', () => {
       }),
     )
 
-    await session.revokeDevice('old-key-id')
+    await session.revokeDevice(oldId)
 
-    expect(captured!.url).toContain('/me/devices/old-key-id/revoke')
-    expect(captured!.body.revoked_by_signing_key_id).toBe('revoker-key-id')
+    expect(captured!.url).toContain(`/me/devices/${oldId}/revoke`)
+    expect(captured!.body.revoked_by_signing_key_id).toBe(revokerId)
     const message = new TextEncoder().encode(
-      `avalon:identity.signing_key_revoked:v2:${session.identity().id}:old-key-id:revoker-key-id`,
+      `avalon:identity.signing_key_revoked:v2:${session.identity().id}:${oldId}:${revokerId}`,
     )
     const signature = Uint8Array.from(atob(captured!.body.signature as string), (c) => c.charCodeAt(0))
     expect(ed25519.verify(signature, message, publicKey)).toBe(true)
+  })
+})
+
+describe('device grant and revocation input validation', () => {
+  it('approveDeviceGrant rejects a small-order requested key', async () => {
+    const { secretKey, publicKey } = generateSigningKey()
+    const session = testSession({ secretKey, publicKey, signingKeyId: 'approver-key-id' })
+    const identityPoint = new Uint8Array(32)
+    identityPoint[0] = 1
+    await expect(
+      session.approveDeviceGrant(crypto.randomUUID(), bytesToBase64(identityPoint)),
+    ).rejects.toBeInstanceOf(TypeError)
+  })
+
+  it('approveDeviceGrant and revokeDevice reject ids that are not lowercase hyphenated UUIDs', async () => {
+    const { secretKey, publicKey } = generateSigningKey()
+    const session = testSession({ secretKey, publicKey, signingKeyId: crypto.randomUUID() })
+    const requested = bytesToBase64(generateSigningKey().publicKey)
+    await expect(session.approveDeviceGrant('not-a-uuid', requested)).rejects.toBeInstanceOf(TypeError)
+    await expect(session.approveDeviceGrant(crypto.randomUUID().toUpperCase(), requested)).rejects.toBeInstanceOf(
+      TypeError,
+    )
+    await expect(session.revokeDevice('../x')).rejects.toBeInstanceOf(TypeError)
   })
 })

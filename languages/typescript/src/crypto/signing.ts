@@ -67,6 +67,15 @@ export interface SignatureFields {
 
 const encoder = new TextEncoder()
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+function requireUuid(value: string, name: string): string {
+  if (typeof value !== 'string' || !UUID_PATTERN.test(value)) {
+    throw new TypeError(`${name} must be a lowercase hyphenated UUID`)
+  }
+  return value
+}
+
 function requireKey(key: Uint8Array): string {
   if (key.length !== 32) {
     throw new TypeError('an Ed25519 public key is exactly 32 bytes')
@@ -89,7 +98,7 @@ export function identityCreatedSigningBytes(
   const networkLen = encoder.encode(networkId).length
   const shardLen = encoder.encode(shardId).length
   return encoder.encode(
-    `avalon:identity.created:v2:${networkLen}:${networkId}:${shardLen}:${shardId}:${ticketId}:${parseIdentityId(identityId)}:${requireKey(publicKey)}:${displayName}`,
+    `avalon:identity.created:v2:${networkLen}:${networkId}:${shardLen}:${shardId}:${requireUuid(ticketId, 'ticketId')}:${parseIdentityId(identityId)}:${requireKey(publicKey)}:${displayName}`,
   )
 }
 
@@ -101,7 +110,7 @@ export function deviceGrantApprovalSigningBytes(
   requestedPublicKey: Uint8Array,
 ): Uint8Array {
   return encoder.encode(
-    `avalon:device_grant.approved:v2:${grantId}:${parseIdentityId(identityId)}:${requireKey(requestedPublicKey)}`,
+    `avalon:device_grant.approved:v2:${requireUuid(grantId, 'grantId')}:${parseIdentityId(identityId)}:${requireKey(requestedPublicKey)}`,
   )
 }
 
@@ -113,7 +122,7 @@ export function signingKeyRevokedSigningBytes(
   revokedBySigningKeyId: string,
 ): Uint8Array {
   return encoder.encode(
-    `avalon:identity.signing_key_revoked:v2:${parseIdentityId(identityId)}:${signingKeyId}:${revokedBySigningKeyId}`,
+    `avalon:identity.signing_key_revoked:v2:${parseIdentityId(identityId)}:${requireUuid(signingKeyId, 'signingKeyId')}:${requireUuid(revokedBySigningKeyId, 'revokedBySigningKeyId')}`,
   )
 }
 

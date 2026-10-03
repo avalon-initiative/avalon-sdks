@@ -141,6 +141,12 @@ signature does not verify for another ticket, network or shard. `register/finish
 must equal the derived one. Rust and TypeScript implement `register`; C# does not (see its README), but it has the id type, the
 derivation and every signing function below.
 
+The `network_id` and `shard_id` in the signed bytes are supplied by the node answering `register/start` and are signed as given: the
+client trusts the node it registers with and does not pin them. Stored credentials are checked on login: `login` / `account_login`
+fail if the stored secret does not derive to the credentials' identity id. Approving a device grant also requires the requested key
+to be strict canonical base64 of 32 bytes and acceptable (canonical, not small-order), and the grant, ticket and key ids that go
+into signed bytes must be lowercase hyphenated UUID text.
+
 A public key is lowercase hex inside every signing-byte string and standard base64 on the wire. Device grant approval signs
 `avalon:device_grant.approved:v2:{grant_id}:{identity_id}:{requested_public_key_hex}`, and revoking a signing key
 (`revoke_device` / `RevokeDeviceAsync` / `revokeDevice`) now signs

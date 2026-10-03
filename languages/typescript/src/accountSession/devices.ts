@@ -4,6 +4,7 @@
 // passkeys.ts (WebAuthn login credentials). See
 // crates/server/src/devices.rs/device_pairing.rs.
 import { AccountSession } from './core.js'
+import { isAcceptableShardKey } from '../network/strictEd25519.js'
 import {
   decodePublicKey,
   deviceGrantApprovalSigningBytes,
@@ -153,11 +154,11 @@ AccountSession.prototype.approveDeviceGrant = async function (
   if (!signingKeyId) {
     throw new NoLocalSigningKeyError('approveDeviceGrant')
   }
-  const message = deviceGrantApprovalSigningBytes(
-    grantId,
-    this.identity().id,
-    decodePublicKey(requestedSigningPublicKeyB64),
-  )
+  const requestedKey = decodePublicKey(requestedSigningPublicKeyB64)
+  if (!isAcceptableShardKey(requestedKey)) {
+    throw new TypeError('the requested key is not an acceptable Ed25519 key')
+  }
+  const message = deviceGrantApprovalSigningBytes(grantId, this.identity().id, requestedKey)
   const signature = this.signRaw(message)
   const wire = await this.post<DeviceWire>(`/me/devices/grants/${grantId}/approve`, {
     approver_signing_key_id: signingKeyId,

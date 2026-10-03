@@ -27,3 +27,32 @@ describe('sign/verify', () => {
     expect(verify(publicKey, canonicalMessage('passkey.revoke_last', ['p2', 'i1']), signature)).toBe(false)
   })
 })
+
+import {
+  deviceGrantApprovalSigningBytes,
+  identityCreatedSigningBytes,
+  signingKeyRevokedSigningBytes,
+} from '../../src/crypto/signing.js'
+import { deriveIdentityId } from '../../src/identityId.js'
+
+describe('v2 signing bytes require canonical UUID text', () => {
+  const key = new Uint8Array(32).fill(3)
+  const id = deriveIdentityId(key)
+  const uuid = '0b7a2c1e-5d4f-4a3b-9c8d-1e2f3a4b5c6d'
+  const bad = [uuid.toUpperCase(), uuid.replace(/-/g, ''), `${uuid} `, '', 'x:y']
+
+  it('accepts a canonical UUID', () => {
+    expect(() => identityCreatedSigningBytes('n', 's', uuid, id, key, 'a')).not.toThrow()
+    expect(() => deviceGrantApprovalSigningBytes(uuid, id, key)).not.toThrow()
+    expect(() => signingKeyRevokedSigningBytes(id, uuid, uuid)).not.toThrow()
+  })
+
+  for (const value of bad) {
+    it(`rejects ${JSON.stringify(value)}`, () => {
+      expect(() => identityCreatedSigningBytes('n', 's', value, id, key, 'a')).toThrow(TypeError)
+      expect(() => deviceGrantApprovalSigningBytes(value, id, key)).toThrow(TypeError)
+      expect(() => signingKeyRevokedSigningBytes(id, value, uuid)).toThrow(TypeError)
+      expect(() => signingKeyRevokedSigningBytes(id, uuid, value)).toThrow(TypeError)
+    })
+  }
+})

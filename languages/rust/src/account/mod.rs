@@ -590,6 +590,30 @@ impl AccountSession {
     }
 }
 
+/// Decodes the stored seed and checks it is the inception key the identity id was derived from.
+fn credentials_signing_key(credentials: &AccountCredentials) -> Result<SigningKey, SdkError> {
+    let seed: [u8; 32] = BASE64
+        .decode(&credentials.signing_key_seed_base64)
+        .ok()
+        .and_then(|bytes| bytes.try_into().ok())
+        .ok_or_else(|| {
+            SdkError::Protocol(
+                "AccountCredentials::signing_key_seed_base64 was not a valid base64 32-byte seed"
+                    .to_string(),
+            )
+        })?;
+    let signing_key = SigningKey::from_bytes(&seed);
+    if !credentials
+        .identity_id
+        .matches_key(signing_key.verifying_key().as_bytes())
+    {
+        return Err(SdkError::Protocol(
+            "the stored signing key does not derive to the credentials' identity id".to_string(),
+        ));
+    }
+    Ok(signing_key)
+}
+
 impl AvalonClient {
     /// Registers a brand-new identity and returns a fresh
     /// [`AccountSession`] for it — issue #699. Drives a real WebAuthn
@@ -722,17 +746,7 @@ impl AvalonClient {
         &self,
         credentials: &AccountCredentials,
     ) -> Result<AccountSession, SdkError> {
-        let seed: [u8; 32] = BASE64
-            .decode(&credentials.signing_key_seed_base64)
-            .ok()
-            .and_then(|bytes| bytes.try_into().ok())
-            .ok_or_else(|| {
-                SdkError::Protocol(
-                    "AccountCredentials::signing_key_seed_base64 was not a valid base64 32-byte seed"
-                        .to_string(),
-                )
-            })?;
-        let signing_key = SigningKey::from_bytes(&seed);
+        let signing_key = credentials_signing_key(credentials)?;
 
         let mut session = self
             .finish_login(
@@ -897,6 +911,29 @@ impl AvalonClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn credentials(identity_id: &IdentityId, seed: &[u8; 32]) -> AccountCredentials {
+        serde_json::from_value(serde_json::json!({
+            "identity_id": identity_id,
+            "signing_key_seed_base64": BASE64.encode(seed),
+            "passkey": {
+                "key_cbor_base64": "", "credential_id_base64": "", "rp_id": "localhost",
+                "user_handle_base64": null, "username": null, "user_display_name": null, "counter": null,
+            },
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn stored_credentials_must_derive_to_their_identity_id() {
+        let seed = [9u8; 32];
+        let key = SigningKey::from_bytes(&seed);
+        let own = IdentityId::derive(key.verifying_key().as_bytes());
+        assert!(credentials_signing_key(&credentials(&own, &seed)).is_ok());
+        let other = IdentityId::random_for_tests();
+        let err = credentials_signing_key(&credentials(&other, &seed)).unwrap_err();
+        assert!(err.to_string().contains("does not derive"));
+    }
 
     #[test]
     fn canonical_message_matches_server_shape() {

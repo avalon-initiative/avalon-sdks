@@ -103,7 +103,7 @@ namespace Avalon.Sdk
             try
             {
                 var bytes = Convert.FromBase64String(publicKeyB64);
-                if (bytes.Length == 32)
+                if (bytes.Length == 32 && string.Equals(Convert.ToBase64String(bytes), publicKeyB64, StringComparison.Ordinal))
                 {
                     return bytes;
                 }
@@ -149,7 +149,12 @@ namespace Avalon.Sdk
                 throw new InvalidOperationException("ApproveDeviceGrantAsync requires a local signing key — this AccountSession has none");
             }
             var signingKeyId = SigningKeyId.Value;
-            var message = IdentitySigning.DeviceGrantApprovalSigningBytesV2(grantId, OwnIdentityId, DecodePublicKey(requestedSigningPublicKeyB64));
+            var requestedKey = DecodePublicKey(requestedSigningPublicKeyB64);
+            if (!IdentitySigning.IsAcceptableKey(requestedKey))
+            {
+                throw new ArgumentException("the requested key is not an acceptable Ed25519 key", nameof(requestedSigningPublicKeyB64));
+            }
+            var message = IdentitySigning.DeviceGrantApprovalSigningBytesV2(grantId, OwnIdentityId, requestedKey);
             var signature = SignRaw(message);
             return await PostAsync<Avalon.Sdk.Generated.ApproveDeviceGrantRequest, AccountDevice>(
                 $"/me/devices/grants/{grantId}/approve",

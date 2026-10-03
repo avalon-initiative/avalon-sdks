@@ -228,6 +228,14 @@ impl AccountSession {
             )
         })?;
         let requested_key = decode_public_key(requested_signing_public_key_b64)?;
+        let acceptable = ed25519_dalek::VerifyingKey::from_bytes(&requested_key)
+            .map(|key| crate::identity_signing::is_acceptable_ed25519_key(&key))
+            .unwrap_or(false);
+        if !acceptable {
+            return Err(SdkError::Protocol(
+                "the requested key is not an acceptable Ed25519 key".to_string(),
+            ));
+        }
         let message = crate::identity_signing::device_grant_approval_signing_bytes_v2(
             grant_id,
             &self.identity().id,
@@ -282,5 +290,21 @@ impl AccountSession {
             )
             .await?;
         Ok(response.status)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decode_public_key_is_strict() {
+        let good = "A".repeat(43) + "=";
+        assert!(decode_public_key(&good).is_ok());
+        // Non-canonical trailing bits, embedded whitespace, wrong length and unpadded text.
+        assert!(decode_public_key(&("A".repeat(42) + "B=")).is_err());
+        assert!(decode_public_key(&format!("AAAA\n{}", "A".repeat(39) + "=")).is_err());
+        assert!(decode_public_key("AAAA").is_err());
+        assert!(decode_public_key(&"A".repeat(43)).is_err());
     }
 }
