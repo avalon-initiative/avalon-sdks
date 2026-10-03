@@ -100,6 +100,15 @@ namespace Avalon.Sdk
         [JsonPropertyName("proof")]
         public FamilyProof? Proof { get; set; }
 
+        /// <summary>The served members' shard ids, in shard id order.</summary>
+        public IReadOnlyList<string> SiblingIds() => Members.Select(m => m.ShardId).ToList();
+
+        /// <summary>The sibling a write for <paramref name="key"/> should go to among the served
+        /// members (see <see cref="ShardFamily.RouteWrite"/>). A <see cref="Partial"/> response
+        /// omits siblings that have no head here, so it can route differently from the full
+        /// set.</summary>
+        public string? RouteWrite(string key) => ShardFamily.RouteWrite(Owner, key, SiblingIds());
+
         /// <summary>Whether <see cref="RootHash"/> is what <see cref="ShardFamily.Root"/> gives
         /// for the served members.</summary>
         public bool RootMatches() => ShardFamily.Root(Owner, Members) == RootHash;
@@ -283,6 +292,65 @@ namespace Avalon.Sdk
                 return Hex(Sha(empty.ToArray()));
             }
             return Hex(Mth(members.Select(h => LeafBytes(owner, h)).ToList()));
+        }
+
+        private const string RouteTag = "avalon-shard-route-v1";
+
+        /// <summary>The rendezvous weight of <paramref name="shardId"/> for <paramref name="key"/>
+        /// under <paramref name="owner"/>: SHA-256 of <c>avalon-shard-route-v1</c> then owner, key
+        /// and shard id, each as a u32 big-endian byte length and its UTF-8 bytes.</summary>
+        public static byte[] RouteWeight(string owner, string key, string shardId)
+        {
+            var bytes = new List<byte>(Encoding.UTF8.GetBytes(RouteTag));
+            Put(bytes, owner);
+            Put(bytes, key);
+            Put(bytes, shardId);
+            return Sha(bytes.ToArray());
+        }
+
+        /// <summary>The sibling of <paramref name="owner"/>'s family a write for
+        /// <paramref name="key"/> should go to, or null when no candidate is a family member.
+        /// Highest-random-weight hashing over <see cref="RouteWeight"/>, so the same key and set
+        /// always give the same sibling and adding or removing one only moves the keys that must
+        /// move. Ids outside the family are ignored, duplicates count once and the order of
+        /// <paramref name="siblings"/> does not matter. Equal weights (only possible for equal ids)
+        /// go to the bytewise smaller id. This is routing only: writes to different siblings are
+        /// never atomic together.</summary>
+        public static string? RouteWrite(string owner, string key, IEnumerable<string> siblings)
+        {
+            string? best = null;
+            byte[]? bestWeight = null;
+            foreach (var id in siblings)
+            {
+                if (!IsMember(owner, id))
+                {
+                    continue;
+                }
+                var weight = RouteWeight(owner, key, id);
+                var order = best == null ? 1 : CompareWeights(weight, bestWeight!);
+                if (order == 0 && best != null)
+                {
+                    order = CompareUtf8(best, id);
+                }
+                if (order > 0)
+                {
+                    best = id;
+                    bestWeight = weight;
+                }
+            }
+            return best;
+        }
+
+        private static int CompareWeights(byte[] a, byte[] b)
+        {
+            for (var i = 0; i < a.Length; i++)
+            {
+                if (a[i] != b[i])
+                {
+                    return a[i] - b[i];
+                }
+            }
+            return 0;
         }
 
         private static byte[]? Decode32(string? hex)
