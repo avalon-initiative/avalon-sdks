@@ -3,7 +3,14 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getShardFamily } from '../src/ledger.js'
-import { familyProofVerifies, familyRootMatches, type ShardFamilyResponse } from '../src/shardFamily.js'
+import {
+  familyProofVerifies,
+  familyRootMatches,
+  familyRouteWrite,
+  familySiblingIds,
+  routeWrite,
+  type ShardFamilyResponse,
+} from '../src/shardFamily.js'
 
 const VECTORS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../conformance/vectors/shard-family-head.json')
 const doc = JSON.parse(readFileSync(VECTORS, 'utf-8'))
@@ -71,5 +78,19 @@ describe('getShardFamily', () => {
     expect(family.proof).toBeUndefined()
     expect(familyProofVerifies(family)).toBe(false)
     expect(familyRootMatches(family)).toBe(false)
+  })
+})
+
+describe('writer routing on a family response', () => {
+  it('routes among the served members', () => {
+    const response = body()
+    expect(familySiblingIds(response)).toEqual(['game:x', 'game:x/2'])
+    for (const key of ['a', 'b', 'c', 'd', 'e', 'f']) {
+      expect(familyRouteWrite(response, key)).toBe(routeWrite('game:x', key, ['game:x', 'game:x/2']))
+    }
+  })
+
+  it('returns null for an empty family', () => {
+    expect(routeWrite('game:x', 'a', [])).toBeNull()
   })
 })

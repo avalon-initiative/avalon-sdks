@@ -683,3 +683,64 @@ fn shard_family_head_matches_shared_vectors() {
         );
     }
 }
+
+#[test]
+fn shard_sibling_routing_matches_shared_vectors() {
+    use avalon_sdk::shard_family::{route_weight, route_write};
+    let doc = load("shard-sibling-routing.json");
+    assert!(supported_in(&doc, "rust"));
+    let strings = |v: &Value| -> Vec<String> {
+        v.as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s.as_str().unwrap().to_string())
+            .collect()
+    };
+    for v in doc["weightVectors"].as_array().unwrap() {
+        let name = v["name"].as_str().unwrap();
+        let i = &v["input"];
+        let weight = route_weight(
+            i["owner"].as_str().unwrap(),
+            i["key"].as_str().unwrap(),
+            i["shardId"].as_str().unwrap(),
+        );
+        assert_eq!(
+            hex::encode(weight),
+            v["expected"]["weightHex"].as_str().unwrap(),
+            "[{name}]"
+        );
+    }
+    for v in doc["routeVectors"].as_array().unwrap() {
+        let name = v["name"].as_str().unwrap();
+        let i = &v["input"];
+        let siblings = strings(&i["siblings"]);
+        let routed = route_write(
+            i["owner"].as_str().unwrap(),
+            i["key"].as_str().unwrap(),
+            &siblings,
+        );
+        assert_eq!(routed, v["expected"]["shardId"].as_str(), "[{name}]");
+    }
+    for v in doc["movementVectors"].as_array().unwrap() {
+        let name = v["name"].as_str().unwrap();
+        let i = &v["input"];
+        let owner = i["owner"].as_str().unwrap();
+        let (before, after) = (strings(&i["before"]), strings(&i["after"]));
+        let keys = strings(&i["keys"]);
+        let (want_before, want_after) = (&v["expected"]["before"], &v["expected"]["after"]);
+        for (n, key) in keys.iter().enumerate() {
+            let b = route_write(owner, key, &before);
+            let a = route_write(owner, key, &after);
+            assert_eq!(b, want_before[n].as_str(), "[{name}] before {key:?}");
+            assert_eq!(a, want_after[n].as_str(), "[{name}] after {key:?}");
+            // A key only moves onto a sibling that was added, or off one that was removed.
+            if a != b {
+                assert!(
+                    !before.iter().any(|s| Some(s.as_str()) == a)
+                        || !after.iter().any(|s| Some(s.as_str()) == b),
+                    "[{name}] {key:?} moved between siblings present in both sets"
+                );
+            }
+        }
+    }
+}

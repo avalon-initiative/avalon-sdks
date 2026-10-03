@@ -168,6 +168,31 @@ verify member heads separately where that matters. The head itself is not authen
 response means a known family member has no head on that node; atomic writes across siblings do not exist.
 In TypeScript a tree size beyond 2^53 is lost by `JSON.parse`; pass a `bigint` to the helpers if you hold one.
 
+### Routing a write to a sibling
+
+An integrator running sibling shards chooses which instance each write goes to. The SDKs give a small deterministic
+helper for that: given the owner, a caller-supplied partition key (any string) and the sibling shard ids, it returns the
+sibling the write for that key should go to, or nothing when no candidate is a member of the family.
+
+| | Route | Weight | From a fetched family |
+| --- | --- | --- | --- |
+| Rust | `shard_family::route_write(owner, key, &siblings) -> Option<&str>` | `shard_family::route_weight(owner, key, id)` | `family.route_write(key)`, `family.sibling_ids()` |
+| C# | `ShardFamily.RouteWrite(owner, key, siblings) -> string?` | `ShardFamily.RouteWeight(owner, key, id)` | `family.RouteWrite(key)`, `family.SiblingIds()` |
+| TypeScript | `routeWrite(owner, key, siblings): string \| null` | `routeWeight(owner, key, id)` | `familyRouteWrite(family, key)`, `familySiblingIds(family)` |
+
+The rule is rendezvous (highest-random-weight) hashing. The weight of a candidate shard id is SHA-256 of the bytes
+`avalon-shard-route-v1` (UTF-8, no length) followed by the owner, the key and the shard id, each as a 4-byte big-endian
+length of its UTF-8 bytes and then those bytes (no Unicode normalisation of the key). The candidate with the greatest
+weight, compared as 32 big-endian bytes, wins. Candidates are first reduced to the unique ids that are members of the
+owner's family (`is_family_member`), so other owners' ids, `core`, `node:` ids and malformed ids are ignored and the order
+of the list does not matter. Equal weights can only come from equal ids, so the tie-break is the bytewise smaller id.
+Adding a sibling moves only the keys that now win on it; removing one moves only the keys that were on it.
+
+Limits: this is client-side routing only. The server does not route writes, and writes to different siblings are never
+atomic together; there are no cross-sibling transactions. A `partial` family response omits siblings that have no head on
+that node, so for routing prefer the sibling list you manage yourself. The family head is for verification, not for
+choosing. Pinned by `conformance/vectors/shard-sibling-routing.json`.
+
 ## Node topology, probe and trace
 
 All three SDKs expose the node's read-only topology view and its probe and trace

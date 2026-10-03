@@ -50,7 +50,8 @@ are both implemented for real, not stubbed out.
   `NoLocalSigningKeyError`), mapped from HTTP status + the server's own
   `{ error, code }` body.
 - Shard family heads: `getShardFamily`, `familyRoot` and `verifyFamilyInclusion` fetch and check an owner's
-  `GET /ledger/shard-family` head (`familyRootMatches` / `familyProofVerifies` on a response); see the root README.
+  `GET /ledger/shard-family` head (`familyRootMatches` / `familyProofVerifies` on a response); `routeWrite` picks the sibling a
+  write for a key goes to (no cross-sibling atomicity); see the root README.
 - Self-certifying shard heads: `getShardTreeHead`,
   `verifySelfCertifyingTreeHead` and `shardCheck` verify a `node:<sha256-of-key>`
   shard's head from the served `signing_public_key` and the id alone; see

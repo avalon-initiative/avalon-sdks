@@ -115,6 +115,10 @@ export {
   verifyFamilyInclusion,
   familyRootMatches,
   familyProofVerifies,
+  routeWeight,
+  routeWrite,
+  familySiblingIds,
+  familyRouteWrite,
 } from './shardFamily.js'
 export type { FamilyHead, FamilyMember, FamilyProof, ShardFamilyResponse } from './shardFamily.js'
 export { getNodeStatus } from './nodeStatus.js'

@@ -150,6 +150,73 @@ public class ShardFamilyTests
     }
 
     [Fact]
+    public async Task AFetchedFamilyRoutesWritesAmongItsMembers()
+    {
+        var family = await ClientFor(new StubHttpMessageHandler().Enqueue(Body(null))).GetShardFamilyAsync("game:x");
+        Assert.Equal(new[] { "game:x", "game:x/2" }, family.SiblingIds());
+        foreach (var key in new[] { "a", "b", "c", "d", "e", "f" })
+        {
+            Assert.Equal(ShardFamily.RouteWrite("game:x", key, new[] { "game:x", "game:x/2" }), family.RouteWrite(key));
+        }
+        Assert.Null(ShardFamily.RouteWrite("game:x", "a", Array.Empty<string>()));
+    }
+
+    private static string[] Strings(JsonElement array) => array.EnumerateArray().Select(e => e.GetString()!).ToArray();
+
+    private static string Hex(byte[] bytes) => string.Concat(bytes.Select(b => b.ToString("x2")));
+
+    [Fact]
+    public void SiblingRoutingMatchesTheSharedVectors()
+    {
+        using var doc = ConformanceTests.LoadVector("shard-sibling-routing.json");
+        var root = doc.RootElement;
+        Assert.Contains("csharp", root.GetProperty("supportedIn").EnumerateArray().Select(e => e.GetString()));
+
+        foreach (var v in root.GetProperty("weightVectors").EnumerateArray())
+        {
+            var i = v.GetProperty("input");
+            var weight = ShardFamily.RouteWeight(
+                i.GetProperty("owner").GetString()!, i.GetProperty("key").GetString()!, i.GetProperty("shardId").GetString()!);
+            Assert.True(
+                v.GetProperty("expected").GetProperty("weightHex").GetString() == Hex(weight),
+                $"[weight {v.GetProperty("name").GetString()}]");
+        }
+        foreach (var v in root.GetProperty("routeVectors").EnumerateArray())
+        {
+            var i = v.GetProperty("input");
+            var routed = ShardFamily.RouteWrite(
+                i.GetProperty("owner").GetString()!, i.GetProperty("key").GetString()!, Strings(i.GetProperty("siblings")));
+            var expected = v.GetProperty("expected").GetProperty("shardId");
+            Assert.True(
+                (expected.ValueKind == JsonValueKind.Null ? null : expected.GetString()) == routed,
+                $"[route {v.GetProperty("name").GetString()}]");
+        }
+        foreach (var v in root.GetProperty("movementVectors").EnumerateArray())
+        {
+            var name = v.GetProperty("name").GetString();
+            var i = v.GetProperty("input");
+            var owner = i.GetProperty("owner").GetString()!;
+            var before = Strings(i.GetProperty("before"));
+            var after = Strings(i.GetProperty("after"));
+            var keys = Strings(i.GetProperty("keys"));
+            var wantBefore = v.GetProperty("expected").GetProperty("before").EnumerateArray().ToArray();
+            var wantAfter = v.GetProperty("expected").GetProperty("after").EnumerateArray().ToArray();
+            for (var n = 0; n < keys.Length; n++)
+            {
+                var b = ShardFamily.RouteWrite(owner, keys[n], before);
+                var a = ShardFamily.RouteWrite(owner, keys[n], after);
+                Assert.True(wantBefore[n].GetString() == b, $"[movement {name}] before {keys[n]}");
+                Assert.True(wantAfter[n].GetString() == a, $"[movement {name}] after {keys[n]}");
+                // A key only moves onto a sibling that was added, or off one that was removed.
+                if (a != b)
+                {
+                    Assert.True(!before.Contains(a!) || !after.Contains(b!), $"[movement {name}] {keys[n]} moved between shared siblings");
+                }
+            }
+        }
+    }
+
+    [Fact]
     public async Task ATamperedMemberIsDetected()
     {
         var handler = new StubHttpMessageHandler().Enqueue(Body("game:x/2", tamper: true));

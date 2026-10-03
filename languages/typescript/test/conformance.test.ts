@@ -35,6 +35,8 @@ import {
   familyRoot,
   isFamilyMember,
   isFamilyOwnerId,
+  routeWeight,
+  routeWrite,
   shardFamilyOwner,
   verifyFamilyInclusion,
   type FamilyHead,
@@ -416,4 +418,38 @@ describe('conformance: shard family head', () => {
       expect([v.owner, v.shardId, isFamilyMember(v.owner, v.shardId)]).toEqual([v.owner, v.shardId, v.expected])
     }
   })
+})
+
+describe('conformance: shard sibling routing', () => {
+  const doc = loadVector('shard-sibling-routing.json')
+
+  it('lists typescript as supported', () => {
+    requireSupported(doc, 'typescript')
+  })
+
+  for (const v of doc.weightVectors) {
+    it(`weight: ${v.name}`, () => {
+      const { owner, key, shardId } = v.input
+      expect(bytesToHex(routeWeight(owner, key, shardId))).toBe(v.expected.weightHex)
+    })
+  }
+
+  for (const v of doc.routeVectors) {
+    it(`route: ${v.name}`, () => {
+      expect(routeWrite(v.input.owner, v.input.key, v.input.siblings)).toBe(v.expected.shardId)
+    })
+  }
+
+  for (const v of doc.movementVectors) {
+    it(`movement: ${v.name}`, () => {
+      const { owner, keys, before, after } = v.input
+      keys.forEach((key: string, n: number) => {
+        const b = routeWrite(owner, key, before)
+        const a = routeWrite(owner, key, after)
+        expect([key, b, a]).toEqual([key, v.expected.before[n], v.expected.after[n]])
+        // A key only moves onto a sibling that was added, or off one that was removed.
+        if (a !== b) expect(!before.includes(a) || !after.includes(b)).toBe(true)
+      })
+    })
+  }
 })
