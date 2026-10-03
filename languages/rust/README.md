@@ -83,6 +83,12 @@ given, a `FamilyProof`. `shard_family::family_root(owner, &heads)` recomputes th
 `proof_verifies` do both on a fetched response. `shard_family_owner`, `is_family_owner_id` and `is_family_member` implement the
 shard id grammar. The recomputed root is the check: the node does not sign it. A `partial` response means a known family member has no head on that node. Atomic writes across siblings do not exist. Shared vectors: `conformance/vectors/shard-family-head.json`.
 
+`shard_family::route_write(owner, key, &siblings)` picks the sibling a write for `key` goes to (rendezvous hashing over
+SHA-256, `None` when no candidate is a family member; `route_weight` is the per-candidate weight), and
+`ShardFamilyResponse::route_write(key)` / `sibling_ids()` do it over a fetched family's members. Routing only: writes to
+different siblings are not atomic together. The byte format and tie-break are in the root README; vectors:
+`conformance/vectors/shard-sibling-routing.json`.
+
 ## Tracing a real call
 
 `with_trace(fut).await` runs any SDK call with `X-Avalon-Trace` on each request it sends through the shared request path and returns `Traced { value, requests }`. Each `RequestTrace` has the `trace_id` sent and either a decoded `OperationTrace` (`branches` of `PathHop`, which derefs to the `TraceHop` that `trace()` returns and keeps unknown fields in `extra`) or a `TraceProblem` (`Missing`, `Oversized`, `Malformed`, `TraceIdMismatch`). Opt-in and read-only; a missing or malformed header never fails the call, and `value` is the call's own result unchanged. Hops are self-reported by the nodes on the path and are advisory. Tracing is scoped to the current task. See the root README.

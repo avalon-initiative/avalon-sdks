@@ -119,6 +119,17 @@ Each file has this shape:
   to a boolean (a well-formed owner id has no instance), `memberVectors`: `owner` and
   `shardId` to a boolean. Whitespace in an owner is Unicode White_Space as in Rust
   `char::is_whitespace`. Supported in all three SDKs.
+- `shard-sibling-routing.json` — routing a write to one of an owner's sibling shards by a caller-supplied key
+  (`shard_family::route_write`, `ShardFamily.RouteWrite`, `routeWrite`). Client-side only, so it originates here and has no
+  protocol-side runner. Rendezvous hashing: the weight of a candidate is SHA-256 of `avalon-shard-route-v1` (UTF-8, no
+  length) then owner, key and shard id, each as a u32 big-endian UTF-8 byte length and the bytes; the greatest weight
+  (32 big-endian bytes) wins, ties go to the bytewise smaller shard id, candidates are first reduced to unique members of
+  the owner's family and none left means no route (`shardId` null). Three arrays instead of `vectors`. `weightVectors`:
+  `input` `owner`, `key`, `shardId`; `expected` `preimageHex`, `weightHex`. `routeVectors`: `input` `owner`, `key`,
+  `siblings`; `expected.shardId` (stability, order and duplicates, non-members, empty set, Unicode keys, tie-break).
+  `movementVectors`: `input` `owner`, `keys`, `before`, `after` sibling sets; `expected` `before` and `after` route per key
+  (a key only moves onto an added sibling or off a removed one; the runners assert that too). No cross-sibling atomicity.
+  Supported in all three SDKs.
 - `known-list-selection.json` — the client's known-list rules
   (`avalon_protocol::client_known_list`). It has two arrays instead of
   `vectors`. `prefixVectors`: the diversity prefix derived from a node base url
