@@ -35,13 +35,13 @@ namespace Avalon.Sdk
         /// raw WebAuthn creation challenge to hand to a platform authenticator; pass both back
         /// to <see cref="FinishRecoveryAsync"/>.</summary>
         public async Task<(Guid TicketId, JsonElement Challenge)> StartRecoveryAsync(
-            Guid identityId, string? deviceLabel = null, CancellationToken ct = default)
+            IdentityId identityId, string? deviceLabel = null, CancellationToken ct = default)
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, $"{ServerUrl}/recovery/requests/start");
             request.Content = new StringContent(
                 JsonSerializer.Serialize(new Avalon.Sdk.Generated.RecoveryStartRequest
                 {
-                    IdentityId = identityId,
+                    IdentityId = identityId.ToString(),
                     DeviceLabel = deviceLabel,
                 }),
                 Encoding.UTF8, "application/json");
@@ -113,7 +113,7 @@ namespace Avalon.Sdk
         /// <summary>GET /identities/{id}/recovery/status — public, unauthenticated: lets an
         /// unfamiliar device check whether a recovery is already in flight for an identity
         /// before starting a duplicate one. <c>null</c> means no active recovery.</summary>
-        public async Task<Avalon.Sdk.Generated.RecoveryRequestResponse?> GetIdentityRecoveryStatusAsync(Guid identityId, CancellationToken ct = default)
+        public async Task<Avalon.Sdk.Generated.RecoveryRequestResponse?> GetIdentityRecoveryStatusAsync(IdentityId identityId, CancellationToken ct = default)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, $"{ServerUrl}/identities/{identityId}/recovery/status");
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);

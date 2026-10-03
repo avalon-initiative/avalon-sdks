@@ -3,16 +3,17 @@
 // and both Rust/C# SDKs' own `MeResponse` mapping.
 
 import type { components } from './generated'
+import { parseIdentityId, type IdentityId } from './identityId.js'
 
 export type Genre = components['schemas']['Genre']
 
 export interface Identity {
-  id: string
+  id: IdentityId
   createdAt: string
 }
 
 export interface Profile {
-  identityId: string
+  identityId: IdentityId
   displayName: string
   avatarUrl: string | null
   bio: string | null
@@ -44,10 +45,11 @@ export interface Profile {
 export type MeResponseWire = components['schemas']['ProfileResponse']
 
 export function fromMeResponse(body: MeResponseWire): { identity: Identity; profile: Profile } {
+  const identityId = parseIdentityId(body.identity_id)
   return {
-    identity: { id: body.identity_id, createdAt: body.identity_created_at },
+    identity: { id: identityId, createdAt: body.identity_created_at },
     profile: {
-      identityId: body.identity_id,
+      identityId,
       displayName: body.display_name,
       avatarUrl: body.avatar_url ?? null,
       bio: body.bio ?? null,

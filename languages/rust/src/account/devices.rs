@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::SdkError;
 
-use super::{canonical_message, AccountSession};
+use super::AccountSession;
 
 /// One of this identity's registered signing-key devices.
 #[derive(Debug, Clone)]
@@ -82,26 +82,17 @@ impl TryFrom<crate::generated::DeviceGrantResponse> for DeviceGrant {
     }
 }
 
-/// Exact bytes `devices::device_grant_approval_signing_bytes` on the
-/// server reconstructs — must match
-/// `packages/api-client/src/crypto/signingKey.ts::deviceGrantApprovalSigningBytes`
-/// byte-for-byte. Shares [`canonical_message`]'s
-/// `avalon:<tag>:v1:<field>:...` shape (`device_grant.approved` as the
-/// tag), even though this predates #698's generalized signature-gate
-/// module.
-fn device_grant_approval_signing_bytes(
-    grant_id: Uuid,
-    identity_id: Uuid,
-    requested_signing_public_key_b64: &str,
-) -> Vec<u8> {
-    canonical_message(
-        "device_grant.approved",
-        &[
-            &grant_id.to_string(),
-            &identity_id.to_string(),
-            requested_signing_public_key_b64,
-        ],
-    )
+/// Strictly decodes a standard-base64 32-byte Ed25519 public key.
+fn decode_public_key(public_key_b64: &str) -> Result<[u8; 32], SdkError> {
+    use base64::engine::general_purpose::STANDARD as BASE64;
+    use base64::Engine;
+    BASE64
+        .decode(public_key_b64)
+        .ok()
+        .and_then(|bytes| <[u8; 32]>::try_from(bytes).ok())
+        .ok_or_else(|| {
+            SdkError::Protocol("public key must be standard base64 of exactly 32 bytes".to_string())
+        })
 }
 
 impl AccountSession {
@@ -135,13 +126,30 @@ impl AccountSession {
         raw.try_into()
     }
 
-    /// `POST /me/devices/{signing_key_id}/revoke` — unilateral, ambient-token
-    /// (revocation only ever narrows trust, per #697).
+    /// `POST /me/devices/{signing_key_id}/revoke` — signed by this session's own local key
+    /// (which may be the key being revoked); the server refuses to revoke the last active key.
     pub async fn revoke_device(&self, signing_key_id: Uuid) -> Result<(), SdkError> {
-        self.post_empty_no_response(&super::path(
-            crate::generated::paths::devices::REVOKE_DEVICE,
-            &[("id", &signing_key_id.to_string())],
-        ))
+        let revoker = self.signing_key_id().ok_or_else(|| {
+            SdkError::Protocol(
+                "revoke_device requires a local signing key — this AccountSession has none"
+                    .to_string(),
+            )
+        })?;
+        let message = crate::identity_signing::signing_key_revoked_signing_bytes_v2(
+            &self.identity().id,
+            signing_key_id,
+            revoker,
+        );
+        self.post_no_response(
+            &super::path(
+                crate::generated::paths::devices::REVOKE_DEVICE,
+                &[("id", &signing_key_id.to_string())],
+            ),
+            &crate::generated::RevokeDeviceRequest {
+                revoked_by_signing_key_id: revoker,
+                signature: self.sign_raw(&message),
+            },
+        )
         .await
     }
 
@@ -219,16 +227,20 @@ impl AccountSession {
                     .to_string(),
             )
         })?;
-        let message = device_grant_approval_signing_bytes(
+        let requested_key = decode_public_key(requested_signing_public_key_b64)?;
+        let acceptable = ed25519_dalek::VerifyingKey::from_bytes(&requested_key)
+            .map(|key| crate::identity_signing::is_acceptable_ed25519_key(&key))
+            .unwrap_or(false);
+        if !acceptable {
+            return Err(SdkError::Protocol(
+                "the requested key is not an acceptable Ed25519 key".to_string(),
+            ));
+        }
+        let message = crate::identity_signing::device_grant_approval_signing_bytes_v2(
             grant_id,
-            self.identity().id.0,
-            requested_signing_public_key_b64,
+            &self.identity().id,
+            &requested_key,
         );
-        // Reuses `sign`'s own key rather than re-deriving — `sign` always
-        // uses `canonical_message`, whose output for tag
-        // `device_grant.approved` is exactly `message` above, so this
-        // calls the signer directly instead of going through `sign` a
-        // second time with a slightly different call shape.
         let signature = self.sign_raw(&message);
         let raw: crate::generated::DeviceResponse = self
             .post(
@@ -251,7 +263,7 @@ impl AccountSession {
     pub async fn approve_device_pairing(&self, user_code: &str) -> Result<String, SdkError> {
         let signature = self.sign(
             "device_pairing.approve",
-            &[&self.identity().id.0.to_string(), user_code],
+            &[&self.identity().id.to_string(), user_code],
         );
         let response: crate::generated::ResolvePairingResponse = self
             .post(
@@ -278,5 +290,21 @@ impl AccountSession {
             )
             .await?;
         Ok(response.status)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decode_public_key_is_strict() {
+        let good = "A".repeat(43) + "=";
+        assert!(decode_public_key(&good).is_ok());
+        // Non-canonical trailing bits, embedded whitespace, wrong length and unpadded text.
+        assert!(decode_public_key(&("A".repeat(42) + "B=")).is_err());
+        assert!(decode_public_key(&format!("AAAA\n{}", "A".repeat(39) + "=")).is_err());
+        assert!(decode_public_key("AAAA").is_err());
+        assert!(decode_public_key(&"A".repeat(43)).is_err());
     }
 }

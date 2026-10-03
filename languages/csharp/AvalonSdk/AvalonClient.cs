@@ -114,8 +114,9 @@ namespace Avalon.Sdk
 
             var granted = await FetchGrantedAsync(identityToken, ct).ConfigureAwait(false);
 
-            var identity = new Identity(me.IdentityId, me.IdentityCreatedAt);
-            var profile = new Profile(me.IdentityId)
+            var ownId = IdentityId.Parse(me.IdentityId);
+            var identity = new Identity(ownId, me.IdentityCreatedAt);
+            var profile = new Profile(ownId)
             {
                 DisplayName = me.DisplayName,
                 AvatarUrl = me.AvatarUrl,

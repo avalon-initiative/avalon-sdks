@@ -19,10 +19,10 @@ namespace Avalon.Sdk
     public sealed class AccountFriendship
     {
         [JsonPropertyName("a")]
-        public Guid A { get; set; }
+        public IdentityId A { get; set; }
 
         [JsonPropertyName("b")]
-        public Guid B { get; set; }
+        public IdentityId B { get; set; }
 
         [JsonPropertyName("since")]
         public DateTimeOffset Since { get; set; }
@@ -36,10 +36,10 @@ namespace Avalon.Sdk
         public Guid Id { get; set; }
 
         [JsonPropertyName("from")]
-        public Guid From { get; set; }
+        public IdentityId From { get; set; }
 
         [JsonPropertyName("to")]
-        public Guid To { get; set; }
+        public IdentityId To { get; set; }
 
         [JsonPropertyName("requested_at")]
         public DateTimeOffset RequestedAt { get; set; }
@@ -50,7 +50,7 @@ namespace Avalon.Sdk
     public sealed class AccountBlock
     {
         [JsonPropertyName("blocked")]
-        public Guid Blocked { get; set; }
+        public IdentityId Blocked { get; set; }
 
         [JsonPropertyName("created_at")]
         public DateTimeOffset CreatedAt { get; set; }
@@ -62,7 +62,7 @@ namespace Avalon.Sdk
     public sealed class PublicProfile
     {
         [JsonPropertyName("identity_id")]
-        public Guid IdentityId { get; set; }
+        public IdentityId IdentityId { get; set; }
 
         [JsonPropertyName("display_name")]
         public string DisplayName { get; set; } = "";
@@ -83,7 +83,7 @@ namespace Avalon.Sdk
     public sealed class DiscoveryCandidate
     {
         [JsonPropertyName("identity_id")]
-        public Guid IdentityId { get; set; }
+        public IdentityId IdentityId { get; set; }
     }
 
     /// <summary>A single global search result (<c>GET /identities/search</c>). Mirrors the
@@ -91,7 +91,7 @@ namespace Avalon.Sdk
     public sealed class SearchResultIdentity
     {
         [JsonPropertyName("identity_id")]
-        public Guid IdentityId { get; set; }
+        public IdentityId IdentityId { get; set; }
 
         [JsonPropertyName("display_name")]
         public string DisplayName { get; set; } = "";
@@ -127,7 +127,7 @@ namespace Avalon.Sdk
     public sealed class PublicIdentityProfile
     {
         [JsonPropertyName("identity_id")]
-        public Guid IdentityId { get; set; }
+        public IdentityId IdentityId { get; set; }
 
         [JsonPropertyName("identity_created_at")]
         public DateTimeOffset IdentityCreatedAt { get; set; }
@@ -184,7 +184,7 @@ namespace Avalon.Sdk
         public Guid GuildId { get; set; }
 
         [JsonPropertyName("author")]
-        public Guid Author { get; set; }
+        public IdentityId Author { get; set; }
 
         [JsonPropertyName("body")]
         public string Body { get; set; } = "";
@@ -208,7 +208,7 @@ namespace Avalon.Sdk
 
         private static Presence ToDomainPresence(Avalon.Sdk.Generated.PresenceResponse p) => new Presence
         {
-            IdentityId = p.IdentityId,
+            IdentityId = IdentityId.Parse(p.IdentityId),
             Status = ToDomainPresenceStatus(p.Status),
             ActiveIn = p.ActiveIn,
             UpdatedAt = p.UpdatedAt,
@@ -216,12 +216,12 @@ namespace Avalon.Sdk
 
         private static DiscoveryCandidate ToDomainDiscoveryCandidate(Avalon.Sdk.Generated.DiscoveryCandidate c) => new DiscoveryCandidate
         {
-            IdentityId = c.IdentityId,
+            IdentityId = IdentityId.Parse(c.IdentityId),
         };
 
         private static SearchResultIdentity ToDomainSearchResultIdentity(Avalon.Sdk.Generated.SearchResultIdentity r) => new SearchResultIdentity
         {
-            IdentityId = r.IdentityId,
+            IdentityId = IdentityId.Parse(r.IdentityId),
             DisplayName = r.DisplayName,
             AvatarUrl = r.AvatarUrl,
         };
@@ -235,9 +235,9 @@ namespace Avalon.Sdk
             await GetAsync<List<AccountFriendRequest>>("/friends/requests", ct).ConfigureAwait(false);
 
         /// <summary><c>POST /friends/requests</c>.</summary>
-        public async Task<AccountFriendRequest> CreateFriendRequestAsync(Guid to, CancellationToken ct = default) =>
+        public async Task<AccountFriendRequest> CreateFriendRequestAsync(IdentityId to, CancellationToken ct = default) =>
             await PostAsync<Avalon.Sdk.Generated.CreateFriendRequestRequest, AccountFriendRequest>(
-                "/friends/requests", new Avalon.Sdk.Generated.CreateFriendRequestRequest { To = to }, ct).ConfigureAwait(false);
+                "/friends/requests", new Avalon.Sdk.Generated.CreateFriendRequestRequest { To = to.ToString() }, ct).ConfigureAwait(false);
 
         /// <summary><c>POST /friends/requests/{id}/accept</c>.</summary>
         public async Task<AccountFriendship> AcceptFriendRequestAsync(Guid requestId, CancellationToken ct = default) =>
@@ -249,15 +249,15 @@ namespace Avalon.Sdk
             await DeleteAsync($"/friends/requests/{requestId}", ct).ConfigureAwait(false);
 
         /// <summary><c>DELETE /friends/{identity_id}</c>.</summary>
-        public async Task RemoveFriendAsync(Guid identityId, CancellationToken ct = default) =>
+        public async Task RemoveFriendAsync(IdentityId identityId, CancellationToken ct = default) =>
             await DeleteAsync($"/friends/{identityId}", ct).ConfigureAwait(false);
 
         /// <summary><c>GET /friends/handle/{handle}</c> — exact-match handle resolution for
         /// the "add friend" flow.</summary>
-        public async Task<Guid> ResolveHandleAsync(string handle, CancellationToken ct = default)
+        public async Task<IdentityId> ResolveHandleAsync(string handle, CancellationToken ct = default)
         {
             var response = await GetAsync<Avalon.Sdk.Generated.ResolveHandleResponse>($"/friends/handle/{Uri.EscapeDataString(handle)}", ct).ConfigureAwait(false);
-            return response.IdentityId;
+            return IdentityId.Parse(response.IdentityId);
         }
 
         /// <summary><c>GET /blocks</c> — the caller's own outgoing blocks only.</summary>
@@ -265,12 +265,12 @@ namespace Avalon.Sdk
             await GetAsync<List<AccountBlock>>("/blocks", ct).ConfigureAwait(false);
 
         /// <summary><c>POST /blocks</c>.</summary>
-        public async Task<AccountBlock> BlockAsync(Guid identityId, CancellationToken ct = default) =>
+        public async Task<AccountBlock> BlockAsync(IdentityId identityId, CancellationToken ct = default) =>
             await PostAsync<Avalon.Sdk.Generated.CreateBlockRequest, AccountBlock>(
-                "/blocks", new Avalon.Sdk.Generated.CreateBlockRequest { IdentityId = identityId }, ct).ConfigureAwait(false);
+                "/blocks", new Avalon.Sdk.Generated.CreateBlockRequest { IdentityId = identityId.ToString() }, ct).ConfigureAwait(false);
 
         /// <summary><c>DELETE /blocks/{identity_id}</c>.</summary>
-        public async Task UnblockAsync(Guid identityId, CancellationToken ct = default) =>
+        public async Task UnblockAsync(IdentityId identityId, CancellationToken ct = default) =>
             await DeleteAsync($"/blocks/{identityId}", ct).ConfigureAwait(false);
 
         /// <summary><c>GET /people/discover</c> — no query parameters; the caller's own
@@ -295,7 +295,7 @@ namespace Avalon.Sdk
         }
 
         /// <summary><c>GET /identities/profiles?ids=</c> — batched, public-fields-only.</summary>
-        public async Task<IReadOnlyList<PublicProfile>> ProfilesAsync(IReadOnlyList<Guid> ids, CancellationToken ct = default)
+        public async Task<IReadOnlyList<PublicProfile>> ProfilesAsync(IReadOnlyList<IdentityId> ids, CancellationToken ct = default)
         {
             if (ids.Count == 0)
             {
@@ -311,7 +311,7 @@ namespace Avalon.Sdk
 
         /// <summary><c>GET /identities/{id}/profile</c> — another identity's full
         /// self-description profile, same exposure level as <c>GET /me</c>.</summary>
-        public async Task<PublicIdentityProfile> IdentityProfileAsync(Guid identityId, CancellationToken ct = default) =>
+        public async Task<PublicIdentityProfile> IdentityProfileAsync(IdentityId identityId, CancellationToken ct = default) =>
             await GetAsync<PublicIdentityProfile>($"/identities/{identityId}/profile", ct).ConfigureAwait(false);
 
         /// <summary><c>GET /me/guild-announcements</c> — recent
@@ -331,7 +331,7 @@ namespace Avalon.Sdk
 
         /// <summary><c>GET /presence?ids=</c> — no visibility filtering server-side (#87
         /// tracks adding it); returns exactly what the server returns.</summary>
-        public async Task<IReadOnlyList<Presence>> PresenceOfAsync(IReadOnlyList<Guid> ids, CancellationToken ct = default)
+        public async Task<IReadOnlyList<Presence>> PresenceOfAsync(IReadOnlyList<IdentityId> ids, CancellationToken ct = default)
         {
             if (ids.Count == 0)
             {

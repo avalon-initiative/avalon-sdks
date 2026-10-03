@@ -40,6 +40,7 @@ use ed25519_dalek::{Signer, SigningKey};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::types::ids::IdentityId;
 use crate::{AvalonClient, SdkError, Session};
 
 pub use avalon_schema_derive::AvalonSchema;
@@ -99,7 +100,7 @@ pub struct DataInstance {
     /// The publishing integrator's id.
     pub integrator_id: Uuid,
     /// The identity this instance is about.
-    pub subject: Uuid,
+    pub subject: IdentityId,
     /// The instance data itself, as validated against the schema.
     pub instance: serde_json::Value,
     /// When this instance was published, RFC3339.
@@ -172,7 +173,7 @@ struct PublishMappingRequest<'a> {
 
 #[derive(Serialize)]
 struct PublishInstanceRequest<'a, T> {
-    subject: Uuid,
+    subject: IdentityId,
     instance: &'a T,
 }
 
@@ -324,7 +325,7 @@ impl Session {
         let headers = self.integrator_auth_headers(slug).await?;
 
         let body = PublishInstanceRequest {
-            subject: self.identity.id.0,
+            subject: self.identity.id.clone(),
             instance,
         };
 
@@ -365,7 +366,7 @@ impl Session {
     pub async fn delete_instance(
         &self,
         version: u32,
-        subject: Uuid,
+        subject: &IdentityId,
         reason_code: &str,
         reason: Option<&str>,
     ) -> Result<(), SdkError> {
@@ -502,7 +503,7 @@ impl AvalonClient {
     /// Public, unauthenticated.
     pub async fn identity_integrator_data(
         &self,
-        identity_id: Uuid,
+        identity_id: &IdentityId,
     ) -> Result<Vec<VisibleDataInstance>, SdkError> {
         let response = crate::http::send(&self.http, &self.config.retry, true, |c| {
             c.get(format!(

@@ -4,6 +4,8 @@
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+use crate::types::ids::IdentityId;
+
 use crate::SdkError;
 
 use super::AccountSession;
@@ -14,7 +16,7 @@ pub struct Conversation {
     /// This conversation's own id.
     pub id: Uuid,
     /// Every current participant, including the caller.
-    pub participants: Vec<Uuid>,
+    pub participants: Vec<IdentityId>,
 }
 
 impl From<crate::generated::ConversationResponse> for Conversation {
@@ -34,7 +36,7 @@ pub struct ConversationMessage {
     /// The conversation it belongs to.
     pub conversation_id: Uuid,
     /// The sender.
-    pub author: Uuid,
+    pub author: IdentityId,
     /// The message body.
     pub body: String,
     /// When it was sent.
@@ -77,7 +79,7 @@ impl AccountSession {
     /// existing conversation rather than creating a duplicate.
     pub async fn create_conversation(
         &self,
-        participants: &[Uuid],
+        participants: &[IdentityId],
     ) -> Result<Conversation, SdkError> {
         let raw: crate::generated::ConversationResponse = self
             .post(

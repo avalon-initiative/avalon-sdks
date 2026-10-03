@@ -50,7 +50,7 @@ namespace Avalon.Sdk
         /// already make.</summary>
         public async Task RevokePasskeyAsync(Guid passkeyId, CancellationToken ct = default)
         {
-            var (signingKeyId, signature) = Sign("passkey.revoke_last", passkeyId.ToString(), IdentityGuid.ToString());
+            var (signingKeyId, signature) = Sign("passkey.revoke_last", passkeyId.ToString(), OwnIdentityId.ToString());
             await PostNoResponseAsync(
                 $"/me/passkeys/{passkeyId}/revoke",
                 new Avalon.Sdk.Generated.RevokePasskeyRequest { SigningKeyId = signingKeyId, Signature = signature },

@@ -20,21 +20,21 @@ namespace Avalon.Sdk
 {
     public sealed class Conversation
     {
-        public Conversation(Guid id, IReadOnlyList<Guid> participants)
+        public Conversation(Guid id, IReadOnlyList<IdentityId> participants)
         {
             Id = id;
             Participants = participants;
         }
 
         public Guid Id { get; }
-        public IReadOnlyList<Guid> Participants { get; }
+        public IReadOnlyList<IdentityId> Participants { get; }
     }
 
     public sealed class ConversationMessage
     {
         public Guid Id { get; set; }
         public Guid ConversationId { get; set; }
-        public Guid Author { get; set; }
+        public IdentityId Author { get; set; }
         public string Body { get; set; } = "";
         public DateTimeOffset SentAt { get; set; }
     }
@@ -44,14 +44,14 @@ namespace Avalon.Sdk
     internal static class ConversationResponseExtensions
     {
         public static Conversation ToConversation(this Avalon.Sdk.Generated.ConversationResponse response) =>
-            new Conversation(response.Id, new List<Guid>(response.Participants));
+            new Conversation(response.Id, response.Participants.Select(IdentityId.Parse).ToList());
 
         public static ConversationMessage ToConversationMessage(this Avalon.Sdk.Generated.ConversationMessageResponse response) =>
             new ConversationMessage
             {
                 Id = response.Id,
                 ConversationId = response.ConversationId,
-                Author = response.Author,
+                Author = IdentityId.Parse(response.Author),
                 Body = response.Body,
                 SentAt = response.SentAt,
             };
@@ -95,14 +95,14 @@ namespace Avalon.Sdk
         /// existing, 1:1 conversation between the caller and otherIdentityId (idempotent on
         /// the participant set). Gated on messages.send rather than messages.read: starting a
         /// conversation is the only thing a caller can do with a brand-new one.</summary>
-        public async Task<ConversationHandle> DmAsync(Guid otherIdentityId, CancellationToken ct = default)
+        public async Task<ConversationHandle> DmAsync(IdentityId otherIdentityId, CancellationToken ct = default)
         {
             Require("messages.send");
 
             using var request = new HttpRequestMessage(HttpMethod.Post, $"{ServerUrl}/conversations");
             request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Token);
             request.Content = new StringContent(
-                JsonSerializer.Serialize(new Avalon.Sdk.Generated.CreateConversationRequest { Participants = new List<Guid> { otherIdentityId } }),
+                JsonSerializer.Serialize(new Avalon.Sdk.Generated.CreateConversationRequest { Participants = new List<string> { otherIdentityId.ToString() } }),
                 Encoding.UTF8, "application/json");
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)

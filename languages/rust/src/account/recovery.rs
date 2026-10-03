@@ -5,6 +5,8 @@
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+use crate::types::ids::IdentityId;
+
 use crate::SdkError;
 
 use super::AccountSession;
@@ -13,7 +15,7 @@ use super::AccountSession;
 #[derive(Debug, Clone)]
 pub struct GuardianSettings {
     /// Currently-named guardians.
-    pub guardian_ids: Vec<Uuid>,
+    pub guardian_ids: Vec<IdentityId>,
     /// How many guardian approvals a recovery attempt needs.
     pub threshold: i32,
     /// When this configuration was last changed, if ever.
@@ -42,7 +44,7 @@ pub struct RecoveryRequest {
     /// This request's own id.
     pub id: Uuid,
     /// The identity being recovered.
-    pub identity_id: Uuid,
+    pub identity_id: IdentityId,
     /// `"pending"`, `"approved"`, `"completed"`, `"cancelled"`, or
     /// `"expired"` — `crates/server/src/recovery.rs`'s own stable
     /// vocabulary.
@@ -101,7 +103,7 @@ impl TryFrom<crate::generated::GuardianRequestSummary> for GuardianRequest {
 #[derive(Debug, Clone)]
 pub struct GuardianOf {
     /// The relying identity's id.
-    pub identity_id: Uuid,
+    pub identity_id: IdentityId,
     /// The relying identity's display name.
     pub display_name: String,
     /// When the caller was named as a guardian for this identity.
@@ -138,15 +140,15 @@ impl AccountSession {
     /// crate makes.
     pub async fn set_guardians(
         &self,
-        guardian_ids: &[Uuid],
+        guardian_ids: &[IdentityId],
         threshold: i32,
     ) -> Result<GuardianSettings, SdkError> {
-        let mut sorted: Vec<String> = guardian_ids.iter().map(Uuid::to_string).collect();
+        let mut sorted: Vec<String> = guardian_ids.iter().map(IdentityId::to_string).collect();
         sorted.sort();
         let signature = self.sign(
             "recovery.guardians.set",
             &[
-                &self.identity().id.0.to_string(),
+                &self.identity().id.to_string(),
                 &sorted.join(","),
                 &threshold.to_string(),
             ],
@@ -195,7 +197,7 @@ impl AccountSession {
     /// `DELETE /me/recovery/guardian-of/{identity_id}` — the caller
     /// self-removing as someone else's guardian. Not signature-required
     /// (self-removal only narrows a guardian assignment).
-    pub async fn resign_as_guardian(&self, identity_id: Uuid) -> Result<(), SdkError> {
+    pub async fn resign_as_guardian(&self, identity_id: &IdentityId) -> Result<(), SdkError> {
         self.delete(&super::path(
             crate::generated::paths::recovery::RESIGN_GUARDIAN,
             &[("identity_id", &identity_id.to_string())],

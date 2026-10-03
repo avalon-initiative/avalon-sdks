@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { randomIdentityId } from '../testIds.js'
+import type { IdentityId } from '../../src/identityId.js'
 import type { RegistrationResponseJSON } from '@simplewebauthn/browser'
 
 const runRegistrationCeremonyMock = vi.fn<(options: unknown) => Promise<RegistrationResponseJSON>>()
@@ -12,7 +14,7 @@ vi.mock('../../src/crypto/webauthn.js', () => ({
 import { AccountSession } from '../../src/accountSession/core.js'
 import '../../src/accountSession/passkeys.js'
 
-function testProfile(identityId: string) {
+function testProfile(identityId: IdentityId) {
   return {
     identityId,
     displayName: 'test',
@@ -34,7 +36,7 @@ function testProfile(identityId: string) {
 }
 
 function testSession(signing?: { secretKey: Uint8Array; publicKey: Uint8Array; signingKeyId: string }): AccountSession {
-  const identity = { id: crypto.randomUUID(), createdAt: new Date().toISOString() }
+  const identity = { id: randomIdentityId(), createdAt: new Date().toISOString() }
   return new AccountSession({
     identity,
     profile: testProfile(identity.id),

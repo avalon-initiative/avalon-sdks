@@ -24,7 +24,7 @@ public class ConversationsTests
         var handler = new StubHttpMessageHandler();
         var session = Session.ForTesting(Array.Empty<string>(), handler.ToHttpClient());
 
-        await Assert.ThrowsAsync<CapabilityNotGrantedException>(() => session.DmAsync(Guid.NewGuid()));
+        await Assert.ThrowsAsync<CapabilityNotGrantedException>(() => session.DmAsync(IdentityId.RandomForTests()));
         Assert.Empty(handler.Requests);
     }
 
@@ -36,7 +36,7 @@ public class ConversationsTests
     {
         var handler = new StubHttpMessageHandler();
         var readOnly = Session.ForTesting(new[] { "messages.read" }, handler.ToHttpClient());
-        await Assert.ThrowsAsync<CapabilityNotGrantedException>(() => readOnly.DmAsync(Guid.NewGuid()));
+        await Assert.ThrowsAsync<CapabilityNotGrantedException>(() => readOnly.DmAsync(IdentityId.RandomForTests()));
 
         var sendOnly = Session.ForTesting(new[] { "messages.send" }, handler.ToHttpClient());
         await Assert.ThrowsAsync<CapabilityNotGrantedException>(() => sendOnly.ConversationsAsync());
@@ -49,13 +49,13 @@ public class ConversationsTests
     {
         var conversationId = Guid.NewGuid();
         var messageId = Guid.NewGuid();
-        var authorId = Guid.NewGuid();
+        var authorId = IdentityId.RandomForTests();
         var handler = new StubHttpMessageHandler()
             .Enqueue($@"{{""id"":""{conversationId}"",""participants"":[""{authorId}"",""{Guid.NewGuid()}""]}}")
             .Enqueue($@"{{""id"":""{messageId}"",""conversation_id"":""{conversationId}"",""author"":""{authorId}"",""body"":""hi"",""sent_at"":""2026-01-01T00:00:00Z""}}");
         var session = Session.ForTesting(new[] { "messages.send" }, handler.ToHttpClient());
 
-        var handle = await session.DmAsync(Guid.NewGuid());
+        var handle = await session.DmAsync(IdentityId.RandomForTests());
         var sent = await handle.SendAsync("hi");
 
         Assert.Equal(conversationId, handle.ConversationId);

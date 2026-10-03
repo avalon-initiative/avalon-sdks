@@ -91,6 +91,11 @@ Session session = await client.AuthenticateAsync(identityToken);
 var profile = await session.IdentityProfileAsync(someIdentityId);
 ```
 
+Identity ids are `IdentityId` values (a readonly struct over the 64 lowercase hex characters derived from the
+identity's inception key), not `Guid`s: `IdentityId.Parse`, `IdentityId.Derive(publicKey)`, and the v2 signing bytes in
+`IdentitySigning` are public. `AccountSession.RevokeDeviceAsync` now signs the revocation and needs a local signing key. See
+the root README's "Identity ids and registration".
+
 ## Known scoping gap, not an oversight
 
 This SDK doesn't port every account-session construction path the Rust SDK

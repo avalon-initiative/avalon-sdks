@@ -108,7 +108,7 @@ impl AccountSession {
             "rollback.reverse",
             &[
                 &event_id.to_string(),
-                &self.identity().id.0.to_string(),
+                &self.identity().id.to_string(),
                 &since,
             ],
         );

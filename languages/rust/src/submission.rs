@@ -1081,7 +1081,7 @@ mod tests {
         crate::types::social::ConversationMessage {
             id: Uuid::new_v4(),
             conversation_id: Uuid::new_v4(),
-            author: crate::types::ids::IdentityId(Uuid::new_v4()),
+            author: crate::types::ids::IdentityId::random_for_tests(),
             body: "hi".to_string(),
             sent_at: OffsetDateTime::now_utc(),
         }

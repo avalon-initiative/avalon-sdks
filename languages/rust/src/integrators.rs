@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+pub use crate::generated::{IntegratorShardEntry, IntegratorShardsResponse as IntegratorShards};
 use crate::{AvalonClient, SdkError};
 
 #[derive(Deserialize)]
@@ -411,6 +412,26 @@ impl AvalonClient {
             .map_err(|e| SdkError::Protocol(e.to_string()))
     }
 
+    /// `GET /integrations/{slug}/shards` — the owner's sibling shards this node knows of and could
+    /// verify a head for. Public and advisory: a silent sibling is invisible, and unverified ones
+    /// appear only in `missing_shard_ids`. A family over 256 shards is refused (HTTP 413).
+    pub async fn list_integrator_shards(&self, slug: &str) -> Result<IntegratorShards, SdkError> {
+        let response = crate::http::send(&self.http, &self.config.retry, true, |c| {
+            c.get(format!(
+                "{}/integrations/{slug}/shards",
+                self.config.server_url
+            ))
+        })
+        .await?;
+        if !response.status().is_success() {
+            return Err(crate::http::map_error_response(response).await);
+        }
+        response
+            .json()
+            .await
+            .map_err(|e| SdkError::Protocol(e.to_string()))
+    }
+
     /// `GET /integrations/{slug}/keys` (issue #90, closed out by
     /// #741/#746) — an issuer's full key history (any role, any status),
     /// oldest first. Public, unauthenticated — public keys are already
@@ -546,6 +567,29 @@ impl AvalonClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn integrator_shards_deserialize_from_the_documented_wire_shape() {
+        let raw = serde_json::json!({
+            "owner": "game:ashen-realms",
+            "shards": [{
+                "shard_id": "game:ashen-realms/1",
+                "tree_size": 12,
+                "root_hash": "ab",
+                "signing_key_id": "k1",
+                "created_at": "2026-01-01T00:00:00Z",
+                "last_seen_at": null,
+            }],
+            "partial": true,
+            "missing_shard_ids": ["game:ashen-realms/2"],
+        });
+        let shards: IntegratorShards = serde_json::from_value(raw).unwrap();
+        assert_eq!(shards.owner, "game:ashen-realms");
+        assert_eq!(shards.shards[0].tree_size, 12);
+        assert!(shards.shards[0].last_seen_at.is_none());
+        assert!(shards.partial);
+        assert_eq!(shards.missing_shard_ids, ["game:ashen-realms/2"]);
+    }
 
     #[test]
     fn integrator_deserializes_from_the_documented_registration_response_shape() {

@@ -61,6 +61,7 @@ pub mod device_login;
 pub(crate) mod generated;
 pub mod guilds;
 mod http;
+pub mod identity_signing;
 pub mod integrators;
 pub mod issuer_registration;
 pub mod known_list;
@@ -78,6 +79,7 @@ pub mod social;
 pub mod sth;
 pub mod submission;
 pub mod sync_journal;
+pub mod tolerant;
 pub mod topology_walk;
 pub mod types;
 pub mod witness;
@@ -279,7 +281,7 @@ pub struct AvalonClient {
 
 #[derive(Deserialize)]
 struct MeResponse {
-    identity_id: uuid::Uuid,
+    identity_id: IdentityId,
     #[serde(with = "time::serde::rfc3339")]
     identity_created_at: time::OffsetDateTime,
     display_name: String,
@@ -349,11 +351,11 @@ impl AvalonClient {
 
         Ok(Session {
             identity: Identity {
-                id: IdentityId(body.identity_id),
+                id: body.identity_id.clone(),
                 created_at: body.identity_created_at,
             },
             profile: Profile {
-                identity_id: IdentityId(body.identity_id),
+                identity_id: body.identity_id.clone(),
                 display_name: body.display_name,
                 avatar_url: body.avatar_url,
                 bio: body.bio,

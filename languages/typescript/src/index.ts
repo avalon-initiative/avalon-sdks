@@ -225,6 +225,7 @@ export {
   getIntegrator,
   listIntegrators,
   getIntegratorRegistry,
+  listIntegratorShards,
   listIssuerKeys,
   getAttestation,
   listSchemaVersions,
@@ -242,6 +243,8 @@ export type {
   IntegratorsPage,
   RegistryMetric,
   IntegratorRegistry,
+  IntegratorShard,
+  IntegratorShards,
   IssuerKey,
   AttestationDetail,
   SchemaVersion,
@@ -316,6 +319,19 @@ export {
   base64ToBytes,
 } from './crypto/signing.js'
 export type { SigningKeyPair, SignatureFields } from './crypto/signing.js'
+export {
+  identityCreatedSigningBytes,
+  deviceGrantApprovalSigningBytes,
+  signingKeyRevokedSigningBytes,
+} from './crypto/signing.js'
+export {
+  deriveIdentityId,
+  identityIdMatchesKey,
+  isIdentityId,
+  parseIdentityId,
+} from './identityId.js'
+export type { IdentityId } from './identityId.js'
+export { isAcceptableShardKey as isAcceptableIdentityKey, verifyStrict } from './network/strictEd25519.js'
 
 export { runRegistrationCeremony, runAuthenticationCeremony } from './crypto/webauthn.js'
 

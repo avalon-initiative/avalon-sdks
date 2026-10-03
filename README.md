@@ -95,7 +95,10 @@ checked-in copies, kept in sync by hand whenever the upstream schema changes:
   signing logic against these; `avalon-protocol`'s own
   `crates/protocol/tests/conformance.rs` asserts the server side of the
   same files, so a real drift between the two repos fails a test on
-  whichever side changed first, not silently.
+  whichever side changed first, not silently. `identity-chain.json` (the protocol crate only) and `node-request.json`
+  (node-to-node routes, not SDK-facing) are not vendored; the vendored `supportedIn` of the four vectors the protocol
+  still lists as unsupported (`attestation-signing`, `cross-node-login`, `session-continuation`,
+  `websocket-interest-claim`) is set to what each SDK actually asserts.
 
 Until real cross-repo tooling exists, resyncing any of these is a manual
 copy from the corresponding path in `avalon-protocol`, then this repo's
@@ -115,6 +118,52 @@ generated schema. Path values are percent-encoded. The SDKs do not sign claims y
 | Rust | `resolve_name(node_url, name)` | `list_shard_names(node_url, id)` | `submit_name_claim(node_url, &claim)` |
 | C# | `ResolveNameAsync(name, nodeUrl?)` | `ListShardNamesAsync(id, nodeUrl?)` | `SubmitNameClaimAsync(claim, nodeUrl?)` |
 | TypeScript | `resolveName(nodeUrl, name)` | `listShardNames(nodeUrl, id)` | `submitNameClaim(nodeUrl, claim)` |
+
+## Identity ids and registration
+
+An identity id is the 64 lowercase hex characters of `SHA-256("avalon-identity-id-v1" || key)`, where `key` is the
+identity's first (inception) Ed25519 public key (32 raw bytes). It is not a UUID. Parsing is strict and never
+normalises: uppercase, any other length, `id:` or `node:` prefixes, UUID text and surrounding whitespace are all
+rejected. Each SDK has a validated type that rejects anything else, and the generated wire types still carry plain
+strings that the hand-written layers parse with it.
+
+| | Type | Parse | Derive from an inception key |
+| --- | --- | --- | --- |
+| Rust | `types::ids::IdentityId` (no longer `Copy`; pass `&IdentityId`) | `"...".parse::<IdentityId>()` | `IdentityId::derive(&key_bytes)` |
+| C# | `IdentityId` (readonly struct; `default` is invalid) | `IdentityId.Parse` / `TryParse` | `IdentityId.Derive(key)` |
+| TypeScript | `IdentityId` (branded string) | `parseIdentityId` / `isIdentityId` | `deriveIdentityId(key)` |
+
+Registration generates the inception key first, derives the id, sends the base64 public key as
+`event_signing_public_key` at `POST /identities/register/start`, then signs the v2 `identity.created` bytes. Those bytes are
+`avalon:identity.created:v2:{len(network_id)}:{network_id}:{len(shard_id)}:{shard_id}:{ticket_id}:{identity_id}:{public_key_hex}:{display_name}`
+with `len` the UTF-8 byte length; the network id, shard id and ticket come from the `register/start` response, so a copied
+signature does not verify for another ticket, network or shard. `register/finish` no longer takes the key, and its response id
+must equal the derived one. Rust and TypeScript implement `register`; C# does not (see its README), but it has the id type, the
+derivation and every signing function below.
+
+The `network_id` and `shard_id` in the signed bytes are supplied by the node answering `register/start` and are signed as given: the
+client trusts the node it registers with and does not pin them. Stored credentials are checked on login: `login` / `account_login`
+fail if the stored secret does not derive to the credentials' identity id. Approving a device grant also requires the requested key
+to be strict canonical base64 of 32 bytes and acceptable (canonical, not small-order), and the grant, ticket and key ids that go
+into signed bytes must be lowercase hyphenated UUID text.
+
+A public key is lowercase hex inside every signing-byte string and standard base64 on the wire. Device grant approval signs
+`avalon:device_grant.approved:v2:{grant_id}:{identity_id}:{requested_public_key_hex}`, and revoking a signing key
+(`revoke_device` / `RevokeDeviceAsync` / `revokeDevice`) now signs
+`avalon:identity.signing_key_revoked:v2:{identity_id}:{signing_key_id}:{revoked_by_signing_key_id}` with one of the
+identity's active keys and sends it with `revoked_by_signing_key_id`; the call needs a local signing key and the server refuses
+to revoke the last active key. The functions are public (`identity_signing` in Rust, `IdentitySigning` in C#, the top-level
+exports in TypeScript), together with strict Ed25519 verification (S below the group order, no small-order key or R) and the
+key-acceptability rule (canonical encoding, not of small order; a key with a torsion component such as y = 3 is accepted).
+Shared vectors: `conformance/vectors/identity-id.json`, `identity-created-signing.json`, `device-grant-approval.json` and
+`signing-key-revoked.json`; the attestation, cross-node-login, session-continuation and websocket-interest-claim vectors carry
+hex ids.
+
+## Integrator shards
+
+`GET /integrations/{slug}/shards` lists an owner's sibling shards this node knows of and could verify a head for, plus the
+ids it could not verify (`partial`, `missing_shard_ids`). It is public and advisory, and a family over 256 shards is refused
+with 413. Rust `list_integrator_shards(slug)`, C# `ListIntegratorShardsAsync(slug)`, TypeScript `listIntegratorShards(serverUrl, slug)`.
 
 ## Self-certifying shard heads
 
@@ -194,6 +243,9 @@ that node, so for routing prefer the sibling list you manage yourself. The famil
 choosing. Pinned by `conformance/vectors/shard-sibling-routing.json`.
 
 ## Node topology, probe and trace
+
+`Connectivity` and `PathType` are open vocabularies: a value this SDK does not know decodes instead of failing the
+whole response (Rust `Unknown(String)`, C# `Unknown`, TypeScript keeps the string).
 
 All three SDKs expose the node's read-only topology view and its probe and trace
 endpoints, typed from the generated schema (`GET /nodes/topology`,

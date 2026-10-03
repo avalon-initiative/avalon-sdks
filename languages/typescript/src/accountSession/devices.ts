@@ -4,7 +4,12 @@
 // passkeys.ts (WebAuthn login credentials). See
 // crates/server/src/devices.rs/device_pairing.rs.
 import { AccountSession } from './core.js'
-import { deviceGrantApprovalSigningBytes } from '../crypto/signing.js'
+import { isAcceptableShardKey } from '../network/strictEd25519.js'
+import {
+  decodePublicKey,
+  deviceGrantApprovalSigningBytes,
+  signingKeyRevokedSigningBytes,
+} from '../crypto/signing.js'
 import { NoLocalSigningKeyError } from '../errors.js'
 import type { components } from '../generated.js'
 
@@ -58,8 +63,9 @@ declare module './core.js' {
     /** `PATCH /me/devices/{signingKeyId}` — relabels a device. Not
      * signature-required. */
     renameDevice(signingKeyId: string, label: string): Promise<Device>
-    /** `POST /me/devices/{signingKeyId}/revoke` — unilateral, ambient-token
-     * (revocation only ever narrows trust). */
+    /** `POST /me/devices/{signingKeyId}/revoke` — signed by this session's own local key (which may be
+     * the key being revoked); the server refuses to revoke the last active key. Throws
+     * `NoLocalSigningKeyError` when the session holds no local key. */
     revokeDevice(signingKeyId: string): Promise<void>
     /** `POST /me/devices/grants` — requests a new device's signing key be
      * added, from the requesting device's own (as-yet unsigned) session. */
@@ -98,7 +104,15 @@ AccountSession.prototype.renameDevice = async function (
 }
 
 AccountSession.prototype.revokeDevice = async function (this: AccountSession, signingKeyId: string): Promise<void> {
-  await this.postEmptyNoResponse(`/me/devices/${signingKeyId}/revoke`)
+  const revokedBy = this.signingKeyId()
+  if (!revokedBy) {
+    throw new NoLocalSigningKeyError('revokeDevice')
+  }
+  const message = signingKeyRevokedSigningBytes(this.identity().id, signingKeyId, revokedBy)
+  await this.postNoResponse(`/me/devices/${signingKeyId}/revoke`, {
+    revoked_by_signing_key_id: revokedBy,
+    signature: this.signRaw(message),
+  })
 }
 
 AccountSession.prototype.requestDeviceGrant = async function (
@@ -140,7 +154,11 @@ AccountSession.prototype.approveDeviceGrant = async function (
   if (!signingKeyId) {
     throw new NoLocalSigningKeyError('approveDeviceGrant')
   }
-  const message = deviceGrantApprovalSigningBytes(grantId, this.identity().id, requestedSigningPublicKeyB64)
+  const requestedKey = decodePublicKey(requestedSigningPublicKeyB64)
+  if (!isAcceptableShardKey(requestedKey)) {
+    throw new TypeError('the requested key is not an acceptable Ed25519 key')
+  }
+  const message = deviceGrantApprovalSigningBytes(grantId, this.identity().id, requestedKey)
   const signature = this.signRaw(message)
   const wire = await this.post<DeviceWire>(`/me/devices/grants/${grantId}/approve`, {
     approver_signing_key_id: signingKeyId,

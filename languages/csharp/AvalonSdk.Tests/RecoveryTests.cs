@@ -17,7 +17,7 @@ public class RecoveryTests
         """);
         var client = new AvalonClient(new AvalonConfig("http://test", "unused"), handler.ToHttpClient());
 
-        var (returnedTicketId, challenge) = await client.StartRecoveryAsync(Guid.NewGuid());
+        var (returnedTicketId, challenge) = await client.StartRecoveryAsync(IdentityId.RandomForTests());
 
         Assert.Equal(ticketId, returnedTicketId);
         Assert.Equal(JsonValueKind.Object, challenge.ValueKind);
@@ -29,7 +29,7 @@ public class RecoveryTests
     public async Task FinishRecoveryAsync_PostsTicketAndCredential()
     {
         var requestId = Guid.NewGuid();
-        var identityId = Guid.NewGuid();
+        var identityId = IdentityId.RandomForTests();
         var handler = new StubHttpMessageHandler().Enqueue($$"""
         { "id": "{{requestId}}", "identity_id": "{{identityId}}", "status": "pending_approvals",
           "threshold": 2, "approvals_count": 0, "requested_at": "2026-01-01T00:00:00Z", "delay_ends_at": null }
@@ -48,7 +48,7 @@ public class RecoveryTests
     public async Task GetRecoveryRequestAsync_IsPublic_NoAuthorizationHeaderSent()
     {
         var requestId = Guid.NewGuid();
-        var identityId = Guid.NewGuid();
+        var identityId = IdentityId.RandomForTests();
         var handler = new StubHttpMessageHandler().Enqueue($$"""
         { "id": "{{requestId}}", "identity_id": "{{identityId}}", "status": "delay",
           "threshold": 2, "approvals_count": 2, "requested_at": "2026-01-01T00:00:00Z", "delay_ends_at": "2026-01-03T00:00:00Z" }
@@ -67,7 +67,7 @@ public class RecoveryTests
         var handler = new StubHttpMessageHandler().Enqueue("null");
         var client = new AvalonClient(new AvalonConfig("http://test", "unused"), handler.ToHttpClient());
 
-        var status = await client.GetIdentityRecoveryStatusAsync(Guid.NewGuid());
+        var status = await client.GetIdentityRecoveryStatusAsync(IdentityId.RandomForTests());
 
         Assert.Null(status);
     }
@@ -76,7 +76,7 @@ public class RecoveryTests
     public async Task FinalizeRecoveryRequestAsync_PostsToFinalize()
     {
         var requestId = Guid.NewGuid();
-        var identityId = Guid.NewGuid();
+        var identityId = IdentityId.RandomForTests();
         var handler = new StubHttpMessageHandler().Enqueue($$"""
         { "id": "{{requestId}}", "identity_id": "{{identityId}}", "status": "completed",
           "threshold": 2, "approvals_count": 2, "requested_at": "2026-01-01T00:00:00Z", "delay_ends_at": "2026-01-03T00:00:00Z" }

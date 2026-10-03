@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
+import { randomIdentityId } from '../testIds.js'
+import type { IdentityId } from '../../src/identityId.js'
 import { AccountSession } from '../../src/accountSession/core.js'
 import '../../src/accountSession/guildAdmin.js'
 
 function testIdentity() {
-  return { id: crypto.randomUUID(), createdAt: new Date().toISOString() }
+  return { id: randomIdentityId(), createdAt: new Date().toISOString() }
 }
 
-function testProfile(identityId: string) {
+function testProfile(identityId: IdentityId) {
   return {
     identityId,
     displayName: 'test',

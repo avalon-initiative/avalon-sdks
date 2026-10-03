@@ -41,7 +41,7 @@ async fn main() {
                     .presence
                     .map(|p| format!("{:?}", p.status))
                     .unwrap_or_else(|| "unknown (presence.read not granted)".to_string());
-                println!("{}: {presence}", friend.identity_id.0);
+                println!("{}: {presence}", friend.identity_id);
             }
         }
         // A typed error, never a raw status code — see

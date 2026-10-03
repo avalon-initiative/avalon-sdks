@@ -113,7 +113,7 @@ impl AccountSession {
     pub async fn revoke_passkey(&self, passkey_id: Uuid) -> Result<(), SdkError> {
         let signature = self.sign(
             "passkey.revoke_last",
-            &[&passkey_id.to_string(), &self.identity().id.0.to_string()],
+            &[&passkey_id.to_string(), &self.identity().id.to_string()],
         );
         self.post_no_response(
             &super::path(

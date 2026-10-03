@@ -32,6 +32,7 @@ import {
 import { mintContinuationToken } from '../crypto/continuation.js'
 import { fromMeResponse, type Identity, type Profile, type MeResponseWire, type DeviceRowWire } from '../types.js'
 import { NoLocalSigningKeyError } from '../errors.js'
+import type { IdentityId } from '../identityId.js'
 
 export interface AccountSigningKey {
   secretKey: Uint8Array
@@ -43,7 +44,7 @@ export interface AccountSigningKey {
  * identity via `AvalonClient.login` — returned by `AvalonClient.register`.
  * Not needed for `resumeAccountSession`, which only needs a bearer token. */
 export interface AccountCredentials {
-  identityId: string
+  identityId: IdentityId
   /** Base64-encoded 32-byte Ed25519 signing-key seed. */
   signingKeySecretBase64: string
 }

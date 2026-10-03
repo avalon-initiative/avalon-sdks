@@ -44,7 +44,7 @@ public class AchievementsTests
     [Fact]
     public async Task GetAchievementsAsync_PopulatesAuthenticityAndValidityAsSeparateFields()
     {
-        var subject = Guid.NewGuid();
+        var subject = IdentityId.RandomForTests();
         var attestationId = Guid.NewGuid();
         var handler = new StubHttpMessageHandler().Enqueue($$"""
         {
@@ -88,7 +88,7 @@ public class AchievementsTests
                 {
                     "id": "{{Guid.NewGuid()}}",
                     "issuer": "game:dragons-inc",
-                    "subject": "{{Guid.NewGuid()}}",
+                    "subject": "{{IdentityId.RandomForTests()}}",
                     "achievement": "game:dragons-inc:achievement:dragon_slayer",
                     "issued_at": "2026-01-01T00:00:00Z",
                     "authenticity": { "status": "authentic", "key_id": "primary" },
@@ -156,7 +156,7 @@ public class AchievementsTests
     public async Task GetAttestationAsync_IsPublic_NoAuthorizationHeaderSent()
     {
         var attestationId = Guid.NewGuid();
-        var subject = Guid.NewGuid();
+        var subject = IdentityId.RandomForTests();
         var handler = new StubHttpMessageHandler().Enqueue($$"""
         {
             "id": "{{attestationId}}",
@@ -284,7 +284,7 @@ public class AchievementsTests
             .Enqueue($$"""
             {
                 "results": [
-                    { "status": "issued", "key": "dragon_slayer", "attestation": { "id": "{{attestationId}}", "issuer": "game:dragons-inc", "subject": "{{Guid.NewGuid()}}", "achievement": "game:dragons-inc:achievement:dragon_slayer", "issued_at": "2026-01-01T00:00:00Z", "proof": { "key_id": "{{Guid.NewGuid()}}", "algorithm": "ed25519", "bytes": "AA==" } } },
+                    { "status": "issued", "key": "dragon_slayer", "attestation": { "id": "{{attestationId}}", "issuer": "game:dragons-inc", "subject": "{{IdentityId.RandomForTests()}}", "achievement": "game:dragons-inc:achievement:dragon_slayer", "issued_at": "2026-01-01T00:00:00Z", "proof": { "key_id": "{{Guid.NewGuid()}}", "algorithm": "ed25519", "bytes": "AA==" } } },
                     { "status": "failed", "key": "unknown_key", "code": "ACHIEVEMENT_DEFINITION_NOT_FOUND", "error": "achievement definition not found" }
                 ]
             }

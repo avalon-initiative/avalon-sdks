@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { randomIdentityId } from './testIds.js'
 import { IntegratorSession, type Capability } from '../src/integratorSession.js'
 import { CapabilityNotGrantedError, MissingIssuerCredentialsError } from '../src/errors.js'
 
 function testSession(granted: Capability[] = []): IntegratorSession {
-  const id = crypto.randomUUID()
+  const id = randomIdentityId()
   return new IntegratorSession({
     identity: { id, createdAt: new Date().toISOString() },
     profile: {

@@ -45,7 +45,7 @@ public class RollbackTests
         var privateKey = new Ed25519PrivateKeyParameters(new SecureRandom());
         var publicKey = privateKey.GeneratePublicKey();
         var signingKeyId = Guid.NewGuid();
-        var identityId = Guid.NewGuid();
+        var identityId = IdentityId.RandomForTests();
         var eventId = Guid.NewGuid();
         var reversalId = Guid.NewGuid();
         var handler = new StubHttpMessageHandler().Enqueue(@"{""reversal_event_id"":""" + reversalId + @"""}");

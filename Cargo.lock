@@ -84,6 +84,7 @@ dependencies = [
  "passkey-client",
  "passkey-types",
  "rand 0.10.3",
+ "regress",
  "reqwest",
  "schemars",
  "serde",

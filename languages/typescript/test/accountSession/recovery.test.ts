@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { randomIdentityId } from '../testIds.js'
+import type { IdentityId } from '../../src/identityId.js'
 import { AccountSession } from '../../src/accountSession/core.js'
 import { generateSigningKey } from '../../src/crypto/signing.js'
 import '../../src/accountSession/recovery.js'
 
-function testProfile(identityId: string) {
+function testProfile(identityId: IdentityId) {
   return {
     identityId,
     displayName: 'test',
@@ -25,7 +27,7 @@ function testProfile(identityId: string) {
 }
 
 function testSession(signing?: { secretKey: Uint8Array; publicKey: Uint8Array; signingKeyId: string }): AccountSession {
-  const identity = { id: crypto.randomUUID(), createdAt: new Date().toISOString() }
+  const identity = { id: randomIdentityId(), createdAt: new Date().toISOString() }
   return new AccountSession({
     identity,
     profile: testProfile(identity.id),

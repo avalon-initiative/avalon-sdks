@@ -119,7 +119,7 @@ namespace Avalon.Sdk
         /// binding to this integrator (the user's own consent) — enforced server-side, same
         /// posture as attestation issuance.</summary>
         public async Task<Avalon.Sdk.Generated.IntegratorDataInstanceResponse> PublishInstanceAsync(
-            uint version, Guid subject, object instance, CancellationToken ct = default)
+            uint version, IdentityId subject, object instance, CancellationToken ct = default)
         {
             if (IntegratorSlug is null)
             {
@@ -127,7 +127,7 @@ namespace Avalon.Sdk
             }
             using var request = new HttpRequestMessage(HttpMethod.Post, $"{ServerUrl}/integrations/{IntegratorSlug}/schemas/{version}/data");
             await AttachIntegratorAuthAsync(request, ct).ConfigureAwait(false);
-            request.Content = JsonContent(new Avalon.Sdk.Generated.PublishInstanceRequest { Subject = subject, Instance = instance });
+            request.Content = JsonContent(new Avalon.Sdk.Generated.PublishInstanceRequest { Subject = subject.ToString(), Instance = instance });
             using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
@@ -141,7 +141,7 @@ namespace Avalon.Sdk
         /// deleted. The original publish event stays visible in raw ledger history either
         /// way.</summary>
         public async Task DeleteInstanceAsync(
-            uint version, Guid subject, string? reasonCode = null, string? reason = null, CancellationToken ct = default)
+            uint version, IdentityId subject, string? reasonCode = null, string? reason = null, CancellationToken ct = default)
         {
             if (IntegratorSlug is null)
             {
@@ -166,7 +166,7 @@ namespace Avalon.Sdk
         /// schema's own visibility policy currently makes visible. Public, unauthenticated —
         /// publishing instance data is itself the opt-in.</summary>
         public async Task<IReadOnlyList<Avalon.Sdk.Generated.VisibleIntegratorDataInstanceResponse>> GetIdentityIntegratorDataAsync(
-            Guid identityId, CancellationToken ct = default) =>
+            IdentityId identityId, CancellationToken ct = default) =>
             await GetJsonAsync<List<Avalon.Sdk.Generated.VisibleIntegratorDataInstanceResponse>>(
                 $"{ServerUrl}/identities/{identityId}/integrator-data", ct).ConfigureAwait(false)
             ?? new List<Avalon.Sdk.Generated.VisibleIntegratorDataInstanceResponse>();

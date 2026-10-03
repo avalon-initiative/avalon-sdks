@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,7 +21,7 @@ namespace Avalon.Sdk
 
         /// <summary>Every current participant, including the caller.</summary>
         [JsonPropertyName("participants")]
-        public List<Guid> Participants { get; set; } = new List<Guid>();
+        public List<IdentityId> Participants { get; set; } = new List<IdentityId>();
     }
 
     /// <summary>One message within a conversation. Mirrors the Rust SDK's
@@ -34,7 +35,7 @@ namespace Avalon.Sdk
         public Guid ConversationId { get; set; }
 
         [JsonPropertyName("author")]
-        public Guid Author { get; set; }
+        public IdentityId Author { get; set; }
 
         [JsonPropertyName("body")]
         public string Body { get; set; } = "";
@@ -52,9 +53,9 @@ namespace Avalon.Sdk
         /// <summary><c>POST /conversations</c> — idempotent on the final participant set
         /// (the caller is always added, then deduplicated); returns the existing
         /// conversation rather than creating a duplicate.</summary>
-        public async Task<AccountConversation> CreateConversationAsync(IReadOnlyList<Guid> participants, CancellationToken ct = default) =>
+        public async Task<AccountConversation> CreateConversationAsync(IReadOnlyList<IdentityId> participants, CancellationToken ct = default) =>
             await PostAsync<Avalon.Sdk.Generated.CreateConversationRequest, AccountConversation>(
-                "/conversations", new Avalon.Sdk.Generated.CreateConversationRequest { Participants = new List<Guid>(participants) }, ct).ConfigureAwait(false);
+                "/conversations", new Avalon.Sdk.Generated.CreateConversationRequest { Participants = participants.Select(p => p.ToString()).ToList() }, ct).ConfigureAwait(false);
 
         /// <summary><c>GET /conversations/{id}/messages</c>, cursor-paginated with
         /// <paramref name="before"/>.</summary>
