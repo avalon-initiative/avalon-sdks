@@ -27,6 +27,15 @@ decoding to a canonical Ed25519 point of non-small order, hash to the id and hav
 `VerifyNetworkAsync`) or `Unsupported`; unsupported kinds never verify. No trust anchor or witness list is involved.
 Shared vectors: `conformance/vectors/self-certifying-tree-head.json`.
 
+## Shard family head
+
+`AvalonClient.GetShardFamilyAsync(owner, member?)` returns a `ShardFamilyResponse` (`GET /ledger/shard-family`): `RootHash`,
+`Members` (`FamilyMember`, the heads the root commits to), `Partial`, `MissingShardIds` and, when `member` was given, a
+`FamilyProof`. `ShardFamily.Root(owner, heads)` recomputes the root (non-members ignored, any order),
+`ShardFamily.VerifyInclusion(owner, root, proof, head)` checks a proof, and `ShardFamilyResponse.RootMatches()` /
+`ProofVerifies()` do both on a fetched response. `ShardFamily.OwnerOf`, `IsOwnerId` and `IsMember` implement the shard id
+grammar. The recomputed root is the check: the node does not sign it. A `partial` response means a known family member has no head on that node. Atomic writes across siblings do not exist. Shared vectors: `conformance/vectors/shard-family-head.json`.
+
 ## Tracing a real call
 
 `AvalonTrace.WithTraceAsync(() => client.GetNodeStatusAsync())` runs any SDK call with `X-Avalon-Trace` on each request and returns `Traced<T>` (`Value`, `Requests`). Each `RequestTrace` has the `TraceId` sent and either a decoded `Trace` (`Branches` of `PathHop`, which extends the `TraceHop` that `TraceAsync` returns and keeps unknown fields in `Extra`) or a `Problem` (`Missing`, `Oversized`, `Malformed`, `TraceIdMismatch`). Opt-in and read-only; a missing or malformed header never fails the call. Hops are self-reported by the nodes on the path and are advisory. Requests are traced through an `HttpClient` built on `AvalonTraceHandler`, which the SDK's default clients use; for your own client, wrap its handler: `new HttpClient(new AvalonTraceHandler(inner))`. See the root README.

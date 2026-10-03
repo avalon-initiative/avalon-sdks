@@ -18,6 +18,9 @@ signing key and the id alone by `self_certifying::verify_self_certifying_head`
 (fetch with `AvalonClient::fetch_shard_tree_head`); see
 [`avalon-docs: sdk/design.md`](https://github.com/avalon-initiative/avalon-docs/blob/main/sdk/design.md#self-certifying-shard-heads).
 
+Shard family heads (`GET /ledger/shard-family`) are fetched with `AvalonClient::fetch_shard_family` and checked with
+`shard_family::{family_root, verify_family_inclusion}`; see the root README.
+
 ## Guides
 
 1. [`for-developers/getting-started.md`](for-developers/getting-started.md) —

@@ -143,6 +143,31 @@ Rust the existing `sth::SignedTreeHead` is unchanged and `self_certifying::SelfC
 the key. A verified head proves the key holder signed it and that the key belongs to the id; it says nothing about
 whether the shard is honest or current. Shared vectors: `conformance/vectors/self-certifying-tree-head.json`.
 
+## Shard family head
+
+A game, app or service can run sibling shards: `{namespace}:{slug}` and `{namespace}:{slug}/{instance}` (such as `game:x` and
+`game:x/2`) share an owner, `game:x`. `GET /ledger/shard-family?owner=<owner>[&member=<shard id>]` serves the owner's
+family head: a root over the member heads, the members it was computed from (sorted by shard id), whether the family is
+`partial`, and with `member` an inclusion proof for that shard. The route is under `/ledger/*`, which the OpenAPI document
+excludes, so all three SDKs hand-write the call and the pure helpers, pinned by `conformance/vectors/shard-family-head.json`.
+A node does not sign the root: anyone recomputes it from the member heads, and a proof ties one head to it. Heads of any
+other shard are ignored; `game:xy`, `core`, `node:<hash>` and invalid ids belong to no family.
+
+| | Fetch | Recompute the root | Verify a proof | Owner of a shard id |
+| --- | --- | --- | --- | --- |
+| Rust | `AvalonClient::fetch_shard_family(owner, member)` | `shard_family::family_root(owner, &heads)` | `shard_family::verify_family_inclusion(owner, root, &proof, &head)` | `shard_family::shard_family_owner(id)` |
+| C# | `GetShardFamilyAsync(owner, member?)` | `ShardFamily.Root(owner, heads)` | `ShardFamily.VerifyInclusion(owner, root, proof, head)` | `ShardFamily.OwnerOf(id)` |
+| TypeScript | `getShardFamily(nodeUrl, owner, { member? })` | `familyRoot(owner, heads)` | `verifyFamilyInclusion(owner, root, proof, head)` | `shardFamilyOwner(id)` |
+
+Each response also has `root_matches` / `RootMatches()` / `familyRootMatches(response)` (the served root equals the
+recomputed one) and `proof_verifies` / `ProofVerifies()` / `familyProofVerifies(response)` (the served proof verifies for
+its member). The membership helpers are `is_family_member(owner, id)` and `is_family_owner_id(id)` (`IsMember`, `IsOwnerId`,
+`isFamilyMember`, `isFamilyOwnerId`). Verification returns false, never an error, for malformed input. A leaf commits to the
+member's shard id, tree size, root hash, signing key id and signature text, so a head's own signature is not checked here:
+verify member heads separately where that matters. The head itself is not authenticated by this call. A `partial`
+response means a known family member has no head on that node; atomic writes across siblings do not exist.
+In TypeScript a tree size beyond 2^53 is lost by `JSON.parse`; pass a `bigint` to the helpers if you hold one.
+
 ## Node topology, probe and trace
 
 All three SDKs expose the node's read-only topology view and its probe and trace
