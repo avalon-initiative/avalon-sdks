@@ -462,18 +462,19 @@ mod tests {
 
     impl Respond for FlakyThenOk {
         fn respond(&self, _request: &Request) -> ResponseTemplate {
-            let previous =
-                self.remaining_failures
-                    .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
-                        if n > 0 {
-                            Some(n - 1)
-                        } else {
-                            None
-                        }
-                    });
-            match previous {
-                Ok(_) => ResponseTemplate::new(503),
-                Err(_) => ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok": true})),
+            loop {
+                let n = self.remaining_failures.load(Ordering::SeqCst);
+                if n == 0 {
+                    return ResponseTemplate::new(200)
+                        .set_body_json(serde_json::json!({"ok": true}));
+                }
+                if self
+                    .remaining_failures
+                    .compare_exchange(n, n - 1, Ordering::SeqCst, Ordering::SeqCst)
+                    .is_ok()
+                {
+                    return ResponseTemplate::new(503);
+                }
             }
         }
     }
