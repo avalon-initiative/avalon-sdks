@@ -593,3 +593,93 @@ fn self_certifying_tree_head_matches_shared_vectors() {
         );
     }
 }
+
+fn family_head(v: &Value) -> avalon_sdk::shard_family::FamilyHead {
+    avalon_sdk::shard_family::FamilyHead {
+        shard_id: v["shardId"].as_str().unwrap().to_string(),
+        tree_size: match &v["treeSize"] {
+            Value::String(decimal) => decimal.parse().unwrap(),
+            number => number.as_i64().unwrap(),
+        },
+        root_hash: v["rootHashHex"].as_str().unwrap().to_string(),
+        signing_key_id: v["signingKeyId"].as_str().unwrap().to_string(),
+        signature: v["signatureHex"].as_str().unwrap().to_string(),
+    }
+}
+
+#[test]
+fn shard_family_head_matches_shared_vectors() {
+    use avalon_sdk::shard_family::{
+        family_root, is_family_member, is_family_owner_id, shard_family_owner,
+        verify_family_inclusion, FamilyProof,
+    };
+    let doc = load("shard-family-head.json");
+    assert!(supported_in(&doc, "rust"));
+    for v in doc["familyVectors"].as_array().unwrap() {
+        let name = v["name"].as_str().unwrap();
+        let heads: Vec<_> = v["input"]["heads"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(family_head)
+            .collect();
+        let root = family_root(v["input"]["owner"].as_str().unwrap(), &heads);
+        assert_eq!(
+            root,
+            v["expected"]["rootHashHex"].as_str().unwrap(),
+            "[{name}]"
+        );
+    }
+    for v in doc["proofVectors"].as_array().unwrap() {
+        let name = v["name"].as_str().unwrap();
+        let input = &v["input"];
+        let mut head = family_head(&input["head"]);
+        head.shard_id = input["shardId"].as_str().unwrap().to_string();
+        let proof = FamilyProof {
+            shard_id: head.shard_id.clone(),
+            leaf_index: input["proof"]["leafIndex"].as_u64().unwrap() as usize,
+            tree_size: input["proof"]["treeSize"].as_u64().unwrap() as usize,
+            path: input["proof"]["pathHex"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|p| p.as_str().unwrap().to_string())
+                .collect(),
+        };
+        let verified = verify_family_inclusion(
+            input["owner"].as_str().unwrap(),
+            input["rootHashHex"].as_str().unwrap(),
+            &proof,
+            &head,
+        );
+        assert_eq!(
+            verified,
+            v["expected"]["verified"].as_bool().unwrap(),
+            "[{name}]"
+        );
+    }
+    for v in doc["familyOwnerVectors"].as_array().unwrap() {
+        let id = v["shardId"].as_str().unwrap();
+        assert_eq!(
+            shard_family_owner(id).as_deref(),
+            v["expectedOwner"].as_str(),
+            "[{id:?}]"
+        );
+    }
+    for v in doc["ownerIdVectors"].as_array().unwrap() {
+        let id = v["owner"].as_str().unwrap();
+        assert_eq!(
+            is_family_owner_id(id),
+            v["expected"].as_bool().unwrap(),
+            "[{id:?}]"
+        );
+    }
+    for v in doc["memberVectors"].as_array().unwrap() {
+        let (owner, id) = (v["owner"].as_str().unwrap(), v["shardId"].as_str().unwrap());
+        assert_eq!(
+            is_family_member(owner, id),
+            v["expected"].as_bool().unwrap(),
+            "[{owner:?} {id:?}]"
+        );
+    }
+}
