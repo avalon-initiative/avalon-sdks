@@ -36,6 +36,16 @@ impl IdentityId {
         Self::derive(key.verifying_key().as_bytes())
     }
 
+    /// A fresh random inception key and the id derived from it, for seeding `identities` rows
+    /// (`id` and `inception_public_key`) in live tests.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn random_with_key_for_tests() -> (Self, [u8; 32]) {
+        let key = ed25519_dalek::SigningKey::generate(&mut rand::rng())
+            .verifying_key()
+            .to_bytes();
+        (Self::derive(&key), key)
+    }
+
     /// Whether this id is the one derived from `public_key`.
     pub fn matches_key(&self, public_key: &[u8; 32]) -> bool {
         Self::derive(public_key) == *self

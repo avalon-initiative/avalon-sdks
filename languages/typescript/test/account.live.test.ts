@@ -12,7 +12,7 @@
 // with `npm run test:live` from this package's own directory, after
 // `make start` from the repo root.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { randomIdentityId } from './testIds.js'
+import { randomIdentityWithKey } from './testIds.js'
 import pg from 'pg'
 import { AvalonClient } from '../src/client.js'
 import { generateSigningKey, canonicalMessage, sign, bytesToBase64 } from '../src/crypto/signing.js'
@@ -38,8 +38,11 @@ afterAll(async () => {
 })
 
 async function seedIdentitySession(displayName: string): Promise<{ identityId: string; token: string }> {
-  const identityId = randomIdentityId()
-  await pool.query('INSERT INTO identities (id) VALUES ($1)', [identityId])
+  const { identityId, inceptionKey } = randomIdentityWithKey()
+  await pool.query('INSERT INTO identities (id, inception_public_key) VALUES ($1, $2)', [
+    identityId,
+    Buffer.from(inceptionKey),
+  ])
   await pool.query('INSERT INTO profiles (identity_id, display_name) VALUES ($1, $2)', [identityId, displayName])
   const token = `test-token-${crypto.randomUUID()}`
   const expiresAt = new Date(Date.now() + 60 * 60 * 1000)

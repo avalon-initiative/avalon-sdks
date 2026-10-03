@@ -41,10 +41,11 @@ public class LiveTests
 
     private static async Task<(IdentityId IdentityId, string Token)> SeedIdentitySessionAsync(NpgsqlConnection conn, string displayName)
     {
-        var identityId = IdentityId.RandomForTests();
-        await using (var cmd = new NpgsqlCommand("INSERT INTO identities (id) VALUES ($1)", conn))
+        var (identityId, inceptionKey) = IdentityId.RandomWithKeyForTests();
+        await using (var cmd = new NpgsqlCommand("INSERT INTO identities (id, inception_public_key) VALUES ($1, $2)", conn))
         {
             cmd.Parameters.AddWithValue(identityId.ToString());
+            cmd.Parameters.AddWithValue(inceptionKey);
             await cmd.ExecuteNonQueryAsync();
         }
         await using (var cmd = new NpgsqlCommand("INSERT INTO profiles (identity_id, display_name) VALUES ($1, $2)", conn))
@@ -421,10 +422,11 @@ public class LiveTests
     private static async Task<(IdentityId IdentityId, Guid SigningKeyId, byte[] SigningKeySeed)> SeedIdentityWithSigningKeyAsync(
         NpgsqlConnection conn, string displayName)
     {
-        var identityId = IdentityId.RandomForTests();
-        await using (var cmd = new NpgsqlCommand("INSERT INTO identities (id) VALUES ($1)", conn))
+        var (identityId, inceptionKey) = IdentityId.RandomWithKeyForTests();
+        await using (var cmd = new NpgsqlCommand("INSERT INTO identities (id, inception_public_key) VALUES ($1, $2)", conn))
         {
             cmd.Parameters.AddWithValue(identityId.ToString());
+            cmd.Parameters.AddWithValue(inceptionKey);
             await cmd.ExecuteNonQueryAsync();
         }
         await using (var cmd = new NpgsqlCommand("INSERT INTO profiles (identity_id, display_name) VALUES ($1, $2)", conn))

@@ -19,6 +19,12 @@ fn server_url() -> String {
     std::env::var("AVALON_SERVER_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string())
 }
 
+/// The network id the server under test reports (it must also be in the trust list and signed by the
+/// settlement key those tests assume); `avalon-dev-local` unless `AVALON_NETWORK_ID` says otherwise.
+fn network_id() -> String {
+    std::env::var("AVALON_NETWORK_ID").unwrap_or_else(|_| "avalon-dev-local".to_string())
+}
+
 fn client_with_key(signing_key: &SigningKey) -> AvalonClient {
     AvalonClient::new(AvalonConfig {
         server_url: server_url(),
@@ -36,15 +42,12 @@ async fn register_issuer_succeeds_end_to_end_when_the_declared_network_id_matche
     let issuer_ref = format!("game:sdk-network-test-{}", uuid::Uuid::new_v4().simple());
 
     let registration = client_with_key(&signing_key)
-        .register_issuer(
-            &issuer_ref,
-            TargetNetwork::NetworkId("avalon-dev-local".to_string()),
-        )
+        .register_issuer(&issuer_ref, TargetNetwork::NetworkId(network_id()))
         .await
         .expect("register_issuer should succeed against the real local dev network");
 
     assert_eq!(registration.issuer_ref, issuer_ref);
-    assert_eq!(registration.network_id, "avalon-dev-local");
+    assert_eq!(registration.network_id, network_id());
 }
 
 #[tokio::test]
@@ -54,7 +57,7 @@ async fn register_issuer_is_idempotent_and_updates_the_issuer_ref_on_re_registra
     let first_ref = format!("game:sdk-network-test-{}", uuid::Uuid::new_v4().simple());
     let second_ref = format!("game:sdk-network-test-{}", uuid::Uuid::new_v4().simple());
     let client = client_with_key(&signing_key);
-    let target = || TargetNetwork::NetworkId("avalon-dev-local".to_string());
+    let target = || TargetNetwork::NetworkId(network_id());
 
     client
         .register_issuer(&first_ref, target())

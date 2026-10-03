@@ -78,12 +78,15 @@ namespace Avalon.Sdk
         }
 
         /// <summary>A fresh id from a random key, for tests that never verify a signature against it.</summary>
-        internal static IdentityId RandomForTests()
+        internal static IdentityId RandomForTests() => RandomWithKeyForTests().Id;
+
+        /// <summary>A fresh random inception key and its derived id, for seeding <c>identities</c> rows.</summary>
+        internal static (IdentityId Id, byte[] Key) RandomWithKeyForTests()
         {
             var key = new byte[32];
             using var rng = RandomNumberGenerator.Create();
             rng.GetBytes(key);
-            return Derive(key);
+            return (Derive(key), key);
         }
 
         /// <summary>Whether this id is the one derived from <paramref name="publicKey"/>.</summary>

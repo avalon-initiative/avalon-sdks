@@ -36,9 +36,10 @@ async fn test_pool() -> PgPool {
 /// ceremony itself is exercised in `rust/tests/authenticate.rs`, not
 /// duplicated here).
 async fn seed_identity_session(pool: &PgPool, display_name: &str) -> (IdentityId, String) {
-    let identity_id = IdentityId::random_for_tests();
-    sqlx::query("INSERT INTO identities (id) VALUES ($1)")
+    let (identity_id, inception_key) = IdentityId::random_with_key_for_tests();
+    sqlx::query("INSERT INTO identities (id, inception_public_key) VALUES ($1, $2)")
         .bind(identity_id.to_string())
+        .bind(inception_key.as_slice())
         .execute(pool)
         .await
         .expect("failed to seed identity");
