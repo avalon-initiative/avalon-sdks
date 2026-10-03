@@ -57,6 +57,39 @@ pub fn is_family_member(owner: &str, shard_id: &str) -> bool {
     shard_family_owner(shard_id).is_some_and(|o| o == owner)
 }
 
+const ROUTE_TAG: &[u8] = b"avalon-shard-route-v1";
+
+/// The rendezvous weight of `shard_id` for `key` under `owner`: SHA-256 of `avalon-shard-route-v1`
+/// then owner, key and shard id, each as a u32 big-endian byte length and its UTF-8 bytes.
+pub fn route_weight(owner: &str, key: &str, shard_id: &str) -> [u8; 32] {
+    let mut bytes = ROUTE_TAG.to_vec();
+    put(&mut bytes, owner);
+    put(&mut bytes, key);
+    put(&mut bytes, shard_id);
+    Sha256::digest(&bytes).into()
+}
+
+/// The sibling of `owner`'s family a write for `key` should go to, or `None` when no candidate is
+/// a family member. Highest-random-weight hashing over [`route_weight`], so the same key and set
+/// always give the same sibling and adding or removing one only moves the keys that must move.
+/// Ids outside the family are ignored, duplicates count once, and the order of `siblings` does
+/// not matter. Equal weights (only possible for equal ids) go to the bytewise smaller id. This is
+/// routing only: writes to different siblings are never atomic together.
+pub fn route_write<'a, S: AsRef<str>>(
+    owner: &str,
+    key: &str,
+    siblings: &'a [S],
+) -> Option<&'a str> {
+    pick_sibling(owner, key, siblings.iter().map(AsRef::as_ref))
+}
+
+fn pick_sibling<'a>(owner: &str, key: &str, ids: impl Iterator<Item = &'a str>) -> Option<&'a str> {
+    ids.filter(|id| is_family_member(owner, id))
+        .map(|id| (route_weight(owner, key, id), id))
+        .max_by(|(wa, a), (wb, b)| wa.cmp(wb).then_with(|| b.as_bytes().cmp(a.as_bytes())))
+        .map(|(_, id)| id)
+}
+
 /// The fields of a member's head that its leaf commits to.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct FamilyHead {
@@ -118,6 +151,18 @@ pub struct ShardFamilyResponse {
 }
 
 impl ShardFamilyResponse {
+    /// The served members' shard ids, in shard id order.
+    pub fn sibling_ids(&self) -> impl Iterator<Item = &str> {
+        self.members.iter().map(|m| m.head.shard_id.as_str())
+    }
+
+    /// The sibling a write for `key` should go to among the served members (see [`route_write`]).
+    /// A `partial` response omits siblings that have no head here, so it can route differently
+    /// from the full set.
+    pub fn route_write(&self, key: &str) -> Option<&str> {
+        pick_sibling(&self.owner, key, self.sibling_ids())
+    }
+
     /// Whether `root_hash` is what [`family_root`] gives for the served members.
     pub fn root_matches(&self) -> bool {
         let heads: Vec<FamilyHead> = self.members.iter().map(|m| m.head.clone()).collect();

@@ -117,6 +117,30 @@ async fn fetched_family_without_a_member_has_no_proof_and_detects_tampering() {
 }
 
 #[tokio::test]
+async fn a_fetched_family_routes_writes_among_its_members() {
+    let (body, owner) = body("two members", None);
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/ledger/shard-family"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+        .mount(&server)
+        .await;
+    let family = client(server.uri())
+        .fetch_shard_family(&owner, None)
+        .await
+        .unwrap();
+    let ids: Vec<&str> = family.sibling_ids().collect();
+    assert_eq!(ids, ["game:x", "game:x/2"]);
+    for key in ["a", "b", "c", "d", "e", "f"] {
+        let routed = family.route_write(key).unwrap();
+        assert_eq!(
+            Some(routed),
+            avalon_sdk::shard_family::route_write(&owner, key, &ids)
+        );
+    }
+}
+
+#[tokio::test]
 async fn an_unknown_member_is_not_found() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
