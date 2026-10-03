@@ -34,7 +34,7 @@ public class SocialTests
         var handler = new StubHttpMessageHandler();
         var session = Session.ForTesting(new[] { "presence.read" }, handler.ToHttpClient());
 
-        var result = await session.PresenceOfAsync(Array.Empty<Guid>());
+        var result = await session.PresenceOfAsync(Array.Empty<IdentityId>());
 
         Assert.Empty(result);
         Assert.Empty(handler.Requests);
@@ -43,8 +43,8 @@ public class SocialTests
     [Fact]
     public async Task FriendsAsync_ReturnsFriendsWithoutPresence_WhenPresenceReadNotGranted()
     {
-        var self = Guid.NewGuid();
-        var other = Guid.NewGuid();
+        var self = IdentityId.RandomForTests();
+        var other = IdentityId.RandomForTests();
         var handler = new StubHttpMessageHandler()
             .Enqueue($@"[{{""a"":""{self}"",""b"":""{other}"",""since"":""2026-01-01T00:00:00Z""}}]");
         var session = Session.ForTesting(new[] { "friends.read" }, handler.ToHttpClient(), identityId: self);
@@ -61,8 +61,8 @@ public class SocialTests
     [Fact]
     public async Task FriendsAsync_EmbedsPresence_WhenPresenceReadAlsoGranted()
     {
-        var self = Guid.NewGuid();
-        var other = Guid.NewGuid();
+        var self = IdentityId.RandomForTests();
+        var other = IdentityId.RandomForTests();
         var handler = new StubHttpMessageHandler()
             .Enqueue($@"[{{""a"":""{self}"",""b"":""{other}"",""since"":""2026-01-01T00:00:00Z""}}]")
             .Enqueue($@"[{{""identity_id"":""{other}"",""status"":""Online"",""active_in"":null,""updated_at"":""2026-01-01T00:00:00Z""}}]");
@@ -97,14 +97,14 @@ public class SocialTests
         var session = Session.ForTesting(Array.Empty<string>(), handler.ToHttpClient());
 
         await Assert.ThrowsAsync<CapabilityNotGrantedException>(
-            () => session.UpdateIntegratorPresenceAsync(Guid.NewGuid(), PresenceStatus.Online));
+            () => session.UpdateIntegratorPresenceAsync(IdentityId.RandomForTests(), PresenceStatus.Online));
         Assert.Empty(handler.Requests);
     }
 
     [Fact]
     public async Task UpdateIntegratorPresenceAsync_SendsAChallengeThenAPutRequest()
     {
-        var identityId = Guid.NewGuid();
+        var identityId = IdentityId.RandomForTests();
         var nonce = Convert.ToBase64String(new byte[] { 1, 2, 3, 4 });
         var handler = new StubHttpMessageHandler()
             .Enqueue($$"""{ "challenge_id": "11111111-1111-1111-1111-111111111111", "nonce": "{{nonce}}" }""")
@@ -129,7 +129,7 @@ public class SocialTests
         var handler = new StubHttpMessageHandler().Enqueue("""{ "locations": ["https://node-a.example", "https://node-b.example"] }""");
         var session = Session.ForTesting(Array.Empty<string>(), handler.ToHttpClient());
 
-        var locations = await session.GetLocationsAsync(Guid.NewGuid());
+        var locations = await session.GetLocationsAsync(IdentityId.RandomForTests());
 
         Assert.Equal(2, locations.Count);
         Assert.Contains("https://node-a.example", locations);

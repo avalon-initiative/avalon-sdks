@@ -39,17 +39,17 @@ public class LiveTests
 
     private static AvalonClient Client() => new(new AvalonConfig(ServerUrl!, "sdk-test"));
 
-    private static async Task<(Guid IdentityId, string Token)> SeedIdentitySessionAsync(NpgsqlConnection conn, string displayName)
+    private static async Task<(IdentityId IdentityId, string Token)> SeedIdentitySessionAsync(NpgsqlConnection conn, string displayName)
     {
-        var identityId = Guid.NewGuid();
+        var identityId = IdentityId.RandomForTests();
         await using (var cmd = new NpgsqlCommand("INSERT INTO identities (id) VALUES ($1)", conn))
         {
-            cmd.Parameters.AddWithValue(identityId);
+            cmd.Parameters.AddWithValue(identityId.ToString());
             await cmd.ExecuteNonQueryAsync();
         }
         await using (var cmd = new NpgsqlCommand("INSERT INTO profiles (identity_id, display_name) VALUES ($1, $2)", conn))
         {
-            cmd.Parameters.AddWithValue(identityId);
+            cmd.Parameters.AddWithValue(identityId.ToString());
             cmd.Parameters.AddWithValue(displayName);
             await cmd.ExecuteNonQueryAsync();
         }
@@ -57,7 +57,7 @@ public class LiveTests
         await using (var cmd = new NpgsqlCommand("INSERT INTO sessions (token, identity_id, expires_at) VALUES ($1, $2, $3)", conn))
         {
             cmd.Parameters.AddWithValue(token);
-            cmd.Parameters.AddWithValue(identityId);
+            cmd.Parameters.AddWithValue(identityId.ToString());
             cmd.Parameters.AddWithValue(DateTimeOffset.UtcNow.AddHours(1));
             await cmd.ExecuteNonQueryAsync();
         }
@@ -68,13 +68,13 @@ public class LiveTests
     /// real identity_signing_keys row so ConnectIntegratorAsync below can produce a genuine
     /// fresh signature, same pattern crates/cli/tests/issue_achievement.rs's Rust
     /// equivalent uses.</summary>
-    private static async Task<(Guid KeyId, Ed25519PrivateKeyParameters PrivateKey)> SeedSigningKeyAsync(NpgsqlConnection conn, Guid identityId)
+    private static async Task<(Guid KeyId, Ed25519PrivateKeyParameters PrivateKey)> SeedSigningKeyAsync(NpgsqlConnection conn, IdentityId identityId)
     {
         var privateKey = new Ed25519PrivateKeyParameters(new SecureRandom());
         var publicKey = privateKey.GeneratePublicKey().GetEncoded();
         await using var cmd = new NpgsqlCommand(
             "INSERT INTO identity_signing_keys (identity_id, public_key) VALUES ($1, $2) RETURNING id", conn);
-        cmd.Parameters.AddWithValue(identityId);
+        cmd.Parameters.AddWithValue(identityId.ToString());
         cmd.Parameters.AddWithValue(publicKey);
         var keyId = (Guid)(await cmd.ExecuteScalarAsync())!;
         return (keyId, privateKey);
@@ -85,13 +85,13 @@ public class LiveTests
     /// `indexer_friendships` directly, not the old `friendships` table — that table has been
     /// dead since issue #506 retargeted `crates/server/src/friends.rs` to read the indexer
     /// projection instead, and a row seeded there is invisible to every read path now.</summary>
-    private static async Task SeedFriendshipAsync(NpgsqlConnection conn, Guid x, Guid y)
+    private static async Task SeedFriendshipAsync(NpgsqlConnection conn, IdentityId x, IdentityId y)
     {
         var (a, b) = x.CompareTo(y) < 0 ? (x, y) : (y, x);
         await using var cmd = new NpgsqlCommand(
             "INSERT INTO indexer_friendships (a, b, since) VALUES ($1, $2, now())", conn);
-        cmd.Parameters.AddWithValue(a);
-        cmd.Parameters.AddWithValue(b);
+        cmd.Parameters.AddWithValue(a.ToString());
+        cmd.Parameters.AddWithValue(b.ToString());
         await cmd.ExecuteNonQueryAsync();
     }
 
@@ -408,7 +408,7 @@ public class LiveTests
     /// own InternalsVisibleTo test project, not because these tests exercise a real grant flow
     /// (issues #26-#28 aren't built yet, so every AuthenticateAsync today returns no grants).</summary>
     private static Session SessionForCapabilities(Session authenticated, params string[] capabilities) =>
-        Session.ForTesting(capabilities, authenticated.Http, authenticated.ServerUrl, authenticated.Token, authenticated.IdentityGuid);
+        Session.ForTesting(capabilities, authenticated.Http, authenticated.ServerUrl, authenticated.Token, authenticated.IdentityId);
 
     /// <summary>Seeds an identity plus a real Ed25519 keypair directly into
     /// <c>indexer_identity_signing_keys</c> — what cross-node-login verification
@@ -418,18 +418,18 @@ public class LiveTests
     /// login's verification path only ever checks this one table, not the live-write
     /// <c>identity_signing_keys</c> a real registration would also populate. Returns the
     /// identity id, the assigned signing_key_id, and the real private key seed to sign with.</summary>
-    private static async Task<(Guid IdentityId, Guid SigningKeyId, byte[] SigningKeySeed)> SeedIdentityWithSigningKeyAsync(
+    private static async Task<(IdentityId IdentityId, Guid SigningKeyId, byte[] SigningKeySeed)> SeedIdentityWithSigningKeyAsync(
         NpgsqlConnection conn, string displayName)
     {
-        var identityId = Guid.NewGuid();
+        var identityId = IdentityId.RandomForTests();
         await using (var cmd = new NpgsqlCommand("INSERT INTO identities (id) VALUES ($1)", conn))
         {
-            cmd.Parameters.AddWithValue(identityId);
+            cmd.Parameters.AddWithValue(identityId.ToString());
             await cmd.ExecuteNonQueryAsync();
         }
         await using (var cmd = new NpgsqlCommand("INSERT INTO profiles (identity_id, display_name) VALUES ($1, $2)", conn))
         {
-            cmd.Parameters.AddWithValue(identityId);
+            cmd.Parameters.AddWithValue(identityId.ToString());
             cmd.Parameters.AddWithValue(displayName);
             await cmd.ExecuteNonQueryAsync();
         }
@@ -446,7 +446,7 @@ public class LiveTests
             "VALUES ($1, $2, $3, now())", conn))
         {
             cmd.Parameters.AddWithValue(signingKeyId);
-            cmd.Parameters.AddWithValue(identityId);
+            cmd.Parameters.AddWithValue(identityId.ToString());
             cmd.Parameters.AddWithValue(publicKey.GetEncoded());
             await cmd.ExecuteNonQueryAsync();
         }

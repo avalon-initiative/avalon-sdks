@@ -11,6 +11,8 @@
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+use crate::types::ids::IdentityId;
+
 use crate::SdkError;
 
 use super::AccountSession;
@@ -34,7 +36,7 @@ pub struct Guild {
     /// Free-text description.
     pub description: String,
     /// The current owner.
-    pub owner: Uuid,
+    pub owner: IdentityId,
     /// When the guild was created.
     pub created_at: OffsetDateTime,
     /// `"open"`, `"invite_only"`, or `"application"` — see
@@ -254,7 +256,7 @@ pub struct GuildMember {
     /// The guild.
     pub guild_id: Uuid,
     /// The member.
-    pub identity_id: Uuid,
+    pub identity_id: IdentityId,
     /// The member's current role index.
     pub role_index: i32,
     /// When they joined.
@@ -305,9 +307,9 @@ pub struct GuildInvite {
     /// The guild it's for.
     pub guild_id: Uuid,
     /// The invitee.
-    pub to: Uuid,
+    pub to: IdentityId,
     /// The inviter.
-    pub from: Uuid,
+    pub from: IdentityId,
     /// When it was sent.
     pub created_at: OffsetDateTime,
 }
@@ -337,7 +339,7 @@ pub struct MyGuildInvite {
     /// That guild's name.
     pub guild_name: String,
     /// The inviter.
-    pub from: Uuid,
+    pub from: IdentityId,
     /// When it was sent.
     pub created_at: OffsetDateTime,
 }
@@ -364,7 +366,7 @@ pub struct GuildJoinRequest {
     /// The guild applied to.
     pub guild_id: Uuid,
     /// The applicant.
-    pub applicant: Uuid,
+    pub applicant: IdentityId,
     /// An optional message from the applicant.
     pub message: Option<String>,
     /// `"pending"`, `"approved"`, or `"rejected"`.
@@ -374,7 +376,7 @@ pub struct GuildJoinRequest {
     /// When it was decided, if it has been.
     pub decided_at: Option<OffsetDateTime>,
     /// Who decided it, if it has been.
-    pub decided_by: Option<Uuid>,
+    pub decided_by: Option<IdentityId>,
 }
 
 impl TryFrom<crate::generated::GuildJoinRequestResponse> for GuildJoinRequest {
@@ -445,7 +447,7 @@ pub struct GuildMessage {
     /// The channel it was posted in.
     pub channel_id: Uuid,
     /// The author.
-    pub author: Uuid,
+    pub author: IdentityId,
     /// The message body.
     pub body: String,
     /// When it was sent.
@@ -510,7 +512,7 @@ pub struct GuildEvent {
     /// Scheduled end time, if announced.
     pub ends_at: Option<OffsetDateTime>,
     /// Who created it.
-    pub created_by: Uuid,
+    pub created_by: IdentityId,
     /// When it was created.
     pub created_at: OffsetDateTime,
     /// RSVP tallies.
@@ -551,7 +553,7 @@ pub struct Rsvp {
     /// The event.
     pub event_id: Uuid,
     /// The responder (always the caller).
-    pub identity_id: Uuid,
+    pub identity_id: IdentityId,
     /// `"going"`, `"maybe"`, or `"not_going"`.
     pub status: String,
     /// When this RSVP was last set.
@@ -578,7 +580,7 @@ impl TryFrom<crate::generated::RsvpResponse> for Rsvp {
 #[derive(Debug, Clone)]
 pub struct RsvpRosterEntry {
     /// The responder.
-    pub identity_id: Uuid,
+    pub identity_id: IdentityId,
     /// `"going"`, `"maybe"`, or `"not_going"`.
     pub status: String,
     /// When this RSVP was last set.
@@ -939,12 +941,16 @@ impl AccountSession {
 
     /// `POST /guilds/{id}/transfer-ownership` — owner-only, always signs
     /// (`guild.transfer_ownership`, `[guild_id, current owner, to]`).
-    pub async fn transfer_ownership(&self, guild_id: Uuid, to: Uuid) -> Result<Guild, SdkError> {
+    pub async fn transfer_ownership(
+        &self,
+        guild_id: Uuid,
+        to: &IdentityId,
+    ) -> Result<Guild, SdkError> {
         let signature = self.sign(
             "guild.transfer_ownership",
             &[
                 &guild_id.to_string(),
-                &self.identity().id.0.to_string(),
+                &self.identity().id.to_string(),
                 &to.to_string(),
             ],
         );
@@ -955,7 +961,7 @@ impl AccountSession {
                     &[("id", &guild_id.to_string())],
                 ),
                 &crate::generated::TransferOwnershipRequest {
-                    to,
+                    to: to.clone(),
                     signature: signature.signature,
                     signing_key_id: signature.signing_key_id,
                 },
@@ -1003,7 +1009,7 @@ impl AccountSession {
     pub async fn update_member_role(
         &self,
         guild_id: Uuid,
-        identity_id: Uuid,
+        identity_id: &IdentityId,
         role_index: i32,
     ) -> Result<GuildMember, SdkError> {
         let signature = self.sign(
@@ -1035,7 +1041,11 @@ impl AccountSession {
 
     /// `DELETE /guilds/{id}/members/{identity_id}` — kick, not a role
     /// change; reversible via re-invite. Not signature-required.
-    pub async fn remove_member(&self, guild_id: Uuid, identity_id: Uuid) -> Result<(), SdkError> {
+    pub async fn remove_member(
+        &self,
+        guild_id: Uuid,
+        identity_id: &IdentityId,
+    ) -> Result<(), SdkError> {
         self.delete(&super::path(
             crate::generated::paths::guilds::REMOVE_MEMBER,
             &[
@@ -1066,7 +1076,7 @@ impl AccountSession {
     pub async fn create_guild_invite(
         &self,
         guild_id: Uuid,
-        to: Uuid,
+        to: &IdentityId,
     ) -> Result<GuildInvite, SdkError> {
         let raw: crate::generated::GuildInviteResponse = self
             .post(
@@ -1074,7 +1084,7 @@ impl AccountSession {
                     crate::generated::paths::guilds::CREATE_INVITE,
                     &[("id", &guild_id.to_string())],
                 ),
-                &crate::generated::CreateGuildInviteRequest { to },
+                &crate::generated::CreateGuildInviteRequest { to: to.clone() },
             )
             .await?;
         raw.try_into()

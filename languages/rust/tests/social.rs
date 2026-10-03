@@ -12,6 +12,7 @@
 //! this test cares about the SDK's HTTP/deserialization layer, not how a
 //! session or friendship came to exist.
 
+use avalon_sdk::types::ids::IdentityId;
 use avalon_sdk::types::social::PresenceStatus;
 use avalon_sdk::{AvalonClient, AvalonConfig};
 use sqlx::postgres::PgPoolOptions;
@@ -34,15 +35,15 @@ async fn test_pool() -> PgPool {
 /// Seeds a bare identity + session, bypassing WebAuthn entirely — same
 /// approach `crates/server/tests/friends.rs` uses, since this test doesn't
 /// care how a session was established.
-async fn seed_identity_session(pool: &PgPool, display_name: &str) -> (Uuid, String) {
-    let identity_id = Uuid::new_v4();
+async fn seed_identity_session(pool: &PgPool, display_name: &str) -> (IdentityId, String) {
+    let identity_id = IdentityId::random_for_tests();
     sqlx::query("INSERT INTO identities (id) VALUES ($1)")
-        .bind(identity_id)
+        .bind(identity_id.to_string())
         .execute(pool)
         .await
         .expect("failed to seed identity");
     sqlx::query("INSERT INTO profiles (identity_id, display_name) VALUES ($1, $2)")
-        .bind(identity_id)
+        .bind(identity_id.to_string())
         .bind(display_name)
         .execute(pool)
         .await
@@ -52,7 +53,7 @@ async fn seed_identity_session(pool: &PgPool, display_name: &str) -> (Uuid, Stri
     let expires_at = OffsetDateTime::now_utc() + time::Duration::hours(1);
     sqlx::query("INSERT INTO sessions (token, identity_id, expires_at) VALUES ($1, $2, $3)")
         .bind(&token)
-        .bind(identity_id)
+        .bind(identity_id.to_string())
         .bind(expires_at)
         .execute(pool)
         .await
@@ -83,11 +84,15 @@ fn client() -> AvalonClient {
 /// `subscribe_presence_receives_a_live_update_pushed_by_another_identity`
 /// below, both of which depend on friends-only visibility actually seeing
 /// the seeded pair as friends).
-async fn seed_friendship(pool: &PgPool, x: Uuid, y: Uuid) {
-    let (a, b) = if x < y { (x, y) } else { (y, x) };
+async fn seed_friendship(pool: &PgPool, x: &IdentityId, y: &IdentityId) {
+    let (a, b) = if x.as_str() < y.as_str() {
+        (x, y)
+    } else {
+        (y, x)
+    };
     sqlx::query("INSERT INTO indexer_friendships (a, b, since) VALUES ($1, $2, now())")
-        .bind(a)
-        .bind(b)
+        .bind(a.to_string())
+        .bind(b.to_string())
         .execute(pool)
         .await
         .expect("failed to seed friendship");
@@ -133,7 +138,7 @@ async fn friends_returns_a_friendship_created_via_the_http_api() {
 
     let friends = session.friends().await.expect("friends() should succeed");
     assert_eq!(friends.len(), 1);
-    assert_eq!(friends[0].identity_id.0, bob_id);
+    assert_eq!(friends[0].identity_id, bob_id);
     // presence.read wasn't granted, so no presence should be embedded even
     // though Bob has none published anyway.
     assert!(friends[0].presence.is_none());
@@ -212,7 +217,7 @@ async fn update_presence_then_presence_reflects_it() {
         .expect("update_presence should succeed");
 
     let mine = session.presence().await.expect("presence() should succeed");
-    assert_eq!(mine.identity_id.0, identity_id);
+    assert_eq!(mine.identity_id, identity_id);
     assert_eq!(mine.status, PresenceStatus::Away);
 }
 
@@ -224,7 +229,7 @@ async fn presence_of_reflects_multiple_published_statuses() {
         seed_identity_session(&pool, &format!("sdk-multi-alice-{}", Uuid::new_v4())).await;
     let (bob_id, bob_token) =
         seed_identity_session(&pool, &format!("sdk-multi-bob-{}", Uuid::new_v4())).await;
-    seed_friendship(&pool, alice_id, bob_id).await;
+    seed_friendship(&pool, &alice_id, &bob_id).await;
     let client = client();
 
     let alice_session = client
@@ -248,15 +253,12 @@ async fn presence_of_reflects_multiple_published_statuses() {
         .unwrap();
 
     let both = alice_session
-        .presence_of(&[
-            avalon_sdk::types::ids::IdentityId(alice_id),
-            avalon_sdk::types::ids::IdentityId(bob_id),
-        ])
+        .presence_of(&[alice_id.clone(), bob_id.clone()])
         .await
         .expect("presence_of should succeed");
     assert_eq!(both.len(), 2);
-    let alice_view = both.iter().find(|p| p.identity_id.0 == alice_id).unwrap();
-    let bob_view = both.iter().find(|p| p.identity_id.0 == bob_id).unwrap();
+    let alice_view = both.iter().find(|p| p.identity_id == alice_id).unwrap();
+    let bob_view = both.iter().find(|p| p.identity_id == bob_id).unwrap();
     assert_eq!(alice_view.status, PresenceStatus::Online);
     assert_eq!(bob_view.status, PresenceStatus::Away);
 }
@@ -269,7 +271,7 @@ async fn subscribe_presence_receives_a_live_update_pushed_by_another_identity() 
         seed_identity_session(&pool, &format!("sdk-ws-alice-{}", Uuid::new_v4())).await;
     let (bob_id, bob_token) =
         seed_identity_session(&pool, &format!("sdk-ws-bob-{}", Uuid::new_v4())).await;
-    seed_friendship(&pool, alice_id, bob_id).await;
+    seed_friendship(&pool, &alice_id, &bob_id).await;
     let client = client();
 
     let alice_session = client
@@ -284,7 +286,7 @@ async fn subscribe_presence_receives_a_live_update_pushed_by_another_identity() 
         .grant_for_testing("presence.read");
 
     let mut updates = alice_session
-        .subscribe_presence(&[avalon_sdk::types::ids::IdentityId(bob_id)])
+        .subscribe_presence(std::slice::from_ref(&bob_id))
         .await
         .expect("subscribe_presence should connect");
 
@@ -295,7 +297,7 @@ async fn subscribe_presence_receives_a_live_update_pushed_by_another_identity() 
         .await
         .expect("catch-up snapshot should arrive")
         .expect("channel should still be open");
-    assert_eq!(snapshot.identity_id.0, bob_id);
+    assert_eq!(snapshot.identity_id, bob_id);
     assert_eq!(snapshot.status, PresenceStatus::Offline);
 
     bob_session
@@ -307,7 +309,7 @@ async fn subscribe_presence_receives_a_live_update_pushed_by_another_identity() 
         .await
         .expect("a pushed update should arrive without polling")
         .expect("channel should still be open");
-    assert_eq!(pushed.identity_id.0, bob_id);
+    assert_eq!(pushed.identity_id, bob_id);
     assert_eq!(pushed.status, PresenceStatus::Online);
 }
 
@@ -323,7 +325,7 @@ async fn subscribe_presence_without_grant_is_rejected_before_any_connection_live
     let session = client.authenticate(&token).await.unwrap();
 
     let result = session
-        .subscribe_presence(&[avalon_sdk::types::ids::IdentityId(Uuid::new_v4())])
+        .subscribe_presence(&[IdentityId::random_for_tests()])
         .await;
     assert!(matches!(
         result,

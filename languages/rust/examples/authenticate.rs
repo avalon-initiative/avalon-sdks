@@ -42,7 +42,7 @@ async fn main() {
 
     let profile = session.profile();
     println!("Authenticated as: {}", profile.display_name);
-    println!("Identity id:       {}", session.identity().id.0);
+    println!("Identity id:       {}", session.identity().id);
     if let Some(bio) = &profile.bio {
         println!("Bio:               {bio}");
     }

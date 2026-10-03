@@ -77,8 +77,8 @@ namespace Avalon.Sdk
 
         /// <summary>Backs <see cref="Identity"/>/<see cref="SigningKeyId"/> comparisons in the
         /// domain-split files without reparsing a string on every call — mirrors
-        /// <see cref="Session"/>'s own <c>IdentityGuid</c> field.</summary>
-        internal Guid IdentityGuid => Identity.Id;
+        /// <see cref="Session"/>'s own <c>OwnIdentityId</c> field.</summary>
+        internal IdentityId OwnIdentityId => Identity.Id;
 
         internal AccountSession(Identity identity, Profile profile, HttpClient http, string serverUrl, string token, SigningKeyMaterial? signing)
         {
@@ -187,7 +187,7 @@ namespace Avalon.Sdk
                 Location = update.Location,
             };
             var me = await PatchAsync<Avalon.Sdk.Generated.UpdateProfileRequest, Avalon.Sdk.Generated.ProfileResponse>("/me", body, ct).ConfigureAwait(false);
-            Identity = new Identity(me.IdentityId, me.IdentityCreatedAt);
+            Identity = new Identity(IdentityId.Parse(me.IdentityId), me.IdentityCreatedAt);
             Profile = MeResponseToProfile(me);
         }
 
@@ -199,7 +199,7 @@ namespace Avalon.Sdk
         /// across two independently-generated/hand-written enums could.</summary>
         private static Genre ToDomainGenre(Avalon.Sdk.Generated.Genre generated) => (Genre)Enum.Parse(typeof(Genre), generated.ToString());
 
-        private static Profile MeResponseToProfile(Avalon.Sdk.Generated.ProfileResponse me) => new Profile(me.IdentityId)
+        private static Profile MeResponseToProfile(Avalon.Sdk.Generated.ProfileResponse me) => new Profile(IdentityId.Parse(me.IdentityId))
         {
             DisplayName = me.DisplayName,
             AvatarUrl = me.AvatarUrl,
@@ -225,7 +225,7 @@ namespace Avalon.Sdk
                 throw await Session.ServerErrorAsync(response).ConfigureAwait(false);
             }
             var me = await Session.ReadJsonAsync<Avalon.Sdk.Generated.ProfileResponse>(response, ct).ConfigureAwait(false);
-            return (new Identity(me.IdentityId, me.IdentityCreatedAt), MeResponseToProfile(me));
+            return (new Identity(IdentityId.Parse(me.IdentityId), me.IdentityCreatedAt), MeResponseToProfile(me));
         }
 
         /// <summary><c>GET /me/devices</c>, matched by base64 public key — the only way a
@@ -460,11 +460,11 @@ namespace Avalon.Sdk
             HttpClient? http = null,
             string serverUrl = "http://127.0.0.1:1",
             string token = "test-token",
-            Guid? identityId = null,
+            IdentityId? identityId = null,
             SigningKeyMaterial? signing = null,
             Profile? profile = null)
         {
-            var id = identityId ?? Guid.NewGuid();
+            var id = identityId ?? IdentityId.RandomForTests();
             return new AccountSession(
                 new Identity(id, DateTimeOffset.UtcNow),
                 profile ?? new Profile(id) { DisplayName = "test" },

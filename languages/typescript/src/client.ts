@@ -29,6 +29,8 @@ import {
   identityCreatedSigningBytes,
   type SigningKeyPair,
 } from './crypto/signing.js'
+import { deriveIdentityId, parseIdentityId, type IdentityId } from './identityId.js'
+import { isAcceptableShardKey } from './network/strictEd25519.js'
 import { generateMnemonicSigningKey } from './crypto/mnemonic.js'
 import { authenticate as authenticateIntegrator, type AuthenticateOptions, type IntegratorSession } from './integratorSession.js'
 import { getNodeStatus } from './nodeStatus.js'
@@ -55,6 +57,8 @@ export interface AvalonClientConfig {
 // hand-written.
 interface RegisterStartResponseWire {
   ticket_id: string
+  network_id: string
+  shard_id: string
   challenge: { publicKey: PublicKeyCredentialCreationOptionsJSON }
 }
 
@@ -115,30 +119,50 @@ export class AvalonClient {
     deviceLabel: string | undefined,
     keyPair: SigningKeyPair,
   ): Promise<AccountSession> {
-    const identityId = crypto.randomUUID()
     const { secretKey, publicKey } = keyPair
-    const eventSigningPublicKey = bytesToBase64(publicKey)
+    if (!isAcceptableShardKey(publicKey)) {
+      throw new TypeError('the inception key is not an acceptable Ed25519 key')
+    }
+    // The id is derived from the inception key, so the key comes first.
+    const identityId = deriveIdentityId(publicKey)
 
     const start = await request<RegisterStartResponseWire>(this.serverUrl, '/identities/register/start', {
       method: 'POST',
-      body: { identity_id: identityId, display_name: displayName },
+      body: {
+        identity_id: identityId,
+        event_signing_public_key: bytesToBase64(publicKey),
+        display_name: displayName,
+      },
     })
 
     const credential: RegistrationResponseJSON = await runRegistrationCeremony(start.challenge.publicKey)
 
-    const signingBytes = identityCreatedSigningBytes(identityId, displayName)
+    const signingBytes = identityCreatedSigningBytes(
+      start.network_id,
+      start.shard_id,
+      start.ticket_id,
+      identityId,
+      publicKey,
+      displayName,
+    )
     const eventSignature = bytesToBase64(ed25519Sign(secretKey, signingBytes))
 
-    await request(this.serverUrl, '/identities/register/finish', {
-      method: 'POST',
-      body: {
-        ticket_id: start.ticket_id,
-        webauthn_credential: credential,
-        event_signing_public_key: eventSigningPublicKey,
-        event_signature: eventSignature,
-        device_label: deviceLabel ?? null,
+    const finish = await request<components['schemas']['RegisterFinishResponse']>(
+      this.serverUrl,
+      '/identities/register/finish',
+      {
+        method: 'POST',
+        body: {
+          ticket_id: start.ticket_id,
+          webauthn_credential: credential,
+          event_signature: eventSignature,
+          device_label: deviceLabel ?? null,
+        },
       },
-    })
+    )
+    if (finish.identity_id !== identityId) {
+      throw new Error('register/finish returned a different identity id than the one derived from the key')
+    }
 
     const credentials: AccountCredentials = {
       identityId,
@@ -157,7 +181,7 @@ export class AvalonClient {
    * earlier registration (or a prior `login()`). */
   async login(credentials: AccountCredentials): Promise<AccountSession> {
     const secretKey = base64ToBytes(credentials.signingKeySecretBase64)
-    const session = await this.finishLogin(credentials.identityId, secretKey)
+    const session = await this.finishLogin(parseIdentityId(credentials.identityId), secretKey)
     session._credentials = credentials
     return session
   }
@@ -171,14 +195,14 @@ export class AvalonClient {
    * hold a mnemonic-derived key it wants to attach — use
    * `AccountSession.attachSigningKey` afterward for that, same as
    * `resumeAccountSession`'s own no-key posture. */
-  async loginWithIdentityId(identityId: string): Promise<AccountSession> {
-    return this.finishLogin(identityId, undefined)
+  async loginWithIdentityId(identityId: IdentityId): Promise<AccountSession> {
+    return this.finishLogin(parseIdentityId(identityId), undefined)
   }
 
   /** Shared `POST /sessions/start` -> ceremony -> `POST /sessions/finish`
    * -> `GET /me` -> resolve own `signingKeyId` (when a key was supplied)
    * sequence used by `register()`, `login()`, and `loginWithIdentityId()`. */
-  private async finishLogin(identityId: string, secretKey: Uint8Array | undefined): Promise<AccountSession> {
+  private async finishLogin(identityId: IdentityId, secretKey: Uint8Array | undefined): Promise<AccountSession> {
     const start = await request<SessionStartResponseWire>(this.serverUrl, '/sessions/start', {
       method: 'POST',
       body: { identity_id: identityId },

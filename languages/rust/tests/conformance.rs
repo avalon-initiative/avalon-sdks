@@ -30,7 +30,12 @@ use avalon_sdk::achievements::{
     attestation_signing_bytes, bulk_attestation_signing_bytes, revocation_signing_bytes,
 };
 use avalon_sdk::cross_node_login::signing_bytes as cross_node_login_signing_bytes;
+use avalon_sdk::identity_signing::{
+    device_grant_approval_signing_bytes_v2, identity_created_signing_bytes_v2,
+    is_acceptable_ed25519_key, signing_key_revoked_signing_bytes_v2, verify_strict,
+};
 use avalon_sdk::sth::signing_message as sth_signing_message;
+use avalon_sdk::types::ids::IdentityId;
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -75,6 +80,21 @@ fn parse_uuid(v: &Value, field: &str) -> Uuid {
             .unwrap_or_else(|| panic!("missing {field}")),
     )
     .unwrap_or_else(|e| panic!("invalid uuid in {field}: {e}"))
+}
+
+fn parse_identity_id(v: &Value, field: &str) -> IdentityId {
+    v[field]
+        .as_str()
+        .unwrap_or_else(|| panic!("missing {field}"))
+        .parse()
+        .unwrap_or_else(|e| panic!("invalid identity id in {field}: {e}"))
+}
+
+fn key32(hex_key: &str) -> [u8; 32] {
+    hex::decode(hex_key)
+        .expect("valid hex key")
+        .try_into()
+        .expect("32-byte key")
 }
 
 fn to_hex(bytes: &[u8]) -> String {
@@ -140,7 +160,7 @@ fn cross_node_login_grant_signing_matches_shared_vectors() {
                 .unwrap();
 
         let bytes = cross_node_login_signing_bytes(
-            parse_uuid(input, "identityId"),
+            &parse_identity_id(input, "identityId"),
             parse_uuid(input, "signingKeyId"),
             input["destinationBaseUrl"].as_str().unwrap(),
             input["requestingContext"].as_str().unwrap(),
@@ -194,7 +214,7 @@ fn attestation_signing_matches_shared_vectors() {
             "issue" => attestation_signing_bytes(
                 claim_kind,
                 issuer_ref,
-                parse_uuid(input, "subject"),
+                &parse_identity_id(input, "subject"),
                 input["achievement"].as_str().unwrap(),
             ),
             "bulk_issue" => {
@@ -207,7 +227,7 @@ fn attestation_signing_matches_shared_vectors() {
                 bulk_attestation_signing_bytes(
                     claim_kind,
                     issuer_ref,
-                    parse_uuid(input, "subject"),
+                    &parse_identity_id(input, "subject"),
                     &achievements,
                 )
             }
@@ -680,6 +700,243 @@ fn shard_family_head_matches_shared_vectors() {
             is_family_member(owner, id),
             v["expected"].as_bool().unwrap(),
             "[{owner:?} {id:?}]"
+        );
+    }
+}
+
+#[test]
+fn identity_id_matches_shared_vectors() {
+    let doc = load("identity-id.json");
+    assert!(supported_in(&doc, "rust"));
+    for vector in doc["vectors"].as_array().unwrap() {
+        let name = vector["name"].as_str().unwrap();
+        let input = &vector["input"];
+        let expected = &vector["expected"];
+        match vector["kind"].as_str().unwrap() {
+            "derive" => {
+                let seed: [u8; 32] = key32(input["seedHex"].as_str().unwrap());
+                let public_key = SigningKey::from_bytes(&seed).verifying_key().to_bytes();
+                assert_eq!(to_hex(&public_key), input["publicKeyHex"].as_str().unwrap());
+                let mut preimage = b"avalon-identity-id-v1".to_vec();
+                preimage.extend_from_slice(&public_key);
+                assert_eq!(to_hex(&preimage), expected["preimageHex"].as_str().unwrap());
+                let id = IdentityId::derive(&public_key);
+                assert_eq!(
+                    id.to_string(),
+                    expected["identityId"].as_str().unwrap(),
+                    "[{name}]"
+                );
+                assert!(id.matches_key(&public_key));
+            }
+            "parse" => {
+                let text = input["identityId"].as_str().unwrap();
+                assert_eq!(
+                    text.parse::<IdentityId>().is_ok(),
+                    expected["valid"].as_bool().unwrap(),
+                    "[{name}]"
+                );
+            }
+            "key_acceptability" => {
+                let bytes = key32(input["publicKeyHex"].as_str().unwrap());
+                let acceptable = VerifyingKey::from_bytes(&bytes)
+                    .map(|key| is_acceptable_ed25519_key(&key))
+                    .unwrap_or(false);
+                assert_eq!(
+                    acceptable,
+                    expected["acceptable"].as_bool().unwrap(),
+                    "[{name}]"
+                );
+            }
+            "distinct_from_shard_id" => {
+                let bytes = key32(input["publicKeyHex"].as_str().unwrap());
+                let key = VerifyingKey::from_bytes(&bytes).unwrap();
+                let id = IdentityId::derive(&bytes);
+                assert_eq!(id.to_string(), expected["identityId"].as_str().unwrap());
+                let node_id = avalon_sdk::self_certifying::self_certifying_id(&key);
+                assert_eq!(
+                    node_id,
+                    expected["nodeShardId"].as_str().unwrap(),
+                    "[{name}]"
+                );
+                assert_ne!(node_id, id.to_string());
+                assert!(!expected["equal"].as_bool().unwrap());
+            }
+            "strict_verify" => {
+                let key = VerifyingKey::from_bytes(&key32(input["publicKeyHex"].as_str().unwrap()));
+                let signature: [u8; 64] = hex::decode(input["signatureHex"].as_str().unwrap())
+                    .unwrap()
+                    .try_into()
+                    .unwrap();
+                let message = hex::decode(input["messageHex"].as_str().unwrap()).unwrap();
+                let valid = key
+                    .map(|key| verify_strict(&key, &message, &signature))
+                    .unwrap_or(false);
+                assert_eq!(valid, expected["valid"].as_bool().unwrap(), "[{name}]");
+            }
+            other => panic!("[{name}] unknown kind {other}"),
+        }
+    }
+}
+
+#[test]
+fn identity_created_signing_matches_shared_vectors() {
+    let doc = load("identity-created-signing.json");
+    assert!(supported_in(&doc, "rust"));
+    let signing_key = signing_key_from_seed_hex(doc["signingKeySeedHex"].as_str().unwrap());
+    let public_key = signing_key.verifying_key().to_bytes();
+    assert_eq!(
+        to_hex(&public_key),
+        doc["signingPublicKeyHex"].as_str().unwrap()
+    );
+    let identity_id = parse_identity_id(&doc, "identityId");
+    assert!(identity_id.matches_key(&public_key));
+
+    let bytes_for = |input: &Value| {
+        identity_created_signing_bytes_v2(
+            input["networkId"].as_str().unwrap(),
+            input["shardId"].as_str().unwrap(),
+            parse_uuid(input, "ticketId"),
+            &identity_id,
+            &public_key,
+            input["displayName"].as_str().unwrap(),
+        )
+    };
+    for vector in doc["vectors"].as_array().unwrap() {
+        let name = vector["name"].as_str().unwrap();
+        let bytes = bytes_for(&vector["input"]);
+        let expected = &vector["expected"];
+        assert_eq!(
+            to_hex(&bytes),
+            expected["signingBytesHex"].as_str().unwrap(),
+            "[{name}]"
+        );
+        assert_eq!(
+            String::from_utf8(bytes.clone()).unwrap(),
+            expected["signingBytesUtf8"].as_str().unwrap(),
+            "[{name}]"
+        );
+        assert_signature_matches(
+            name,
+            &signing_key,
+            &bytes,
+            expected["signatureHex"].as_str().unwrap(),
+        );
+    }
+    for vector in doc["replayVectors"].as_array().unwrap() {
+        let name = vector["name"].as_str().unwrap();
+        let input = &vector["input"];
+        let signature: [u8; 64] = hex::decode(input["signatureHex"].as_str().unwrap())
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let valid = verify_strict(&signing_key.verifying_key(), &bytes_for(input), &signature);
+        assert_eq!(
+            valid,
+            vector["expected"]["valid"].as_bool().unwrap(),
+            "[{name}]"
+        );
+    }
+    for vector in doc["domainSeparationVectors"].as_array().unwrap() {
+        let name = vector["name"].as_str().unwrap();
+        let input = &vector["input"];
+        let identity_id = parse_identity_id(input, "identityId");
+        let v2 = identity_created_signing_bytes_v2(
+            input["networkId"].as_str().unwrap(),
+            input["shardId"].as_str().unwrap(),
+            parse_uuid(input, "ticketId"),
+            &identity_id,
+            &public_key,
+            input["displayName"].as_str().unwrap(),
+        );
+        let expected = &vector["expected"];
+        assert_eq!(
+            to_hex(&v2),
+            expected["v2SigningBytesHex"].as_str().unwrap(),
+            "[{name}]"
+        );
+        assert_ne!(
+            String::from_utf8(v2).unwrap(),
+            expected["v1SigningBytesUtf8"].as_str().unwrap()
+        );
+        assert!(!expected["equal"].as_bool().unwrap());
+    }
+}
+
+#[test]
+fn device_grant_approval_signing_matches_shared_vectors() {
+    let doc = load("device-grant-approval.json");
+    assert!(supported_in(&doc, "rust"));
+    let signing_key = signing_key_from_seed_hex(doc["signingKeySeedHex"].as_str().unwrap());
+    assert_eq!(
+        to_hex(signing_key.verifying_key().as_bytes()),
+        doc["signingPublicKeyHex"].as_str().unwrap()
+    );
+    let requested = signing_key_from_seed_hex(doc["requestedKeySeedHex"].as_str().unwrap());
+    assert_eq!(
+        to_hex(requested.verifying_key().as_bytes()),
+        doc["requestedPublicKeyHex"].as_str().unwrap()
+    );
+    for vector in doc["vectors"].as_array().unwrap() {
+        let name = vector["name"].as_str().unwrap();
+        let input = &vector["input"];
+        let bytes = device_grant_approval_signing_bytes_v2(
+            parse_uuid(input, "grantId"),
+            &parse_identity_id(input, "identityId"),
+            &key32(input["requestedPublicKeyHex"].as_str().unwrap()),
+        );
+        let expected = &vector["expected"];
+        assert_eq!(
+            to_hex(&bytes),
+            expected["signingBytesHex"].as_str().unwrap(),
+            "[{name}]"
+        );
+        assert_eq!(
+            String::from_utf8(bytes.clone()).unwrap(),
+            expected["signingBytesUtf8"].as_str().unwrap(),
+            "[{name}]"
+        );
+        assert_signature_matches(
+            name,
+            &signing_key,
+            &bytes,
+            expected["signatureHex"].as_str().unwrap(),
+        );
+    }
+}
+
+#[test]
+fn signing_key_revoked_signing_matches_shared_vectors() {
+    let doc = load("signing-key-revoked.json");
+    assert!(supported_in(&doc, "rust"));
+    let signing_key = signing_key_from_seed_hex(doc["signingKeySeedHex"].as_str().unwrap());
+    assert_eq!(
+        to_hex(signing_key.verifying_key().as_bytes()),
+        doc["signingPublicKeyHex"].as_str().unwrap()
+    );
+    for vector in doc["vectors"].as_array().unwrap() {
+        let name = vector["name"].as_str().unwrap();
+        let input = &vector["input"];
+        let bytes = signing_key_revoked_signing_bytes_v2(
+            &parse_identity_id(input, "identityId"),
+            parse_uuid(input, "signingKeyId"),
+            parse_uuid(input, "revokedBySigningKeyId"),
+        );
+        let expected = &vector["expected"];
+        assert_eq!(
+            to_hex(&bytes),
+            expected["signingBytesHex"].as_str().unwrap(),
+            "[{name}]"
+        );
+        assert_eq!(
+            String::from_utf8(bytes.clone()).unwrap(),
+            expected["signingBytesUtf8"].as_str().unwrap(),
+            "[{name}]"
+        );
+        assert_signature_matches(
+            name,
+            &signing_key,
+            &bytes,
+            expected["signatureHex"].as_str().unwrap(),
         );
     }
 }

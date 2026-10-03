@@ -10,6 +10,7 @@
 //! `identity_recovery_status`/`get_recovery_request`/
 //! `finalize_recovery_request` surface, not re-proving registration.
 
+use avalon_sdk::types::ids::IdentityId;
 use avalon_sdk::{AvalonClient, AvalonConfig};
 use uuid::Uuid;
 
@@ -34,7 +35,7 @@ fn plain_client() -> AvalonClient {
 async fn befriend(
     http: &reqwest::Client,
     base: &str,
-    guardian_id: Uuid,
+    guardian_id: &IdentityId,
     owner_token: &str,
     guardian_token: &str,
 ) {
@@ -78,25 +79,25 @@ async fn start_recovery_request_then_status_reads_agree_on_the_same_pending_requ
         .register(&guardian_name)
         .await
         .expect("register guardian should succeed against a real server");
-    let owner_id = owner.identity().id.0;
-    let guardian_id = guardian.identity().id.0;
+    let owner_id = owner.identity().id.clone();
+    let guardian_id = guardian.identity().id.clone();
     let http = reqwest::Client::new();
     befriend(
         &http,
         &server_url(),
-        guardian_id,
+        &guardian_id,
         owner.token(),
         guardian.token(),
     )
     .await;
 
     owner
-        .set_guardians(&[guardian_id], 1)
+        .set_guardians(std::slice::from_ref(&guardian_id), 1)
         .await
         .expect("set_guardians should succeed for the owner's own identity");
 
     let request = client
-        .start_recovery_request(owner_id, Some("recovered laptop"))
+        .start_recovery_request(&owner_id, Some("recovered laptop"))
         .await
         .expect("start_recovery_request should drive a real WebAuthn ceremony end to end");
     assert_eq!(request.identity_id, owner_id);
@@ -104,7 +105,7 @@ async fn start_recovery_request_then_status_reads_agree_on_the_same_pending_requ
     assert_eq!(request.status, "pending_approvals");
 
     let by_identity = client
-        .identity_recovery_status(owner_id)
+        .identity_recovery_status(&owner_id)
         .await
         .expect("identity_recovery_status should succeed")
         .expect("a freshly started recovery request should be the identity's active one");
@@ -135,22 +136,25 @@ async fn finalize_before_the_delay_elapses_is_rejected_not_silently_granted() {
 
     let owner = client.register(&owner_name).await.unwrap();
     let guardian = client.register(&guardian_name).await.unwrap();
-    let owner_id = owner.identity().id.0;
-    let guardian_id = guardian.identity().id.0;
+    let owner_id = owner.identity().id.clone();
+    let guardian_id = guardian.identity().id.clone();
     let http = reqwest::Client::new();
     befriend(
         &http,
         &server_url(),
-        guardian_id,
+        &guardian_id,
         owner.token(),
         guardian.token(),
     )
     .await;
 
-    owner.set_guardians(&[guardian_id], 1).await.unwrap();
+    owner
+        .set_guardians(std::slice::from_ref(&guardian_id), 1)
+        .await
+        .unwrap();
 
     let request = client
-        .start_recovery_request(owner_id, None)
+        .start_recovery_request(&owner_id, None)
         .await
         .expect("start_recovery_request should succeed");
 

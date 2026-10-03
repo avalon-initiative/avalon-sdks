@@ -64,3 +64,18 @@ export function verifyCofactorless(
     return false
   }
 }
+
+/**
+ * Strict verification for identity-bound signatures: `verifyCofactorless` that also rejects a
+ * small-order key or a small-order R, like ed25519-dalek's `verify_strict`; never throws.
+ */
+export function verifyStrict(publicKey: Uint8Array, message: Uint8Array, signature: Uint8Array): boolean {
+  try {
+    if (publicKey.length !== 32 || signature.length !== 64) return false
+    if (Point.fromBytes(publicKey, true).isSmallOrder()) return false
+    if (Point.fromBytes(signature.slice(0, 32), true).isSmallOrder()) return false
+    return verifyCofactorless(publicKey, message, signature)
+  } catch {
+    return false
+  }
+}

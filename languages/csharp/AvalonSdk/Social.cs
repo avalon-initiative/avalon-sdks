@@ -37,7 +37,7 @@ namespace Avalon.Sdk
     public sealed class Presence
     {
         [JsonPropertyName("identity_id")]
-        public Guid IdentityId { get; set; }
+        public IdentityId IdentityId { get; set; }
 
         [JsonPropertyName("status")]
         public PresenceStatus Status { get; set; }
@@ -57,14 +57,14 @@ namespace Avalon.Sdk
     /// </summary>
     public sealed class Friend
     {
-        public Friend(Guid identityId, string? displayName, Presence? presence)
+        public Friend(IdentityId identityId, string? displayName, Presence? presence)
         {
             IdentityId = identityId;
             DisplayName = displayName;
             Presence = presence;
         }
 
-        public Guid IdentityId { get; }
+        public IdentityId IdentityId { get; }
         public string? DisplayName { get; }
 
         /// <summary>Populated only when presence.read is also granted alongside friends.read.</summary>
@@ -83,7 +83,7 @@ namespace Avalon.Sdk
         public string Type => "subscribe";
 
         [JsonPropertyName("ids")]
-        public List<Guid> Ids { get; set; } = new List<Guid>();
+        public List<IdentityId> Ids { get; set; } = new List<IdentityId>();
     }
 
     public sealed partial class Session
@@ -98,9 +98,10 @@ namespace Avalon.Sdk
 
         /// <summary>Builds a Friend view from a raw friendship plus whatever presence data is
         /// available for the other party — testable without any HTTP call.</summary>
-        private static Friend MergeFriend(Avalon.Sdk.Generated.FriendshipResponse friendship, Guid selfId, IReadOnlyDictionary<Guid, Presence> presenceById)
+        private static Friend MergeFriend(Avalon.Sdk.Generated.FriendshipResponse friendship, IdentityId selfId, IReadOnlyDictionary<IdentityId, Presence> presenceById)
         {
-            var other = friendship.A == selfId ? friendship.B : friendship.A;
+            var a = IdentityId.Parse(friendship.A);
+            var other = a == selfId ? IdentityId.Parse(friendship.B) : a;
             presenceById.TryGetValue(other, out var presence);
             return new Friend(other, null, presence);
         }
@@ -123,7 +124,7 @@ namespace Avalon.Sdk
         /// <see cref="Presence"/> instead, since it has no OpenAPI coverage at all.</summary>
         private static Presence ToDomainPresence(Avalon.Sdk.Generated.PresenceResponse p) => new Presence
         {
-            IdentityId = p.IdentityId,
+            IdentityId = IdentityId.Parse(p.IdentityId),
             Status = ToDomainPresenceStatus(p.Status),
             ActiveIn = p.ActiveIn,
             UpdatedAt = p.UpdatedAt,
@@ -159,24 +160,24 @@ namespace Avalon.Sdk
             var friendships = await ReadJsonAsync<List<Avalon.Sdk.Generated.FriendshipResponse>>(response, ct).ConfigureAwait(false)
                 ?? new List<Avalon.Sdk.Generated.FriendshipResponse>();
 
-            var presenceById = new Dictionary<Guid, Presence>();
+            var presenceById = new Dictionary<IdentityId, Presence>();
             if (HasCapability("presence.read") && friendships.Count > 0)
             {
-                var otherIds = friendships.Select(f => f.A == IdentityGuid ? f.B : f.A).ToArray();
+                var otherIds = friendships.Select(f => IdentityId.Parse(f.A) == OwnIdentityId ? IdentityId.Parse(f.B) : IdentityId.Parse(f.A)).ToArray();
                 foreach (var presence in await PresenceOfAsync(otherIds, ct).ConfigureAwait(false))
                 {
                     presenceById[presence.IdentityId] = presence;
                 }
             }
 
-            return friendships.Select(f => MergeFriend(f, IdentityGuid, presenceById)).ToList();
+            return friendships.Select(f => MergeFriend(f, OwnIdentityId, presenceById)).ToList();
         }
 
         /// <summary>The calling user's own presence, as the server currently has it.</summary>
         public async Task<Presence> PresenceAsync(CancellationToken ct = default)
         {
             Require("presence.read");
-            var mine = await PresenceOfAsync(new[] { IdentityGuid }, ct).ConfigureAwait(false);
+            var mine = await PresenceOfAsync(new[] { OwnIdentityId }, ct).ConfigureAwait(false);
             // GET /presence?ids=<one id> always returns exactly one entry — the store always
             // answers for any id (missing/stale reads as Offline).
             return mine[0];
@@ -184,7 +185,7 @@ namespace Avalon.Sdk
 
         /// <summary>GET /presence?ids=… for the given identities. No visibility filtering
         /// yet — see the module comment.</summary>
-        public async Task<IReadOnlyList<Presence>> PresenceOfAsync(IReadOnlyList<Guid> ids, CancellationToken ct = default)
+        public async Task<IReadOnlyList<Presence>> PresenceOfAsync(IReadOnlyList<IdentityId> ids, CancellationToken ct = default)
         {
             Require("presence.read");
             if (ids.Count == 0)
@@ -227,7 +228,7 @@ namespace Avalon.Sdk
         /// channel reader on a background task. Disposing the returned CancellationTokenSource
         /// (or cancelling ct) ends the background task; there is no separate unsubscribe call.
         /// </summary>
-        public async Task<ChannelReader<Presence>> SubscribePresenceAsync(IReadOnlyList<Guid> ids, CancellationToken ct = default)
+        public async Task<ChannelReader<Presence>> SubscribePresenceAsync(IReadOnlyList<IdentityId> ids, CancellationToken ct = default)
         {
             Require("presence.read");
 
@@ -326,7 +327,7 @@ namespace Avalon.Sdk
         /// server rejects a mismatch between that header and <paramref name="identityId"/>
         /// itself, not just a missing grant.</summary>
         public async Task<Presence> UpdateIntegratorPresenceAsync(
-            Guid identityId, PresenceStatus status, Guid? activeIn = null, CancellationToken ct = default)
+            IdentityId identityId, PresenceStatus status, Guid? activeIn = null, CancellationToken ct = default)
         {
             Require("presence.publish");
 

@@ -161,7 +161,7 @@ namespace Avalon.Sdk.Generated
 
         /// <summary>
         /// Base64-encoded Ed25519 signature over
-        /// <br/>`device_grant_approval_signing_bytes(grant_id, identity_id, requested_signing_public_key)`,
+        /// <br/>`device_grant_approval_signing_bytes_v2(grant_id, identity_id, requested_signing_public_key)`,
         /// <br/>produced by `approver_signing_key_id`'s key.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("signature")]
@@ -200,7 +200,7 @@ namespace Avalon.Sdk.Generated
         public System.DateTimeOffset ArchivedAt { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("author")]
-        public System.Guid Author { get; set; } = default!;
+        public string Author { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("body")]
         public string Body { get; set; } = default!;
@@ -277,7 +277,7 @@ namespace Avalon.Sdk.Generated
         public AttestationProofResponse Proof { get; set; } = new AttestationProofResponse();
 
         [System.Text.Json.Serialization.JsonPropertyName("subject")]
-        public System.Guid Subject { get; set; } = default!;
+        public string Subject { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("validity")]
         public ValidityResponse Validity { get; set; } = new ValidityResponse();
@@ -304,7 +304,7 @@ namespace Avalon.Sdk.Generated
         public AttestationSignatureResponse Proof { get; set; } = new AttestationSignatureResponse();
 
         [System.Text.Json.Serialization.JsonPropertyName("subject")]
-        public System.Guid Subject { get; set; } = default!;
+        public string Subject { get; set; } = default!;
 
     }
 
@@ -334,7 +334,7 @@ namespace Avalon.Sdk.Generated
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("blocked")]
-        public System.Guid Blocked { get; set; } = default!;
+        public string Blocked { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("created_at")]
         public System.DateTimeOffset CreatedAt { get; set; } = default!;
@@ -346,7 +346,7 @@ namespace Avalon.Sdk.Generated
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("blocked")]
-        public System.Guid Blocked { get; set; } = default!;
+        public string Blocked { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("created_at")]
         public System.DateTimeOffset CreatedAt { get; set; } = default!;
@@ -565,7 +565,7 @@ namespace Avalon.Sdk.Generated
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("author")]
-        public System.Guid Author { get; set; } = default!;
+        public string Author { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("body")]
         public string Body { get; set; } = default!;
@@ -589,7 +589,7 @@ namespace Avalon.Sdk.Generated
         public System.Guid Id { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("participants")]
-        public System.Collections.Generic.ICollection<System.Guid> Participants { get; set; } = new System.Collections.ObjectModel.Collection<System.Guid>();
+        public System.Collections.Generic.ICollection<string> Participants { get; set; } = new System.Collections.ObjectModel.Collection<string>();
 
     }
 
@@ -701,7 +701,7 @@ namespace Avalon.Sdk.Generated
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
-        public System.Guid IdentityId { get; set; } = default!;
+        public string IdentityId { get; set; } = default!;
 
     }
 
@@ -719,7 +719,7 @@ namespace Avalon.Sdk.Generated
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("participants")]
-        public System.Collections.Generic.ICollection<System.Guid> Participants { get; set; } = new System.Collections.ObjectModel.Collection<System.Guid>();
+        public System.Collections.Generic.ICollection<string> Participants { get; set; } = new System.Collections.ObjectModel.Collection<string>();
 
     }
 
@@ -758,7 +758,7 @@ namespace Avalon.Sdk.Generated
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("to")]
-        public System.Guid To { get; set; } = default!;
+        public string To { get; set; } = default!;
 
     }
 
@@ -767,7 +767,7 @@ namespace Avalon.Sdk.Generated
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("to")]
-        public System.Guid To { get; set; } = default!;
+        public string To { get; set; } = default!;
 
     }
 
@@ -876,7 +876,7 @@ namespace Avalon.Sdk.Generated
         public System.DateTimeOffset ExpiresAt { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
-        public System.Guid IdentityId { get; set; } = default!;
+        public string IdentityId { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("issued_at")]
         public System.DateTimeOffset IssuedAt { get; set; } = default!;
@@ -1004,7 +1004,7 @@ namespace Avalon.Sdk.Generated
 
         /// <summary>
         /// Base64-encoded — the approving device needs this exact value to
-        /// <br/>reconstruct `device_grant_approval_signing_bytes` and sign it; the
+        /// <br/>reconstruct `device_grant_approval_signing_bytes_v2` and sign it; the
         /// <br/>server never trusts a client-supplied copy of its own request back,
         /// <br/>but the *approver* is a different device that only ever learns this
         /// <br/>key by reading it back off this response.
@@ -1113,7 +1113,7 @@ namespace Avalon.Sdk.Generated
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
-        public System.Guid IdentityId { get; set; } = default!;
+        public string IdentityId { get; set; } = default!;
 
     }
 
@@ -1151,7 +1151,7 @@ namespace Avalon.Sdk.Generated
         public System.DateTimeOffset CreatedAt { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("created_by")]
-        public System.Guid CreatedBy { get; set; } = default!;
+        public string CreatedBy { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("description")]
         public string? Description { get; set; } = default!;
@@ -1259,7 +1259,7 @@ namespace Avalon.Sdk.Generated
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("from")]
-        public System.Guid From { get; set; } = default!;
+        public string From { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("id")]
         public System.Guid Id { get; set; } = default!;
@@ -1268,7 +1268,7 @@ namespace Avalon.Sdk.Generated
         public System.DateTimeOffset RequestedAt { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("to")]
-        public System.Guid To { get; set; } = default!;
+        public string To { get; set; } = default!;
 
     }
 
@@ -1277,10 +1277,10 @@ namespace Avalon.Sdk.Generated
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("a")]
-        public System.Guid A { get; set; } = default!;
+        public string A { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("b")]
-        public System.Guid B { get; set; } = default!;
+        public string B { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("since")]
         public System.DateTimeOffset Since { get; set; } = default!;
@@ -1408,7 +1408,7 @@ namespace Avalon.Sdk.Generated
         public string DisplayName { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
-        public System.Guid IdentityId { get; set; } = default!;
+        public string IdentityId { get; set; } = default!;
 
     }
 
@@ -1429,7 +1429,7 @@ namespace Avalon.Sdk.Generated
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("guardian_ids")]
-        public System.Collections.Generic.ICollection<System.Guid> GuardianIds { get; set; } = new System.Collections.ObjectModel.Collection<System.Guid>();
+        public System.Collections.Generic.ICollection<string> GuardianIds { get; set; } = new System.Collections.ObjectModel.Collection<string>();
 
         [System.Text.Json.Serialization.JsonPropertyName("threshold")]
         public int Threshold { get; set; } = default!;
@@ -1444,7 +1444,7 @@ namespace Avalon.Sdk.Generated
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("author")]
-        public System.Guid Author { get; set; } = default!;
+        public string Author { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("body")]
         public string Body { get; set; } = default!;
@@ -1474,7 +1474,7 @@ namespace Avalon.Sdk.Generated
         public System.DateTimeOffset CreatedAt { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("from")]
-        public System.Guid From { get; set; } = default!;
+        public string From { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("guild_id")]
         public System.Guid GuildId { get; set; } = default!;
@@ -1483,7 +1483,7 @@ namespace Avalon.Sdk.Generated
         public System.Guid Id { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("to")]
-        public System.Guid To { get; set; } = default!;
+        public string To { get; set; } = default!;
 
     }
 
@@ -1492,7 +1492,7 @@ namespace Avalon.Sdk.Generated
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("applicant")]
-        public System.Guid Applicant { get; set; } = default!;
+        public string Applicant { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("created_at")]
         public System.DateTimeOffset CreatedAt { get; set; } = default!;
@@ -1501,7 +1501,7 @@ namespace Avalon.Sdk.Generated
         public System.DateTimeOffset? DecidedAt { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("decided_by")]
-        public System.Guid? DecidedBy { get; set; } = default!;
+        public string? DecidedBy { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("guild_id")]
         public System.Guid GuildId { get; set; } = default!;
@@ -1558,7 +1558,7 @@ namespace Avalon.Sdk.Generated
         public System.Guid GuildId { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
-        public System.Guid IdentityId { get; set; } = default!;
+        public string IdentityId { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("joined_at")]
         public System.DateTimeOffset JoinedAt { get; set; } = default!;
@@ -1638,7 +1638,7 @@ namespace Avalon.Sdk.Generated
         public string Name { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("owner")]
-        public System.Guid Owner { get; set; } = default!;
+        public string Owner { get; set; } = default!;
 
         /// <summary>
         /// Issue #449 — see `avalon_protocol::guilds::Guild::public`'s doc
@@ -1766,7 +1766,7 @@ namespace Avalon.Sdk.Generated
         public string SchemaId { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("subject")]
-        public System.Guid Subject { get; set; } = default!;
+        public string Subject { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("superseded_by")]
         public string? SupersededBy { get; set; } = default!;
@@ -1911,6 +1911,66 @@ namespace Avalon.Sdk.Generated
 
         [System.Text.Json.Serialization.JsonPropertyName("version")]
         public int Version { get; set; } = default!;
+
+    }
+
+    /// <summary>
+    /// One sibling shard of an owner with its verified current head.
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class IntegratorShardEntry
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("created_at")]
+        public System.DateTimeOffset CreatedAt { get; set; } = default!;
+
+        /// <summary>
+        /// When this node last saw the shard announced; null when it only knows the shard from static config.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("last_seen_at")]
+        public System.DateTimeOffset? LastSeenAt { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("root_hash")]
+        public string RootHash { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("shard_id")]
+        public string ShardId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("signing_key_id")]
+        public string SigningKeyId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("tree_size")]
+        public long TreeSize { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class IntegratorShardsResponse
+    {
+
+        /// <summary>
+        /// Siblings this node knows of but could not verify a head for.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("missing_shard_ids")]
+        public System.Collections.Generic.ICollection<string> MissingShardIds { get; set; } = new System.Collections.ObjectModel.Collection<string>();
+
+        /// <summary>
+        /// The family owner id, `{category}:{slug}`.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("owner")]
+        public string Owner { get; set; } = default!;
+
+        /// <summary>
+        /// `true` when `missing_shard_ids` is non-empty.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("partial")]
+        public bool Partial { get; set; } = default!;
+
+        /// <summary>
+        /// Verified siblings in canonical shard id order.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("shards")]
+        public System.Collections.Generic.ICollection<IntegratorShardEntry> Shards { get; set; } = new System.Collections.ObjectModel.Collection<IntegratorShardEntry>();
 
     }
 
@@ -2152,7 +2212,7 @@ namespace Avalon.Sdk.Generated
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("author")]
-        public System.Guid Author { get; set; } = default!;
+        public string Author { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("body")]
         public string Body { get; set; } = default!;
@@ -2250,7 +2310,7 @@ namespace Avalon.Sdk.Generated
         public System.DateTimeOffset CreatedAt { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("from")]
-        public System.Guid From { get; set; } = default!;
+        public string From { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("guild_id")]
         public System.Guid GuildId { get; set; } = default!;
@@ -2533,7 +2593,7 @@ namespace Avalon.Sdk.Generated
         public System.Guid? ActiveIn { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
-        public System.Guid IdentityId { get; set; } = default!;
+        public string IdentityId { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("status")]
         [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<PresenceStatus>))]
@@ -2608,6 +2668,10 @@ namespace Avalon.Sdk.Generated
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("ok")]
         public bool Ok { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("path")]
+        [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<PathType>))]
+        public PathType? Path { get; set; } = default!;
 
         /// <summary>
         /// Round trip of each completed sample in milliseconds, in order. The
@@ -2684,7 +2748,7 @@ namespace Avalon.Sdk.Generated
         public System.DateTimeOffset IdentityCreatedAt { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
-        public System.Guid IdentityId { get; set; } = default!;
+        public string IdentityId { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("links")]
         public System.Collections.Generic.ICollection<string> Links { get; set; } = new System.Collections.ObjectModel.Collection<string>();
@@ -2772,7 +2836,7 @@ namespace Avalon.Sdk.Generated
         public System.DateTimeOffset IdentityCreatedAt { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
-        public System.Guid IdentityId { get; set; } = default!;
+        public string IdentityId { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("links")]
         public System.Collections.Generic.ICollection<string> Links { get; set; } = new System.Collections.ObjectModel.Collection<string>();
@@ -2822,7 +2886,7 @@ namespace Avalon.Sdk.Generated
         public string DisplayName { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
-        public System.Guid IdentityId { get; set; } = default!;
+        public string IdentityId { get; set; } = default!;
 
     }
 
@@ -2834,7 +2898,7 @@ namespace Avalon.Sdk.Generated
         public object Instance { get; set; } = new object();
 
         [System.Text.Json.Serialization.JsonPropertyName("subject")]
-        public System.Guid Subject { get; set; } = default!;
+        public string Subject { get; set; } = default!;
 
     }
 
@@ -2962,7 +3026,7 @@ namespace Avalon.Sdk.Generated
         public System.Guid Id { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
-        public System.Guid IdentityId { get; set; } = default!;
+        public string IdentityId { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("requested_at")]
         public System.DateTimeOffset RequestedAt { get; set; } = default!;
@@ -2983,7 +3047,7 @@ namespace Avalon.Sdk.Generated
         public string? DeviceLabel { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
-        public System.Guid IdentityId { get; set; } = default!;
+        public string IdentityId { get; set; } = default!;
 
     }
 
@@ -3015,17 +3079,11 @@ namespace Avalon.Sdk.Generated
 
         /// <summary>
         /// Base64-encoded Ed25519 signature over
-        /// <br/>`identity_created_signing_bytes(identity_id, display_name)`.
+        /// <br/>`avalon_protocol::identity_id::identity_created_signing_bytes_v2`, which covers this
+        /// <br/>ceremony's `ticket_id` and the `network_id` returned by `register/start`.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("event_signature")]
         public string EventSignature { get; set; } = default!;
-
-        /// <summary>
-        /// Base64-encoded raw Ed25519 public key — the identity's event-signing
-        /// <br/>key, distinct from the WebAuthn passkey above. See module docs.
-        /// </summary>
-        [System.Text.Json.Serialization.JsonPropertyName("event_signing_public_key")]
-        public string EventSigningPublicKey { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("ticket_id")]
         public System.Guid TicketId { get; set; } = default!;
@@ -3040,7 +3098,7 @@ namespace Avalon.Sdk.Generated
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
-        public System.Guid IdentityId { get; set; } = default!;
+        public string IdentityId { get; set; } = default!;
 
     }
 
@@ -3073,12 +3131,17 @@ namespace Avalon.Sdk.Generated
         public string DisplayName { get; set; } = default!;
 
         /// <summary>
-        /// Client-chosen, not server-assigned — identity is a wallet its holder
-        /// <br/>creates themselves. Must also become the WebAuthn user handle, which
-        /// <br/>is why it has to be decided here rather than at `finish`.
+        /// Base64-encoded raw Ed25519 inception public key, the one the identity id is derived from.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("event_signing_public_key")]
+        public string EventSigningPublicKey { get; set; } = default!;
+
+        /// <summary>
+        /// Lowercase hex SHA-256 of the domain tag and `event_signing_public_key`; the server
+        /// <br/>recomputes it and rejects a mismatch.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
-        public System.Guid IdentityId { get; set; } = default!;
+        public string IdentityId { get; set; } = default!;
 
     }
 
@@ -3094,6 +3157,18 @@ namespace Avalon.Sdk.Generated
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("challenge")]
         public object Challenge { get; set; } = new object();
+
+        /// <summary>
+        /// The ledger network id; the client signs it, with the shard id and ticket, into `identity.created`.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("network_id")]
+        public string NetworkId { get; set; } = default!;
+
+        /// <summary>
+        /// The shard this node authors; part of the signed bytes.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("shard_id")]
+        public string ShardId { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("ticket_id")]
         public System.Guid TicketId { get; set; } = default!;
@@ -3172,7 +3247,7 @@ namespace Avalon.Sdk.Generated
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
-        public System.Guid IdentityId { get; set; } = default!;
+        public string IdentityId { get; set; } = default!;
 
     }
 
@@ -3260,6 +3335,25 @@ namespace Avalon.Sdk.Generated
         /// <summary>
         /// Standard-base64-encoded detached Ed25519 signature over
         /// <br/>[`revocation_signing_bytes`].
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("signature")]
+        public string Signature { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class RevokeDeviceRequest
+    {
+
+        /// <summary>
+        /// The caller's own active signing key that signs the revocation (may be the key being revoked).
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("revoked_by_signing_key_id")]
+        public System.Guid RevokedBySigningKeyId { get; set; } = default!;
+
+        /// <summary>
+        /// Base64 Ed25519 signature by `revoked_by_signing_key_id` over
+        /// <br/>`avalon_protocol::identity_id::signing_key_revoked_signing_bytes_v2`.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("signature")]
         public string Signature { get; set; } = default!;
@@ -3587,7 +3681,7 @@ namespace Avalon.Sdk.Generated
         public System.Guid EventId { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
-        public System.Guid IdentityId { get; set; } = default!;
+        public string IdentityId { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("responded_at")]
         public System.DateTimeOffset RespondedAt { get; set; } = default!;
@@ -3602,7 +3696,7 @@ namespace Avalon.Sdk.Generated
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
-        public System.Guid IdentityId { get; set; } = default!;
+        public string IdentityId { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("responded_at")]
         public System.DateTimeOffset RespondedAt { get; set; } = default!;
@@ -3632,7 +3726,7 @@ namespace Avalon.Sdk.Generated
         public string DisplayName { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
-        public System.Guid IdentityId { get; set; } = default!;
+        public string IdentityId { get; set; } = default!;
 
     }
 
@@ -3717,7 +3811,7 @@ namespace Avalon.Sdk.Generated
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("identity_id")]
-        public System.Guid IdentityId { get; set; } = default!;
+        public string IdentityId { get; set; } = default!;
 
     }
 
@@ -3753,7 +3847,7 @@ namespace Avalon.Sdk.Generated
     {
 
         [System.Text.Json.Serialization.JsonPropertyName("guardian_ids")]
-        public System.Collections.Generic.ICollection<System.Guid> GuardianIds { get; set; } = new System.Collections.ObjectModel.Collection<System.Guid>();
+        public System.Collections.Generic.ICollection<string> GuardianIds { get; set; } = new System.Collections.ObjectModel.Collection<string>();
 
         [System.Text.Json.Serialization.JsonPropertyName("signature")]
         public string? Signature { get; set; } = default!;
@@ -3955,6 +4049,10 @@ namespace Avalon.Sdk.Generated
         [System.Text.Json.Serialization.JsonPropertyName("index")]
         public int Index { get; set; } = default!;
 
+        [System.Text.Json.Serialization.JsonPropertyName("path_to_next")]
+        [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<PathType>))]
+        public PathType? PathToNext { get; set; } = default!;
+
         /// <summary>
         /// Time this node spent before forwarding (or in total, at the last hop),
         /// <br/>on its own clock.
@@ -4066,7 +4164,7 @@ namespace Avalon.Sdk.Generated
         public System.Guid? SigningKeyId { get; set; } = default!;
 
         [System.Text.Json.Serialization.JsonPropertyName("to")]
-        public System.Guid To { get; set; } = default!;
+        public string To { get; set; } = default!;
 
     }
 
@@ -4523,6 +4621,6 @@ namespace Avalon.Sdk
         /// <summary>Issue #735/#725: the docs/generated/openapi.json `info.version`
         /// this file's generated types were produced from — generated straight from
         /// the same schema file, so it can't drift by construction.</summary>
-        public const string OpenApiSchemaVersion = "0.8.1";
+        public const string OpenApiSchemaVersion = "0.11.0";
     }
 }

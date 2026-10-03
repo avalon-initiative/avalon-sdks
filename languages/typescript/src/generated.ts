@@ -1944,6 +1944,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/integrations/{slug}/shards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lists an owner's sibling shards and their current heads. Public and
+         *     unauthenticated like `GET /integrations/{slug}`. Advisory: only siblings this
+         *     node knows of and whose head verified under the owner's registered keys are
+         *     listed; a silent sibling is invisible, and unverified ones appear only in
+         *     `missing_shard_ids`. A family over 256 shards is refused with 413, not truncated.
+         */
+        get: operations["list_integrator_shards"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/issuers/register": {
         parameters: {
             query?: never;
@@ -2191,14 +2214,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * `POST /me/devices/:id/revoke` — unilateral, per the ticket's invariant:
-         *     any currently-authenticated session for the identity can revoke any
-         *     signing-key row (including the one it's revoking itself with, for a
-         *     deliberate self-rotation), independent of the revoked device's
-         *     cooperation. Network-attributed, not individually signed — same
-         *     milestone-1 precedent `friends.rs`'s `friend.requested` already uses;
-         *     revocation only ever narrows trust, so it doesn't need the higher
-         *     signing bar grant approval does.
+         * `POST /me/devices/:id/revoke` — any authenticated session for the identity can
+         *     revoke any of its signing keys (including the signer's own, for self-rotation), provided
+         *     the request carries a valid signature from an active key of the same identity. The last
+         *     active key cannot be revoked (409 `LAST_SIGNING_KEY`).
          */
         post: operations["revoke_device"];
         delete?: never;
@@ -3113,7 +3132,7 @@ export interface components {
             approver_signing_key_id: string;
             /**
              * @description Base64-encoded Ed25519 signature over
-             *     `device_grant_approval_signing_bytes(grant_id, identity_id, requested_signing_public_key)`,
+             *     `device_grant_approval_signing_bytes_v2(grant_id, identity_id, requested_signing_public_key)`,
              *     produced by `approver_signing_key_id`'s key.
              */
             signature: string;
@@ -3135,8 +3154,7 @@ export interface components {
         ArchivedMessageResponse: {
             /** Format: date-time */
             archived_at: string;
-            /** Format: uuid */
-            author: string;
+            author: components["schemas"]["IdentityId"];
             body: string;
             /** Format: uuid */
             channel_id: string;
@@ -3171,8 +3189,7 @@ export interface components {
             issued_at: string;
             issuer: string;
             proof: components["schemas"]["AttestationProofResponse"];
-            /** Format: uuid */
-            subject: string;
+            subject: components["schemas"]["IdentityId"];
             validity: components["schemas"]["ValidityResponse"];
         };
         AttestationResponse: {
@@ -3183,8 +3200,7 @@ export interface components {
             issued_at: string;
             issuer: string;
             proof: components["schemas"]["AttestationSignatureResponse"];
-            /** Format: uuid */
-            subject: string;
+            subject: components["schemas"]["IdentityId"];
         };
         AttestationSignatureResponse: {
             algorithm: string;
@@ -3202,14 +3218,12 @@ export interface components {
             status: "not_authentic";
         };
         BlockListEntry: {
-            /** Format: uuid */
-            blocked: string;
+            blocked: components["schemas"]["IdentityId"];
             /** Format: date-time */
             created_at: string;
         };
         BlockResponse: {
-            /** Format: uuid */
-            blocked: string;
+            blocked: components["schemas"]["IdentityId"];
             /** Format: date-time */
             created_at: string;
         };
@@ -3336,8 +3350,7 @@ export interface components {
          */
         Connectivity: "direct" | "nat_traversed" | "relayed" | "outbound_only";
         ConversationMessageResponse: {
-            /** Format: uuid */
-            author: string;
+            author: components["schemas"]["IdentityId"];
             body: string;
             /** Format: uuid */
             conversation_id: string;
@@ -3349,7 +3362,7 @@ export interface components {
         ConversationResponse: {
             /** Format: uuid */
             id: string;
-            participants: string[];
+            participants: components["schemas"]["IdentityId"][];
         };
         ConversationSendMessageRequest: {
             body: string;
@@ -3414,14 +3427,13 @@ export interface components {
             schema?: string | null;
         };
         CreateBlockRequest: {
-            /** Format: uuid */
-            identity_id: string;
+            identity_id: components["schemas"]["IdentityId"];
         };
         CreateChannelRequest: {
             name: string;
         };
         CreateConversationRequest: {
-            participants: string[];
+            participants: components["schemas"]["IdentityId"][];
         };
         CreateEventRequest: {
             /** Format: uuid */
@@ -3441,12 +3453,10 @@ export interface components {
             title: string;
         };
         CreateFriendRequestRequest: {
-            /** Format: uuid */
-            to: string;
+            to: components["schemas"]["IdentityId"];
         };
         CreateGuildInviteRequest: {
-            /** Format: uuid */
-            to: string;
+            to: components["schemas"]["IdentityId"];
         };
         CreateGuildRequest: {
             description?: string;
@@ -3497,8 +3507,7 @@ export interface components {
             destination_base_url: string;
             /** Format: date-time */
             expires_at: string;
-            /** Format: uuid */
-            identity_id: string;
+            identity_id: components["schemas"]["IdentityId"];
             /** Format: date-time */
             issued_at: string;
             /**
@@ -3573,7 +3582,7 @@ export interface components {
             requested_at: string;
             /**
              * @description Base64-encoded — the approving device needs this exact value to
-             *     reconstruct `device_grant_approval_signing_bytes` and sign it; the
+             *     reconstruct `device_grant_approval_signing_bytes_v2` and sign it; the
              *     server never trusts a client-supplied copy of its own request back,
              *     but the *approver* is a different device that only ever learns this
              *     key by reading it back off this response.
@@ -3630,8 +3639,7 @@ export interface components {
             candidates: components["schemas"]["DiscoveryCandidate"][];
         };
         DiscoveryCandidate: {
-            /** Format: uuid */
-            identity_id: string;
+            identity_id: components["schemas"]["IdentityId"];
         };
         /**
          * @description One configured path's disk usage — `label` says which config value it
@@ -3651,8 +3659,7 @@ export interface components {
             channel_id?: string | null;
             /** Format: date-time */
             created_at: string;
-            /** Format: uuid */
-            created_by: string;
+            created_by: components["schemas"]["IdentityId"];
             description?: string | null;
             /**
              * @description Issue #458. `false` when the caller has `view` but not
@@ -3717,20 +3724,16 @@ export interface components {
             guild_id: string;
         };
         FriendRequestResponse: {
-            /** Format: uuid */
-            from: string;
+            from: components["schemas"]["IdentityId"];
             /** Format: uuid */
             id: string;
             /** Format: date-time */
             requested_at: string;
-            /** Format: uuid */
-            to: string;
+            to: components["schemas"]["IdentityId"];
         };
         FriendshipResponse: {
-            /** Format: uuid */
-            a: string;
-            /** Format: uuid */
-            b: string;
+            a: components["schemas"]["IdentityId"];
+            b: components["schemas"]["IdentityId"];
             /** Format: date-time */
             since: string;
         };
@@ -3784,23 +3787,21 @@ export interface components {
             /** Format: date-time */
             added_at: string;
             display_name: string;
-            /** Format: uuid */
-            identity_id: string;
+            identity_id: components["schemas"]["IdentityId"];
         };
         GuardianRequestSummary: {
             already_approved: boolean;
             request: components["schemas"]["RecoveryRequestResponse"];
         };
         GuardianSettingsResponse: {
-            guardian_ids: string[];
+            guardian_ids: components["schemas"]["IdentityId"][];
             /** Format: int32 */
             threshold: number;
             /** Format: date-time */
             updated_at?: string | null;
         };
         GuildAnnouncementAlert: {
-            /** Format: uuid */
-            author: string;
+            author: components["schemas"]["IdentityId"];
             body: string;
             /** Format: uuid */
             channel_id: string;
@@ -3815,24 +3816,20 @@ export interface components {
         GuildInviteResponse: {
             /** Format: date-time */
             created_at: string;
-            /** Format: uuid */
-            from: string;
+            from: components["schemas"]["IdentityId"];
             /** Format: uuid */
             guild_id: string;
             /** Format: uuid */
             id: string;
-            /** Format: uuid */
-            to: string;
+            to: components["schemas"]["IdentityId"];
         };
         GuildJoinRequestResponse: {
-            /** Format: uuid */
-            applicant: string;
+            applicant: components["schemas"]["IdentityId"];
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
             decided_at?: string | null;
-            /** Format: uuid */
-            decided_by?: string | null;
+            decided_by?: components["schemas"]["IdentityId"] | null;
             /** Format: uuid */
             guild_id: string;
             /** Format: uuid */
@@ -3858,8 +3855,7 @@ export interface components {
         GuildMemberResponse: {
             /** Format: uuid */
             guild_id: string;
-            /** Format: uuid */
-            identity_id: string;
+            identity_id: components["schemas"]["IdentityId"];
             /** Format: date-time */
             joined_at: string;
             /** Format: int32 */
@@ -3900,8 +3896,7 @@ export interface components {
             /** @description Issue #153. */
             motd?: string | null;
             name: string;
-            /** Format: uuid */
-            owner: string;
+            owner: components["schemas"]["IdentityId"];
             /**
              * @description Issue #449 — see `avalon_protocol::guilds::Guild::public`'s doc
              *     comment. Independent of `recruiting`.
@@ -3939,6 +3934,8 @@ export interface components {
             /** Format: date-time */
             timestamp: string;
         };
+        /** @description Self-certifying identity id: lowercase hex SHA-256 of the domain tag and the inception public key. */
+        IdentityId: string;
         InitialKeyRequest: {
             algorithm: string;
             /** @description Standard-base64-encoded raw public key bytes. */
@@ -3968,8 +3965,7 @@ export interface components {
             /** Format: date-time */
             published_at: string;
             schema_id: string;
-            /** Format: uuid */
-            subject: string;
+            subject: components["schemas"]["IdentityId"];
             superseded_by?: string | null;
         };
         IntegratorPublicResponse: {
@@ -4031,6 +4027,31 @@ export interface components {
             superseded_by?: string | null;
             /** Format: int32 */
             version: number;
+        };
+        /** @description One sibling shard of an owner with its verified current head. */
+        IntegratorShardEntry: {
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When this node last saw the shard announced; null when it only knows the shard from static config.
+             */
+            last_seen_at?: string | null;
+            root_hash: string;
+            shard_id: string;
+            signing_key_id: string;
+            /** Format: int64 */
+            tree_size: number;
+        };
+        IntegratorShardsResponse: {
+            /** @description Siblings this node knows of but could not verify a head for. */
+            missing_shard_ids: string[];
+            /** @description The family owner id, `{category}:{slug}`. */
+            owner: string;
+            /** @description `true` when `missing_shard_ids` is non-empty. */
+            partial: boolean;
+            /** @description Verified siblings in canonical shard id order. */
+            shards: components["schemas"]["IntegratorShardEntry"][];
         };
         IntegratorSummary: {
             category: string;
@@ -4158,8 +4179,7 @@ export interface components {
             used_bytes?: number | null;
         };
         MessageResponse: {
-            /** Format: uuid */
-            author: string;
+            author: components["schemas"]["IdentityId"];
             body: string;
             /** Format: uuid */
             channel_id: string;
@@ -4212,8 +4232,7 @@ export interface components {
         MyGuildInviteResponse: {
             /** Format: date-time */
             created_at: string;
-            /** Format: uuid */
-            from: string;
+            from: components["schemas"]["IdentityId"];
             /** Format: uuid */
             guild_id: string;
             guild_name: string;
@@ -4333,8 +4352,7 @@ export interface components {
         PresenceResponse: {
             /** Format: uuid */
             active_in?: string | null;
-            /** Format: uuid */
-            identity_id: string;
+            identity_id: components["schemas"]["IdentityId"];
             status: components["schemas"]["PresenceStatus"];
             /** Format: date-time */
             updated_at: string;
@@ -4366,6 +4384,7 @@ export interface components {
             min_ms?: number | null;
             /** @description True when every requested sample completed. */
             ok: boolean;
+            path?: components["schemas"]["PathType"] | null;
             /**
              * @description Round trip of each completed sample in milliseconds, in order. The
              *     first sample includes connection setup.
@@ -4417,8 +4436,7 @@ export interface components {
             favorite_genres: components["schemas"]["Genre"][];
             /** Format: date-time */
             identity_created_at: string;
-            /** Format: uuid */
-            identity_id: string;
+            identity_id: components["schemas"]["IdentityId"];
             links: string[];
             /**
              * @description Self-described only — never IP-derived or geocoded. See
@@ -4472,8 +4490,7 @@ export interface components {
             favorite_genres: components["schemas"]["Genre"][];
             /** Format: date-time */
             identity_created_at: string;
-            /** Format: uuid */
-            identity_id: string;
+            identity_id: components["schemas"]["IdentityId"];
             links: string[];
             location?: string | null;
             /** Format: uuid */
@@ -4500,13 +4517,11 @@ export interface components {
         PublicProfileResponse: {
             avatar_url?: string | null;
             display_name: string;
-            /** Format: uuid */
-            identity_id: string;
+            identity_id: components["schemas"]["IdentityId"];
         };
         PublishInstanceRequest: {
             instance: Record<string, never>;
-            /** Format: uuid */
-            subject: string;
+            subject: components["schemas"]["IdentityId"];
         };
         PublishIntegratorSchemaMappingRequest: {
             /**
@@ -4581,8 +4596,7 @@ export interface components {
             delay_ends_at?: string | null;
             /** Format: uuid */
             id: string;
-            /** Format: uuid */
-            identity_id: string;
+            identity_id: components["schemas"]["IdentityId"];
             /** Format: date-time */
             requested_at: string;
             status: string;
@@ -4591,8 +4605,7 @@ export interface components {
         };
         RecoveryStartRequest: {
             device_label?: string | null;
-            /** Format: uuid */
-            identity_id: string;
+            identity_id: components["schemas"]["IdentityId"];
         };
         RecoveryStartResponse: {
             challenge: Record<string, never>;
@@ -4610,21 +4623,16 @@ export interface components {
             device_label?: string | null;
             /**
              * @description Base64-encoded Ed25519 signature over
-             *     `identity_created_signing_bytes(identity_id, display_name)`.
+             *     `avalon_protocol::identity_id::identity_created_signing_bytes_v2`, which covers this
+             *     ceremony's `ticket_id` and the `network_id` returned by `register/start`.
              */
             event_signature: string;
-            /**
-             * @description Base64-encoded raw Ed25519 public key — the identity's event-signing
-             *     key, distinct from the WebAuthn passkey above. See module docs.
-             */
-            event_signing_public_key: string;
             /** Format: uuid */
             ticket_id: string;
             webauthn_credential: Record<string, never>;
         };
         RegisterFinishResponse: {
-            /** Format: uuid */
-            identity_id: string;
+            identity_id: components["schemas"]["IdentityId"];
         };
         RegisterIssuerRequest: {
             /** Format: uuid */
@@ -4636,13 +4644,13 @@ export interface components {
         };
         RegisterStartRequest: {
             display_name: string;
+            /** @description Base64-encoded raw Ed25519 inception public key, the one the identity id is derived from. */
+            event_signing_public_key: string;
             /**
-             * Format: uuid
-             * @description Client-chosen, not server-assigned — identity is a wallet its holder
-             *     creates themselves. Must also become the WebAuthn user handle, which
-             *     is why it has to be decided here rather than at `finish`.
+             * @description Lowercase hex SHA-256 of the domain tag and `event_signing_public_key`; the server
+             *     recomputes it and rejects a mismatch.
              */
-            identity_id: string;
+            identity_id: components["schemas"]["IdentityId"];
         };
         RegisterStartResponse: {
             /**
@@ -4652,6 +4660,10 @@ export interface components {
              *     `CreationChallengeResponse`, not this placeholder.
              */
             challenge: Record<string, never>;
+            /** @description The ledger network id; the client signs it, with the shard id and ticket, into `identity.created`. */
+            network_id: string;
+            /** @description The shard this node authors; part of the signed bytes. */
+            shard_id: string;
             /** Format: uuid */
             ticket_id: string;
         };
@@ -4687,8 +4699,7 @@ export interface components {
             requested_signing_public_key: string;
         };
         ResolveHandleResponse: {
-            /** Format: uuid */
-            identity_id: string;
+            identity_id: components["schemas"]["IdentityId"];
         };
         ResolvePairingResponse: {
             status: string;
@@ -4736,6 +4747,18 @@ export interface components {
             /**
              * @description Standard-base64-encoded detached Ed25519 signature over
              *     [`revocation_signing_bytes`].
+             */
+            signature: string;
+        };
+        RevokeDeviceRequest: {
+            /**
+             * Format: uuid
+             * @description The caller's own active signing key that signs the revocation (may be the key being revoked).
+             */
+            revoked_by_signing_key_id: string;
+            /**
+             * @description Base64 Ed25519 signature by `revoked_by_signing_key_id` over
+             *     `avalon_protocol::identity_id::signing_key_revoked_signing_bytes_v2`.
              */
             signature: string;
         };
@@ -4889,15 +4912,13 @@ export interface components {
         RsvpResponse: {
             /** Format: uuid */
             event_id: string;
-            /** Format: uuid */
-            identity_id: string;
+            identity_id: components["schemas"]["IdentityId"];
             /** Format: date-time */
             responded_at: string;
             status: string;
         };
         RsvpRosterEntry: {
-            /** Format: uuid */
-            identity_id: string;
+            identity_id: components["schemas"]["IdentityId"];
             /** Format: date-time */
             responded_at: string;
             status: string;
@@ -4908,8 +4929,7 @@ export interface components {
         SearchResultIdentity: {
             avatar_url?: string | null;
             display_name: string;
-            /** Format: uuid */
-            identity_id: string;
+            identity_id: components["schemas"]["IdentityId"];
         };
         SelfView: {
             base_url?: string | null;
@@ -4939,8 +4959,7 @@ export interface components {
             token: string;
         };
         SessionStartRequest: {
-            /** Format: uuid */
-            identity_id: string;
+            identity_id: components["schemas"]["IdentityId"];
         };
         SessionStartResponse: {
             challenge: Record<string, never>;
@@ -4957,7 +4976,7 @@ export interface components {
             integrator_ids: string[];
         };
         SetGuardiansRequest: {
-            guardian_ids: string[];
+            guardian_ids: components["schemas"]["IdentityId"][];
             signature?: string | null;
             /**
              * Format: uuid
@@ -5047,6 +5066,7 @@ export interface components {
             base_url: string;
             /** Format: int32 */
             index: number;
+            path_to_next?: components["schemas"]["PathType"] | null;
             /**
              * Format: double
              * @description Time this node spent before forwarding (or in total, at the last hop),
@@ -5110,8 +5130,7 @@ export interface components {
              *     ownership — signature-required.
              */
             signing_key_id?: string | null;
-            /** Format: uuid */
-            to: string;
+            to: components["schemas"]["IdentityId"];
         };
         UpdateAchievementDefinitionRequest: {
             description?: string | null;
@@ -5682,7 +5701,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                identity_id: string;
+                identity_id: components["schemas"]["IdentityId"];
             };
             cookie?: never;
         };
@@ -5929,7 +5948,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                identity_id: string;
+                identity_id: components["schemas"]["IdentityId"];
             };
             cookie?: never;
         };
@@ -6789,7 +6808,7 @@ export interface operations {
             header?: never;
             path: {
                 id: string;
-                identity_id: string;
+                identity_id: components["schemas"]["IdentityId"];
             };
             cookie?: never;
         };
@@ -6810,7 +6829,7 @@ export interface operations {
             header?: never;
             path: {
                 id: string;
-                identity_id: string;
+                identity_id: components["schemas"]["IdentityId"];
             };
             cookie?: never;
         };
@@ -7104,6 +7123,20 @@ export interface operations {
                     "application/json": components["schemas"]["RegisterStartResponse"];
                 };
             };
+            /** @description INVALID_IDENTITY_ID, IDENTITY_ID_MISMATCH or INVALID_DISPLAY_NAME */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description IDENTITY_ID_TAKEN or DISPLAY_NAME_TAKEN */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     search_identities: {
@@ -7134,7 +7167,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                id: components["schemas"]["IdentityId"];
             };
             cookie?: never;
         };
@@ -7156,7 +7189,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                id: components["schemas"]["IdentityId"];
             };
             cookie?: never;
         };
@@ -7178,7 +7211,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                id: components["schemas"]["IdentityId"];
             };
             cookie?: never;
         };
@@ -7200,7 +7233,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                id: components["schemas"]["IdentityId"];
             };
             cookie?: never;
         };
@@ -8029,7 +8062,7 @@ export interface operations {
             path: {
                 slug: string;
                 version: number;
-                subject: string;
+                subject: components["schemas"]["IdentityId"];
             };
             cookie?: never;
         };
@@ -8041,6 +8074,42 @@ export interface operations {
         responses: {
             /** @description Instance tombstoned */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_integrator_shards: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The owner's verified sibling shards (advisory: only shards this node knows of and could verify) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegratorShardsResponse"];
+                };
+            };
+            /** @description No such integrator */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The owner's family exceeds 256 shards */
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8356,10 +8425,21 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevokeDeviceRequest"];
+            };
+        };
         responses: {
             /** @description Signing key revoked */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description LAST_SIGNING_KEY: the last active signing key cannot be revoked */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8632,7 +8712,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                identity_id: string;
+                identity_id: components["schemas"]["IdentityId"];
             };
             cookie?: never;
         };
@@ -8962,7 +9042,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                identity_id: string;
+                identity_id: components["schemas"]["IdentityId"];
             };
             cookie?: never;
         };
@@ -9279,4 +9359,4 @@ export interface operations {
 }
 
 // Issue #735: the info.version this file's types were generated from.
-export const OPENAPI_SCHEMA_VERSION = "0.8.1" as const
+export const OPENAPI_SCHEMA_VERSION = "0.11.0" as const

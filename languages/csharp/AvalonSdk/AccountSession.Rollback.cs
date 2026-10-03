@@ -27,7 +27,7 @@ namespace Avalon.Sdk
         public async Task<Guid> ReverseRollbackEventAsync(Guid eventId, string since, CancellationToken ct = default)
         {
             var (signingKeyId, signature) = Sign(
-                "rollback.reverse", eventId.ToString(), IdentityGuid.ToString(), since);
+                "rollback.reverse", eventId.ToString(), OwnIdentityId.ToString(), since);
             var response = await PostAsync<Avalon.Sdk.Generated.ReverseEventRequest, Avalon.Sdk.Generated.ReverseEventResponse>(
                 $"/me/rollback/{eventId}/reverse",
                 new Avalon.Sdk.Generated.ReverseEventRequest

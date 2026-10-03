@@ -33,7 +33,7 @@ namespace Avalon.Sdk
         public string Description { get; set; } = "";
 
         [JsonPropertyName("owner")]
-        public Guid Owner { get; set; }
+        public IdentityId Owner { get; set; }
 
         [JsonPropertyName("created_at")]
         public DateTimeOffset CreatedAt { get; set; }
@@ -198,7 +198,7 @@ namespace Avalon.Sdk
         public Guid GuildId { get; set; }
 
         [JsonPropertyName("identity_id")]
-        public Guid IdentityId { get; set; }
+        public IdentityId IdentityId { get; set; }
 
         [JsonPropertyName("role_index")]
         public int RoleIndex { get; set; }
@@ -232,10 +232,10 @@ namespace Avalon.Sdk
         public Guid GuildId { get; set; }
 
         [JsonPropertyName("to")]
-        public Guid To { get; set; }
+        public IdentityId To { get; set; }
 
         [JsonPropertyName("from")]
-        public Guid From { get; set; }
+        public IdentityId From { get; set; }
 
         [JsonPropertyName("created_at")]
         public DateTimeOffset CreatedAt { get; set; }
@@ -256,7 +256,7 @@ namespace Avalon.Sdk
         public string GuildName { get; set; } = "";
 
         [JsonPropertyName("from")]
-        public Guid From { get; set; }
+        public IdentityId From { get; set; }
 
         [JsonPropertyName("created_at")]
         public DateTimeOffset CreatedAt { get; set; }
@@ -273,7 +273,7 @@ namespace Avalon.Sdk
         public Guid GuildId { get; set; }
 
         [JsonPropertyName("applicant")]
-        public Guid Applicant { get; set; }
+        public IdentityId Applicant { get; set; }
 
         [JsonPropertyName("message")]
         public string? Message { get; set; }
@@ -289,7 +289,7 @@ namespace Avalon.Sdk
         public DateTimeOffset? DecidedAt { get; set; }
 
         [JsonPropertyName("decided_by")]
-        public Guid? DecidedBy { get; set; }
+        public IdentityId? DecidedBy { get; set; }
     }
 
     /// <summary>A guild text channel. Mirrors the Rust SDK's
@@ -335,7 +335,7 @@ namespace Avalon.Sdk
         public Guid ChannelId { get; set; }
 
         [JsonPropertyName("author")]
-        public Guid Author { get; set; }
+        public IdentityId Author { get; set; }
 
         [JsonPropertyName("body")]
         public string Body { get; set; } = "";
@@ -384,7 +384,7 @@ namespace Avalon.Sdk
         public DateTimeOffset? EndsAt { get; set; }
 
         [JsonPropertyName("created_by")]
-        public Guid CreatedBy { get; set; }
+        public IdentityId CreatedBy { get; set; }
 
         [JsonPropertyName("created_at")]
         public DateTimeOffset CreatedAt { get; set; }
@@ -405,7 +405,7 @@ namespace Avalon.Sdk
         public Guid EventId { get; set; }
 
         [JsonPropertyName("identity_id")]
-        public Guid IdentityId { get; set; }
+        public IdentityId IdentityId { get; set; }
 
         /// <summary>"going", "maybe", or "not_going".</summary>
         [JsonPropertyName("status")]
@@ -421,7 +421,7 @@ namespace Avalon.Sdk
     public sealed class RsvpRosterEntry
     {
         [JsonPropertyName("identity_id")]
-        public Guid IdentityId { get; set; }
+        public IdentityId IdentityId { get; set; }
 
         [JsonPropertyName("status")]
         public string Status { get; set; } = "";
@@ -600,12 +600,12 @@ namespace Avalon.Sdk
 
         /// <summary><c>POST /guilds/{id}/transfer-ownership</c> — owner-only, always signs
         /// (<c>guild.transfer_ownership</c>, <c>[guild_id, current owner, to]</c>).</summary>
-        public async Task<AccountGuild> TransferOwnershipAsync(Guid guildId, Guid to, CancellationToken ct = default)
+        public async Task<AccountGuild> TransferOwnershipAsync(Guid guildId, IdentityId to, CancellationToken ct = default)
         {
-            var (signingKeyId, signature) = Sign("guild.transfer_ownership", guildId.ToString(), IdentityGuid.ToString(), to.ToString());
+            var (signingKeyId, signature) = Sign("guild.transfer_ownership", guildId.ToString(), OwnIdentityId.ToString(), to.ToString());
             return await PostAsync<Avalon.Sdk.Generated.TransferOwnershipRequest, AccountGuild>(
                 $"/guilds/{guildId}/transfer-ownership",
-                new Avalon.Sdk.Generated.TransferOwnershipRequest { To = to, SigningKeyId = signingKeyId, Signature = signature },
+                new Avalon.Sdk.Generated.TransferOwnershipRequest { To = to.ToString(), SigningKeyId = signingKeyId, Signature = signature },
                 ct).ConfigureAwait(false);
         }
 
@@ -623,7 +623,7 @@ namespace Avalon.Sdk
         /// role_index]</c>), whether or not this particular change actually escalates (the
         /// only case #697 requires it for) — same unused-but-valid-signature-is-harmless
         /// simplification used throughout this SDK.</summary>
-        public async Task<AccountGuildMember> UpdateMemberRoleAsync(Guid guildId, Guid identityId, int roleIndex, CancellationToken ct = default)
+        public async Task<AccountGuildMember> UpdateMemberRoleAsync(Guid guildId, IdentityId identityId, int roleIndex, CancellationToken ct = default)
         {
             var (signingKeyId, signature) = Sign("guild.member_role.update", guildId.ToString(), identityId.ToString(), roleIndex.ToString());
             return await PatchAsync<Avalon.Sdk.Generated.UpdateGuildMemberRequest, AccountGuildMember>(
@@ -634,7 +634,7 @@ namespace Avalon.Sdk
 
         /// <summary><c>DELETE /guilds/{id}/members/{identity_id}</c> — kick, not a role
         /// change; reversible via re-invite. Not signature-required.</summary>
-        public async Task RemoveMemberAsync(Guid guildId, Guid identityId, CancellationToken ct = default) =>
+        public async Task RemoveMemberAsync(Guid guildId, IdentityId identityId, CancellationToken ct = default) =>
             await DeleteAsync($"/guilds/{guildId}/members/{identityId}", ct).ConfigureAwait(false);
 
         /// <summary><c>GET /me/guilds</c>.</summary>
@@ -646,9 +646,9 @@ namespace Avalon.Sdk
             await GetAsync<List<MyGuildInvite>>("/me/guild-invites", ct).ConfigureAwait(false);
 
         /// <summary><c>POST /guilds/{id}/invites</c>.</summary>
-        public async Task<GuildInvite> CreateGuildInviteAsync(Guid guildId, Guid to, CancellationToken ct = default) =>
+        public async Task<GuildInvite> CreateGuildInviteAsync(Guid guildId, IdentityId to, CancellationToken ct = default) =>
             await PostAsync<Avalon.Sdk.Generated.CreateGuildInviteRequest, GuildInvite>(
-                $"/guilds/{guildId}/invites", new Avalon.Sdk.Generated.CreateGuildInviteRequest { To = to }, ct).ConfigureAwait(false);
+                $"/guilds/{guildId}/invites", new Avalon.Sdk.Generated.CreateGuildInviteRequest { To = to.ToString() }, ct).ConfigureAwait(false);
 
         /// <summary><c>POST /guilds/{id}/invites/{invite_id}/accept</c>.</summary>
         public async Task<AccountGuildMember> AcceptGuildInviteAsync(Guid guildId, Guid inviteId, CancellationToken ct = default) =>

@@ -19,28 +19,28 @@ use crate::{SdkError, Session};
 #[derive(Deserialize)]
 struct ConversationResponse {
     id: Uuid,
-    participants: Vec<Uuid>,
+    participants: Vec<IdentityId>,
 }
 
 impl From<ConversationResponse> for Conversation {
     fn from(response: ConversationResponse) -> Self {
         Conversation {
             id: response.id,
-            participants: response.participants.into_iter().map(IdentityId).collect(),
+            participants: response.participants,
         }
     }
 }
 
 #[derive(Serialize)]
-struct CreateConversationRequest {
-    participants: Vec<Uuid>,
+struct CreateConversationRequest<'a> {
+    participants: Vec<&'a IdentityId>,
 }
 
 #[derive(Deserialize)]
 struct MessageResponse {
     id: Uuid,
     conversation_id: Uuid,
-    author: Uuid,
+    author: IdentityId,
     body: String,
     #[serde(with = "time::serde::rfc3339")]
     sent_at: time::OffsetDateTime,
@@ -51,7 +51,7 @@ impl From<MessageResponse> for ConversationMessage {
         ConversationMessage {
             id: response.id,
             conversation_id: response.conversation_id,
-            author: IdentityId(response.author),
+            author: response.author,
             body: response.body,
             sent_at: response.sent_at,
         }
@@ -153,7 +153,7 @@ impl Session {
     /// than `messages.read`.
     pub async fn dm(
         &self,
-        other_identity_id: IdentityId,
+        other_identity_id: &IdentityId,
     ) -> Result<ConversationHandle<'_>, SdkError> {
         self.require(Capability::MessagesSend)?;
 
@@ -168,7 +168,7 @@ impl Session {
             c.post(format!("{}/conversations", self.server_url))
                 .bearer_auth(&self.token)
                 .json(&CreateConversationRequest {
-                    participants: vec![other_identity_id.0],
+                    participants: vec![other_identity_id],
                 })
         })
         .await?;
@@ -360,14 +360,14 @@ mod tests {
     /// attempted. Same pattern `social.rs`/`guilds.rs` use for their own
     /// capability-check tests.
     fn test_session(granted: Vec<&str>) -> Session {
-        let self_id = IdentityId(Uuid::new_v4());
+        let self_id = IdentityId::random_for_tests();
         Session {
             identity: Identity {
-                id: self_id,
+                id: self_id.clone(),
                 created_at: OffsetDateTime::now_utc(),
             },
             profile: Profile {
-                identity_id: self_id,
+                identity_id: self_id.clone(),
                 display_name: "test".to_string(),
                 avatar_url: None,
                 bio: None,
@@ -405,7 +405,7 @@ mod tests {
     #[tokio::test]
     async fn dm_without_grant_is_rejected_before_any_request() {
         let session = test_session(vec![]);
-        let result = session.dm(IdentityId(Uuid::new_v4())).await;
+        let result = session.dm(&IdentityId::random_for_tests()).await;
         assert!(matches!(result, Err(SdkError::CapabilityNotGranted(_))));
     }
 
@@ -432,7 +432,7 @@ mod tests {
     #[tokio::test]
     async fn messages_read_does_not_satisfy_messages_send_methods() {
         let session = test_session(vec!["messages.read"]);
-        let result = session.dm(IdentityId(Uuid::new_v4())).await;
+        let result = session.dm(&IdentityId::random_for_tests()).await;
         assert!(matches!(result, Err(SdkError::CapabilityNotGranted(_))));
 
         let result = session.conversation(Uuid::new_v4()).send("hello").await;

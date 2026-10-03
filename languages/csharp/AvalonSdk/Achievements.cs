@@ -101,7 +101,7 @@ namespace Avalon.Sdk
         public string Issuer { get; set; } = "";
 
         [JsonPropertyName("subject")]
-        public Guid Subject { get; set; }
+        public IdentityId Subject { get; set; }
 
         /// <summary>The achievement definition this attestation claims, e.g.
         /// "game:&lt;slug&gt;:achievement:&lt;key&gt;".</summary>
@@ -158,7 +158,7 @@ namespace Avalon.Sdk
         /// <c>conformance/vectors/attestation-signing.json</c> is what keeps the two in
         /// step.</summary>
         private static byte[] AttestationSigningBytes(
-            string claimKind, string issuerRef, Guid subject, string achievement) =>
+            string claimKind, string issuerRef, IdentityId subject, string achievement) =>
             Encoding.UTF8.GetBytes($"avalon:{claimKind}.issued:v1:{issuerRef}:{subject}:{achievement}");
 
         /// <summary>The exact bytes this integrator's key signs to authorize a bulk issuance:
@@ -167,7 +167,7 @@ namespace Avalon.Sdk
         /// identically. Checked against the same shared vectors as
         /// <see cref="AttestationSigningBytes"/>.</summary>
         private static byte[] BulkAttestationSigningBytes(
-            string claimKind, string issuerRef, Guid subject, IReadOnlyList<string> achievementRefs)
+            string claimKind, string issuerRef, IdentityId subject, IReadOnlyList<string> achievementRefs)
         {
             var message = new List<byte>(
                 Encoding.UTF8.GetBytes($"avalon:{claimKind}.issued.bulk:v1:{issuerRef}:{subject}:"));
@@ -246,7 +246,7 @@ namespace Avalon.Sdk
 
             var issuerRef = $"game:{IntegratorSlug}";
             var achievement = $"game:{IntegratorSlug}:achievement:{key}";
-            var signingBytes = AttestationSigningBytes("achievement", issuerRef, IdentityGuid, achievement);
+            var signingBytes = AttestationSigningBytes("achievement", issuerRef, OwnIdentityId, achievement);
             var signature = SignWithIssuerKey(signingBytes);
 
             using var request = new HttpRequestMessage(
@@ -254,7 +254,7 @@ namespace Avalon.Sdk
             request.Headers.Add("x-avalon-integrator-key-id", IntegratorKeyId);
             request.Headers.Add("x-avalon-integrator-challenge-id", challenge.ChallengeId.ToString());
             request.Headers.Add("x-avalon-integrator-signature", Convert.ToBase64String(challengeSignature));
-            request.Headers.Add("x-avalon-identity-id", IdentityGuid.ToString());
+            request.Headers.Add("x-avalon-identity-id", OwnIdentityId.ToString());
             // A fresh Idempotency-Key per call: a caller that retries this whole
             // call after a dropped response mints a new key, same as the Rust SDK's
             // `submit_achievement_issuance` — this method doesn't itself retry.
@@ -503,7 +503,7 @@ namespace Avalon.Sdk
 
             var issuerRef = $"{category}:{IntegratorSlug}";
             var achievement = $"{category}:{IntegratorSlug}:milestone:{key}";
-            var signingBytes = AttestationSigningBytes("milestone", issuerRef, IdentityGuid, achievement);
+            var signingBytes = AttestationSigningBytes("milestone", issuerRef, OwnIdentityId, achievement);
             var signature = SignWithIssuerKey(signingBytes);
 
             using var request = new HttpRequestMessage(
@@ -511,7 +511,7 @@ namespace Avalon.Sdk
             request.Headers.Add("x-avalon-integrator-key-id", IntegratorKeyId);
             request.Headers.Add("x-avalon-integrator-challenge-id", challenge.ChallengeId.ToString());
             request.Headers.Add("x-avalon-integrator-signature", Convert.ToBase64String(challengeSignature));
-            request.Headers.Add("x-avalon-identity-id", IdentityGuid.ToString());
+            request.Headers.Add("x-avalon-identity-id", OwnIdentityId.ToString());
             request.Headers.Add("idempotency-key", Guid.NewGuid().ToString());
             request.Content = new StringContent(
                 JsonSerializer.Serialize(new Avalon.Sdk.Generated.IssueAttestationRequest
@@ -617,7 +617,7 @@ namespace Avalon.Sdk
                 achievementRefs.Add($"{issuerNamespace}:{IntegratorSlug}:{claimKind}:{claim.Key}");
             }
 
-            var signingBytes = BulkAttestationSigningBytes(claimKind, issuerRef, IdentityGuid, achievementRefs);
+            var signingBytes = BulkAttestationSigningBytes(claimKind, issuerRef, OwnIdentityId, achievementRefs);
             var signature = SignWithIssuerKey(signingBytes);
 
             return new StringContent(
@@ -642,7 +642,7 @@ namespace Avalon.Sdk
 
             using var request = new HttpRequestMessage(HttpMethod.Post, $"{ServerUrl}/integrations/{IntegratorSlug}/achievements/bulk-issue");
             await AttachIntegratorAuthAsync(request, ct).ConfigureAwait(false);
-            request.Headers.Add("x-avalon-identity-id", IdentityGuid.ToString());
+            request.Headers.Add("x-avalon-identity-id", OwnIdentityId.ToString());
             request.Headers.Add("idempotency-key", Guid.NewGuid().ToString());
             request.Content = content;
 
@@ -667,7 +667,7 @@ namespace Avalon.Sdk
 
             using var request = new HttpRequestMessage(HttpMethod.Post, $"{ServerUrl}/integrations/{IntegratorSlug}/milestones/bulk-issue");
             await AttachIntegratorAuthAsync(request, ct).ConfigureAwait(false);
-            request.Headers.Add("x-avalon-identity-id", IdentityGuid.ToString());
+            request.Headers.Add("x-avalon-identity-id", OwnIdentityId.ToString());
             request.Headers.Add("idempotency-key", Guid.NewGuid().ToString());
             request.Content = content;
 

@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { randomIdentityId } from '../testIds.js'
+import type { IdentityId } from '../../src/identityId.js'
 import { AccountSession } from '../../src/accountSession/core.js'
 import { bytesToBase64, generateSigningKey } from '../../src/crypto/signing.js'
 import { NoLocalSigningKeyError } from '../../src/errors.js'
 import { ed25519 } from '@noble/curves/ed25519.js'
+import { bytesToHex } from '@noble/hashes/utils.js'
 import '../../src/accountSession/devices.js'
 
-function testProfile(identityId: string) {
+function testProfile(identityId: IdentityId) {
   return {
     identityId,
     displayName: 'test',
@@ -27,7 +30,7 @@ function testProfile(identityId: string) {
 }
 
 function testSession(signing?: { secretKey: Uint8Array; publicKey: Uint8Array; signingKeyId: string }): AccountSession {
-  const identity = { id: crypto.randomUUID(), createdAt: new Date().toISOString() }
+  const identity = { id: randomIdentityId(), createdAt: new Date().toISOString() }
   return new AccountSession({
     identity,
     profile: testProfile(identity.id),
@@ -75,9 +78,46 @@ describe('AccountSession.approveDeviceGrant', () => {
     // The signature must verify against the exact bytes
     // crates/server/src/devices.rs independently reconstructs.
     const signingBytes = new TextEncoder().encode(
-      `avalon:device_grant.approved:v1:${grantId}:${session.identity().id}:${requestedPublicKeyB64}`,
+      `avalon:device_grant.approved:v2:${grantId}:${session.identity().id}:${bytesToHex(requested.publicKey)}`,
     )
     const signature = Uint8Array.from(atob(capturedBody!.signature as string), (c) => c.charCodeAt(0))
     expect(ed25519.verify(signature, signingBytes, publicKey)).toBe(true)
+  })
+})
+
+describe('AccountSession.approveDeviceGrant key handling', () => {
+  it('rejects a requested key that is not canonical base64 of 32 bytes', async () => {
+    const { secretKey, publicKey } = generateSigningKey()
+    const session = testSession({ secretKey, publicKey, signingKeyId: 'approver-key-id' })
+    await expect(session.approveDeviceGrant('grant-1', 'AAAA')).rejects.toBeInstanceOf(TypeError)
+  })
+})
+
+describe('AccountSession.revokeDevice', () => {
+  it('throws NoLocalSigningKeyError when this session holds no local key', async () => {
+    await expect(testSession().revokeDevice('key-1')).rejects.toBeInstanceOf(NoLocalSigningKeyError)
+  })
+
+  it('signs the v2 revocation bytes with the session key', async () => {
+    const { secretKey, publicKey } = generateSigningKey()
+    const session = testSession({ secretKey, publicKey, signingKeyId: 'revoker-key-id' })
+    let captured: { url: string; body: Record<string, unknown> } | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        captured = { url, body: JSON.parse(init!.body as string) }
+        return new Response(null, { status: 200 })
+      }),
+    )
+
+    await session.revokeDevice('old-key-id')
+
+    expect(captured!.url).toContain('/me/devices/old-key-id/revoke')
+    expect(captured!.body.revoked_by_signing_key_id).toBe('revoker-key-id')
+    const message = new TextEncoder().encode(
+      `avalon:identity.signing_key_revoked:v2:${session.identity().id}:old-key-id:revoker-key-id`,
+    )
+    const signature = Uint8Array.from(atob(captured!.body.signature as string), (c) => c.charCodeAt(0))
+    expect(ed25519.verify(signature, message, publicKey)).toBe(true)
   })
 })

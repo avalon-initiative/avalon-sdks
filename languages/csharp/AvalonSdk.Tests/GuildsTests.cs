@@ -64,7 +64,7 @@ public class GuildsTests
     public async Task RosterAsync_ReturnsMembersWithoutPresence_WhenPresenceReadNotGranted()
     {
         var guildId = Guid.NewGuid();
-        var memberId = Guid.NewGuid();
+        var memberId = IdentityId.RandomForTests();
         var handler = new StubHttpMessageHandler()
             .Enqueue($@"[{{""guild_id"":""{guildId}"",""identity_id"":""{memberId}"",""role_index"":0,""joined_at"":""2026-01-01T00:00:00Z""}}]");
         var session = Session.ForTesting(new[] { "guilds.read" }, handler.ToHttpClient());
@@ -83,7 +83,7 @@ public class GuildsTests
         var guildId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
         var messageId = Guid.NewGuid();
-        var authorId = Guid.NewGuid();
+        var authorId = IdentityId.RandomForTests();
         var handler = new StubHttpMessageHandler()
             .Enqueue($@"{{""id"":""{messageId}"",""channel_id"":""{channelId}"",""author"":""{authorId}"",""body"":""hi guild"",""sent_at"":""2026-01-01T00:00:00Z""}}")
             .Enqueue($@"[{{""id"":""{messageId}"",""channel_id"":""{channelId}"",""author"":""{authorId}"",""body"":""hi guild"",""sent_at"":""2026-01-01T00:00:00Z""}}]");
@@ -104,7 +104,7 @@ public class GuildsTests
         var guildId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
         var messageId = Guid.NewGuid();
-        var authorId = Guid.NewGuid();
+        var authorId = IdentityId.RandomForTests();
         var handler = new StubHttpMessageHandler()
             .Enqueue($@"[{{""id"":""{messageId}"",""channel_id"":""{channelId}"",""author"":""{authorId}"",""body"":""old"",""sent_at"":""2026-01-01T00:00:00Z"",""archived_at"":""2026-02-01T00:00:00Z""}}]");
         var session = Session.ForTesting(new[] { "guilds.chat" }, handler.ToHttpClient());

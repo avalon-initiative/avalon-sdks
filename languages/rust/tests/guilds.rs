@@ -17,6 +17,7 @@
 //! #20/#21/#22 guild, not a hand-seeded row.
 
 use avalon_sdk::types::ids::GuildId;
+use avalon_sdk::types::ids::IdentityId;
 use avalon_sdk::{AvalonClient, AvalonConfig};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
@@ -37,15 +38,15 @@ async fn test_pool() -> PgPool {
 
 /// Seeds a bare identity + session, bypassing WebAuthn entirely — same
 /// approach `rust/tests/social.rs` uses.
-async fn seed_identity_session(pool: &PgPool, display_name: &str) -> (Uuid, String) {
-    let identity_id = Uuid::new_v4();
+async fn seed_identity_session(pool: &PgPool, display_name: &str) -> (IdentityId, String) {
+    let identity_id = IdentityId::random_for_tests();
     sqlx::query("INSERT INTO identities (id) VALUES ($1)")
-        .bind(identity_id)
+        .bind(identity_id.to_string())
         .execute(pool)
         .await
         .expect("failed to seed identity");
     sqlx::query("INSERT INTO profiles (identity_id, display_name) VALUES ($1, $2)")
-        .bind(identity_id)
+        .bind(identity_id.to_string())
         .bind(display_name)
         .execute(pool)
         .await
@@ -55,7 +56,7 @@ async fn seed_identity_session(pool: &PgPool, display_name: &str) -> (Uuid, Stri
     let expires_at = OffsetDateTime::now_utc() + time::Duration::hours(1);
     sqlx::query("INSERT INTO sessions (token, identity_id, expires_at) VALUES ($1, $2, $3)")
         .bind(&token)
-        .bind(identity_id)
+        .bind(identity_id.to_string())
         .bind(expires_at)
         .execute(pool)
         .await
@@ -117,7 +118,7 @@ async fn guilds_lists_a_membership_created_via_the_http_api() {
         .iter()
         .find(|m| m.guild.id == GuildId(guild_id))
         .expect("the guild just created should be in the caller's memberships");
-    assert_eq!(membership.guild.owner.0, alice_id);
+    assert_eq!(membership.guild.owner, alice_id);
     assert_eq!(membership.guild.tag, tag);
 }
 
@@ -162,7 +163,7 @@ async fn roster_returns_the_owner_as_a_member() {
         .await
         .expect("roster() should succeed");
     assert_eq!(roster.len(), 1);
-    assert_eq!(roster[0].member.identity_id.0, alice_id);
+    assert_eq!(roster[0].member.identity_id, alice_id);
     // presence.read wasn't granted, so no presence should be embedded.
     assert!(roster[0].presence.is_none());
 }
@@ -202,7 +203,7 @@ async fn send_then_messages_round_trips_a_message() {
         .send("hello from the sdk")
         .await
         .expect("send() should succeed");
-    assert_eq!(sent.author.0, alice_id);
+    assert_eq!(sent.author, alice_id);
     assert_eq!(sent.body, "hello from the sdk");
 
     let messages = session
@@ -243,7 +244,7 @@ async fn subscribe_messages_receives_a_message_pushed_by_another_member() {
          VALUES ($1, $2, 2, now())",
     )
     .bind(guild_id)
-    .bind(_bob_id)
+    .bind(_bob_id.to_string())
     .execute(&pool)
     .await
     .expect("failed to seed bob's membership");

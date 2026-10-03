@@ -51,6 +51,8 @@ passkey-client.workspace = true
 passkey-authenticator.workspace = true
 coset = "0.4"
 url.workspace = true
+# Pattern-validated generated id types (IdentityId).
+regress = "0.12"
 
 [features]
 # Exposes Session::grant_for_testing, a capability-grant escape hatch that

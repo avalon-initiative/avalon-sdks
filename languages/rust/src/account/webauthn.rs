@@ -22,7 +22,6 @@ use passkey_types::ctap2::Aaguid;
 use passkey_types::webauthn::{CredentialCreationOptions, CredentialRequestOptions};
 use passkey_types::Passkey;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::SdkError;
 
@@ -164,12 +163,4 @@ pub(crate) async fn login_ceremony(
         )
         .await
         .map_err(|e| SdkError::Protocol(format!("WebAuthn authentication ceremony failed: {e:?}")))
-}
-
-/// Must produce exactly the bytes `avalon-server`'s
-/// `handlers::identity_created_signing_bytes` reconstructs — duplicated
-/// rather than shared, same reasoning as `crates/cli/src/dev_tools.rs`'s
-/// own copy of this function.
-pub(crate) fn identity_created_signing_bytes(identity_id: Uuid, display_name: &str) -> Vec<u8> {
-    format!("avalon:identity.created:v1:{identity_id}:{display_name}").into_bytes()
 }

@@ -157,13 +157,13 @@ namespace Avalon.Sdk
     /// own.</summary>
     public sealed class Identity
     {
-        public Identity(Guid id, DateTimeOffset createdAt)
+        public Identity(IdentityId id, DateTimeOffset createdAt)
         {
             Id = id;
             CreatedAt = createdAt;
         }
 
-        public Guid Id { get; }
+        public IdentityId Id { get; }
         public DateTimeOffset CreatedAt { get; }
     }
 
@@ -174,12 +174,12 @@ namespace Avalon.Sdk
     /// client (e.g. the Hub).</summary>
     public sealed class Profile
     {
-        public Profile(Guid identityId)
+        public Profile(IdentityId identityId)
         {
             IdentityId = identityId;
         }
 
-        public Guid IdentityId { get; }
+        public IdentityId IdentityId { get; }
         public string DisplayName { get; set; } = "";
         public string? AvatarUrl { get; set; }
         public string? Bio { get; set; }
@@ -205,10 +205,9 @@ namespace Avalon.Sdk
     {
         private readonly HashSet<string> _grantedCapabilities;
 
-        /// <summary>Backs the public string <see cref="IdentityId"/> — kept as a real
-        /// <see cref="Guid"/> internally so Social.cs/Guilds.cs can compare it against
-        /// other identity ids without reparsing a string on every call.</summary>
-        internal readonly Guid IdentityGuid;
+        /// <summary>This session's own identity id, for Social.cs/Guilds.cs to compare against
+        /// other identity ids.</summary>
+        internal readonly IdentityId OwnIdentityId;
 
         internal readonly HttpClient Http;
         internal readonly string ServerUrl;
@@ -239,7 +238,7 @@ namespace Avalon.Sdk
         {
             IdentityValue = identity;
             ProfileValue = profile;
-            IdentityGuid = identity.Id;
+            OwnIdentityId = identity.Id;
             _grantedCapabilities = new HashSet<string>(grantedCapabilities);
             Http = http;
             ServerUrl = serverUrl;
@@ -252,9 +251,9 @@ namespace Avalon.Sdk
         private Identity IdentityValue { get; }
         private Profile ProfileValue { get; }
 
-        /// <summary>This session's own identity id, as a string — no network call, populated
-        /// once by <c>AuthenticateAsync</c>.</summary>
-        public string IdentityId => IdentityValue.Id.ToString();
+        /// <summary>This session's own identity id — no network call, populated once by
+        /// <c>AuthenticateAsync</c>.</summary>
+        public IdentityId IdentityId => IdentityValue.Id;
 
         /// <summary>This session's own identity (id and creation time). Mirrors the Rust
         /// SDK's <c>Session::identity()</c>.</summary>
@@ -275,13 +274,13 @@ namespace Avalon.Sdk
             HttpClient? http = null,
             string serverUrl = "http://127.0.0.1:1",
             string token = "test-token",
-            Guid? identityId = null,
+            IdentityId? identityId = null,
             string integratorKeyId = "test-integrator-key",
             string? integratorSlug = null,
             byte[]? signingKey = null,
             Profile? profile = null)
         {
-            var id = identityId ?? Guid.NewGuid();
+            var id = identityId ?? IdentityId.RandomForTests();
             return new Session(
                 new Identity(id, DateTimeOffset.UtcNow),
                 profile ?? new Profile(id) { DisplayName = "test" },
@@ -364,7 +363,7 @@ namespace Avalon.Sdk
         /// base URL this identity has any durable history on, resolved over the DHT identity
         /// locator. Public: the response carries no personal data, only server base
         /// URLs.</summary>
-        public async Task<IReadOnlyList<string>> GetLocationsAsync(Guid identityId, CancellationToken ct = default)
+        public async Task<IReadOnlyList<string>> GetLocationsAsync(IdentityId identityId, CancellationToken ct = default)
         {
             var body = await GetJsonAsync<Avalon.Sdk.Generated.LocationsResponse>(
                 $"{ServerUrl}/identities/{identityId}/locations", ct).ConfigureAwait(false);

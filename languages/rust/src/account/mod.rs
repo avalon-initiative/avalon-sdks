@@ -111,7 +111,7 @@ struct AccountSigningKey {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountCredentials {
     /// The identity these credentials log back into.
-    pub identity_id: Uuid,
+    pub identity_id: IdentityId,
     /// Base64-encoded 32-byte Ed25519 signing-key seed — the same key
     /// `identity_created_signing_bytes` was signed with at registration.
     pub signing_key_seed_base64: String,
@@ -176,10 +176,10 @@ impl TryFrom<crate::generated::ProfileResponse> for (Identity, Profile) {
     type Error = SdkError;
 
     fn try_from(body: crate::generated::ProfileResponse) -> Result<Self, SdkError> {
-        let id = IdentityId(body.identity_id);
+        let id = body.identity_id;
         Ok((
             Identity {
-                id,
+                id: id.clone(),
                 created_at: parse_rfc3339(&body.identity_created_at)?,
             },
             Profile {
@@ -606,13 +606,19 @@ impl AvalonClient {
     /// identity later; persist it if this process won't outlive this
     /// session.
     pub async fn register(&self, display_name: &str) -> Result<AccountSession, SdkError> {
-        let identity_id = Uuid::new_v4();
         let base = &self.config.server_url;
         let http = &self.http;
 
+        // The id is derived from the inception key, so the key comes first.
         let mut csprng = rand::rng();
         let signing_key = SigningKey::generate(&mut csprng);
-        let event_signing_public_key = BASE64.encode(signing_key.verifying_key().to_bytes());
+        let public_key = signing_key.verifying_key();
+        if !crate::identity_signing::is_acceptable_ed25519_key(&public_key) {
+            return Err(SdkError::Protocol(
+                "generated an unacceptable inception key; retry".to_string(),
+            ));
+        }
+        let identity_id = IdentityId::derive(public_key.as_bytes());
 
         // `RegisterStartResponse` stays hand-written: its `challenge` field
         // is an opaque `"type": "object"` blob in the OpenAPI schema
@@ -621,6 +627,8 @@ impl AvalonClient {
         #[derive(Deserialize)]
         struct RegisterStartResponse {
             ticket_id: Uuid,
+            network_id: String,
+            shard_id: String,
             challenge: passkey_types::webauthn::CredentialCreationOptions,
         }
         let start: RegisterStartResponse = http
@@ -629,7 +637,8 @@ impl AvalonClient {
                 crate::generated::paths::identity::REGISTER_START
             ))
             .json(&crate::generated::RegisterStartRequest {
-                identity_id,
+                identity_id: identity_id.clone(),
+                event_signing_public_key: BASE64.encode(public_key.as_bytes()),
                 display_name: display_name.to_string(),
             })
             .send()
@@ -642,7 +651,14 @@ impl AvalonClient {
         let (webauthn_credential, stored_passkey) =
             webauthn::registration_ceremony(start.challenge).await?;
 
-        let signing_bytes = webauthn::identity_created_signing_bytes(identity_id, display_name);
+        let signing_bytes = crate::identity_signing::identity_created_signing_bytes_v2(
+            &start.network_id,
+            &start.shard_id,
+            start.ticket_id,
+            &identity_id,
+            public_key.as_bytes(),
+            display_name,
+        );
         let event_signature = BASE64.encode(signing_key.sign(&signing_bytes).to_bytes());
 
         // Hand-written for the same reason as `RegisterStartResponse` above
@@ -651,7 +667,6 @@ impl AvalonClient {
         struct RegisterFinishRequest {
             ticket_id: Uuid,
             webauthn_credential: passkey_types::webauthn::CreatedPublicKeyCredential,
-            event_signing_public_key: String,
             event_signature: String,
             device_label: Option<String>,
         }
@@ -663,7 +678,6 @@ impl AvalonClient {
             .json(&RegisterFinishRequest {
                 ticket_id: start.ticket_id,
                 webauthn_credential,
-                event_signing_public_key,
                 event_signature,
                 device_label: None,
             })
@@ -673,18 +687,24 @@ impl AvalonClient {
         if !finish_response.status().is_success() {
             return Err(crate::http::map_error_response(finish_response).await);
         }
-        let _finish: crate::generated::RegisterFinishResponse = finish_response
+        let finish: crate::generated::RegisterFinishResponse = finish_response
             .json()
             .await
             .map_err(|e| SdkError::Protocol(e.to_string()))?;
+        if finish.identity_id != identity_id {
+            return Err(SdkError::Protocol(
+                "register/finish returned a different identity id than the one derived from the key"
+                    .to_string(),
+            ));
+        }
 
         let credentials = AccountCredentials {
-            identity_id,
+            identity_id: identity_id.clone(),
             signing_key_seed_base64: BASE64.encode(signing_key.to_bytes()),
             passkey: stored_passkey,
         };
 
-        self.finish_login(identity_id, signing_key, credentials.passkey.clone())
+        self.finish_login(&identity_id, signing_key, credentials.passkey.clone())
             .await
             .map(|mut session| {
                 session.local_credentials = Some(credentials);
@@ -716,7 +736,7 @@ impl AvalonClient {
 
         let mut session = self
             .finish_login(
-                credentials.identity_id,
+                &credentials.identity_id,
                 signing_key,
                 credentials.passkey.clone(),
             )
@@ -731,7 +751,7 @@ impl AvalonClient {
     /// [`AvalonClient::account_login`].
     async fn finish_login(
         &self,
-        identity_id: Uuid,
+        identity_id: &IdentityId,
         signing_key: SigningKey,
         stored_passkey: webauthn::StoredPasskey,
     ) -> Result<AccountSession, SdkError> {
@@ -750,7 +770,9 @@ impl AvalonClient {
                 "{base}{}",
                 crate::generated::paths::identity::SESSION_START
             ))
-            .json(&crate::generated::SessionStartRequest { identity_id })
+            .json(&crate::generated::SessionStartRequest {
+                identity_id: identity_id.clone(),
+            })
             .send()
             .await
             .map_err(|e| SdkError::Protocol(e.to_string()))?
@@ -898,11 +920,11 @@ mod tests {
     fn sign_with_no_local_key_yields_empty_signature_fields() {
         let session = AccountSession {
             identity: Identity {
-                id: IdentityId(Uuid::new_v4()),
+                id: IdentityId::random_for_tests(),
                 created_at: time::OffsetDateTime::now_utc(),
             },
             profile: Profile {
-                identity_id: IdentityId(Uuid::new_v4()),
+                identity_id: IdentityId::random_for_tests(),
                 display_name: "test".to_string(),
                 avatar_url: None,
                 bio: None,
@@ -936,11 +958,11 @@ mod tests {
 
         let session = AccountSession {
             identity: Identity {
-                id: IdentityId(Uuid::new_v4()),
+                id: IdentityId::random_for_tests(),
                 created_at: time::OffsetDateTime::now_utc(),
             },
             profile: Profile {
-                identity_id: IdentityId(Uuid::new_v4()),
+                identity_id: IdentityId::random_for_tests(),
                 display_name: "test".to_string(),
                 avatar_url: None,
                 bio: None,

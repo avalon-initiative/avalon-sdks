@@ -69,7 +69,7 @@ struct GuildResponse {
     name: String,
     tag: String,
     description: String,
-    owner: Uuid,
+    owner: IdentityId,
     #[serde(with = "time::serde::rfc3339")]
     created_at: OffsetDateTime,
     join_policy: String,
@@ -97,7 +97,7 @@ impl From<GuildResponse> for Guild {
             name: response.name,
             tag: response.tag,
             description: response.description,
-            owner: IdentityId(response.owner),
+            owner: response.owner,
             created_at: response.created_at,
             // Falls back to the type's own default on an unparseable
             // string, same posture `crates/server/src/guilds.rs::guild_row`
@@ -125,7 +125,7 @@ struct MyGuildMembershipResponse {
 #[derive(Deserialize)]
 struct GuildMemberResponse {
     guild_id: Uuid,
-    identity_id: Uuid,
+    identity_id: IdentityId,
     role_index: i32,
     #[serde(with = "time::serde::rfc3339")]
     joined_at: OffsetDateTime,
@@ -135,7 +135,7 @@ impl From<GuildMemberResponse> for GuildMember {
     fn from(response: GuildMemberResponse) -> Self {
         GuildMember {
             guild_id: GuildId(response.guild_id),
-            identity_id: IdentityId(response.identity_id),
+            identity_id: response.identity_id,
             role: GuildRole {
                 guild_id: GuildId(response.guild_id),
                 // The server stores role_index as a Postgres `int4`
@@ -223,7 +223,7 @@ pub struct ArchivedMessage {
     /// The channel it was posted in.
     pub channel_id: Uuid,
     /// The identity that posted it.
-    pub author: Uuid,
+    pub author: IdentityId,
     /// Message body.
     pub body: String,
     /// When it was originally sent.
@@ -238,7 +238,7 @@ pub struct ArchivedMessage {
 struct MessageResponse {
     id: Uuid,
     channel_id: Uuid,
-    author: Uuid,
+    author: IdentityId,
     body: String,
     #[serde(with = "time::serde::rfc3339")]
     sent_at: OffsetDateTime,
@@ -249,7 +249,7 @@ impl From<MessageResponse> for GuildMessage {
         GuildMessage {
             id: response.id,
             channel_id: response.channel_id,
-            author: IdentityId(response.author),
+            author: response.author,
             body: response.body,
             sent_at: response.sent_at,
         }
@@ -317,7 +317,7 @@ struct EventResponse {
     #[serde(default)]
     #[serde(with = "time::serde::rfc3339::option")]
     ends_at: Option<OffsetDateTime>,
-    created_by: Uuid,
+    created_by: IdentityId,
     #[serde(with = "time::serde::rfc3339")]
     created_at: OffsetDateTime,
     #[serde(default)]
@@ -334,7 +334,7 @@ impl From<EventResponse> for GuildEvent {
             description: response.description,
             starts_at: response.starts_at,
             ends_at: response.ends_at,
-            created_by: IdentityId(response.created_by),
+            created_by: response.created_by,
             created_at: response.created_at,
             public: response.public,
         }
@@ -443,12 +443,12 @@ impl<'a> GuildHandle<'a> {
 
         let presence_by_id =
             if self.session.require(Capability::PresenceRead).is_ok() && !members.is_empty() {
-                let ids: Vec<IdentityId> = members.iter().map(|m| m.identity_id).collect();
+                let ids: Vec<IdentityId> = members.iter().map(|m| m.identity_id.clone()).collect();
                 self.session
                     .presence_of(&ids)
                     .await?
                     .into_iter()
-                    .map(|p| (p.identity_id, p))
+                    .map(|p| (p.identity_id.clone(), p))
                     .collect()
             } else {
                 HashMap::new()
@@ -728,14 +728,14 @@ mod tests {
     use crate::types::social::PresenceStatus;
 
     fn test_session(granted: Vec<&str>) -> Session {
-        let self_id = IdentityId(Uuid::new_v4());
+        let self_id = IdentityId::random_for_tests();
         Session {
             identity: Identity {
-                id: self_id,
+                id: self_id.clone(),
                 created_at: OffsetDateTime::now_utc(),
             },
             profile: Profile {
-                identity_id: self_id,
+                identity_id: self_id.clone(),
                 display_name: "test".to_string(),
                 avatar_url: None,
                 bio: None,
@@ -870,7 +870,7 @@ mod tests {
         let raw = serde_json::json!({
             "id": Uuid::nil(),
             "channel_id": Uuid::nil(),
-            "author": Uuid::nil(),
+            "author": crate::types::ids::IdentityId::random_for_tests(),
             "body": "hello",
             "sent_at": "2026-01-01T00:00:00Z",
             "archived_at": "2026-01-02T00:00:00Z",
@@ -881,8 +881,8 @@ mod tests {
 
     #[test]
     fn merge_roster_member_has_no_presence_when_map_is_empty() {
-        let identity_id = IdentityId(Uuid::new_v4());
-        let member = make_member(identity_id);
+        let identity_id = IdentityId::random_for_tests();
+        let member = make_member(identity_id.clone());
 
         let entry = merge_roster_member(member, &HashMap::new());
 
@@ -892,10 +892,10 @@ mod tests {
 
     #[test]
     fn merge_roster_member_picks_up_presence_when_present_in_map() {
-        let identity_id = IdentityId(Uuid::new_v4());
-        let member = make_member(identity_id);
+        let identity_id = IdentityId::random_for_tests();
+        let member = make_member(identity_id.clone());
         let mut presence_by_id = HashMap::new();
-        presence_by_id.insert(identity_id, make_presence(identity_id));
+        presence_by_id.insert(identity_id.clone(), make_presence(identity_id.clone()));
 
         let entry = merge_roster_member(member, &presence_by_id);
 

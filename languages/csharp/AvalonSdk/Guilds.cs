@@ -43,7 +43,7 @@ namespace Avalon.Sdk
         public string Name { get; set; } = "";
         public string Tag { get; set; } = "";
         public string Description { get; set; } = "";
-        public Guid Owner { get; set; }
+        public IdentityId Owner { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public JoinPolicy JoinPolicy { get; set; }
         public string? Motd { get; set; }
@@ -67,7 +67,7 @@ namespace Avalon.Sdk
 
     public sealed class GuildMember
     {
-        public GuildMember(Guid guildId, Guid identityId, GuildRole role, DateTimeOffset joinedAt)
+        public GuildMember(Guid guildId, IdentityId identityId, GuildRole role, DateTimeOffset joinedAt)
         {
             GuildId = guildId;
             IdentityId = identityId;
@@ -76,7 +76,7 @@ namespace Avalon.Sdk
         }
 
         public Guid GuildId { get; }
-        public Guid IdentityId { get; }
+        public IdentityId IdentityId { get; }
         public GuildRole Role { get; }
         public DateTimeOffset JoinedAt { get; }
     }
@@ -96,7 +96,7 @@ namespace Avalon.Sdk
     {
         public Guid Id { get; set; }
         public Guid ChannelId { get; set; }
-        public Guid Author { get; set; }
+        public IdentityId Author { get; set; }
         public string Body { get; set; } = "";
         public DateTimeOffset SentAt { get; set; }
     }
@@ -110,7 +110,7 @@ namespace Avalon.Sdk
         public string? Description { get; set; }
         public DateTimeOffset StartsAt { get; set; }
         public DateTimeOffset? EndsAt { get; set; }
-        public Guid CreatedBy { get; set; }
+        public IdentityId CreatedBy { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         // RsvpCounts is intentionally dropped — GuildEvent has nowhere to put it, same
         // posture the Rust SDK's EventResponse takes.
@@ -154,7 +154,7 @@ namespace Avalon.Sdk
             Name = response.Name,
             Tag = response.Tag,
             Description = response.Description,
-            Owner = response.Owner,
+            Owner = IdentityId.Parse(response.Owner),
             CreatedAt = response.CreatedAt,
             // Falls back to InviteOnly on an unparseable string, same posture the server's
             // own read path takes — never a hard failure on a read.
@@ -168,7 +168,7 @@ namespace Avalon.Sdk
 
         internal static GuildMember GuildMemberResponseToGuildMember(Avalon.Sdk.Generated.GuildMemberResponse response) => new GuildMember(
             response.GuildId,
-            response.IdentityId,
+            IdentityId.Parse(response.IdentityId),
             // Clamped rather than throwing on a negative wire value — a server-side bug
             // should not crash an integrator's read.
             new GuildRole(response.GuildId, (uint)Math.Max(response.RoleIndex, 0)),
@@ -187,7 +187,7 @@ namespace Avalon.Sdk
         {
             Id = response.Id,
             ChannelId = response.ChannelId,
-            Author = response.Author,
+            Author = IdentityId.Parse(response.Author),
             Body = response.Body,
             SentAt = response.SentAt,
         };
@@ -201,11 +201,11 @@ namespace Avalon.Sdk
             Description = response.Description,
             StartsAt = response.StartsAt,
             EndsAt = response.EndsAt,
-            CreatedBy = response.CreatedBy,
+            CreatedBy = IdentityId.Parse(response.CreatedBy),
             CreatedAt = response.CreatedAt,
         };
 
-        internal static GuildRosterMember MergeRosterMember(GuildMember member, IReadOnlyDictionary<Guid, Presence> presenceById)
+        internal static GuildRosterMember MergeRosterMember(GuildMember member, IReadOnlyDictionary<IdentityId, Presence> presenceById)
         {
             presenceById.TryGetValue(member.IdentityId, out var presence);
             return new GuildRosterMember(member, presence);
@@ -282,7 +282,7 @@ namespace Avalon.Sdk
                 .Select(Session.GuildMemberResponseToGuildMember)
                 .ToList();
 
-            var presenceById = new Dictionary<Guid, Presence>();
+            var presenceById = new Dictionary<IdentityId, Presence>();
             if (_session.HasCapability("presence.read") && members.Count > 0)
             {
                 var ids = members.Select(m => m.IdentityId).ToArray();

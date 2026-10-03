@@ -8,18 +8,37 @@
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-/// An opaque, stable identity handle. Never derived from a display name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct IdentityId(
-    /// The identity's UUID, exactly as it appears on the wire.
-    pub Uuid,
-);
+/// A self-certifying identity id: 64 lowercase hex characters, `SHA-256("avalon-identity-id-v1" || key)`
+/// of the identity's inception Ed25519 public key. Parsing (`FromStr`, serde) is strict and never normalises.
+pub use crate::generated::IdentityId;
 
-impl fmt::Display for IdentityId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+/// Domain-separation tag hashed ahead of the inception key when deriving an identity id.
+pub const IDENTITY_ID_DOMAIN_TAG: &[u8] = b"avalon-identity-id-v1";
+
+impl IdentityId {
+    /// Derives the id for an inception public key (a pure hash; the caller gates key acceptability).
+    pub fn derive(public_key: &[u8; 32]) -> Self {
+        let mut hasher = Sha256::new();
+        hasher.update(IDENTITY_ID_DOMAIN_TAG);
+        hasher.update(public_key);
+        hex::encode(hasher.finalize())
+            .parse()
+            .expect("a SHA-256 digest is 64 lowercase hex characters")
+    }
+
+    /// A fresh id from a random key, for tests that never verify a signature against it.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn random_for_tests() -> Self {
+        let key = ed25519_dalek::SigningKey::generate(&mut rand::rng());
+        Self::derive(key.verifying_key().as_bytes())
+    }
+
+    /// Whether this id is the one derived from `public_key`.
+    pub fn matches_key(&self, public_key: &[u8; 32]) -> bool {
+        Self::derive(public_key) == *self
     }
 }
 
@@ -73,5 +92,56 @@ impl GlobalId {
 impl fmt::Display for GlobalId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl fmt::Display for IdentityId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ID: &str = "7c26a0e34260b2c5bb6a795e29cdfe878c907df4bf8c7425c5a8ce00235558e9";
+
+    #[test]
+    fn parse_is_strict() {
+        assert!(ID.parse::<IdentityId>().is_ok());
+        for bad in [
+            &ID.to_uppercase(),
+            &ID[..63],
+            &format!("{ID}0"),
+            &format!("id:{ID}"),
+            &format!("{ID}\n"),
+            &format!(" {ID}"),
+            "0b7a2c1e-5d4f-4a3b-9c8d-1e2f3a4b5c6d",
+            "",
+        ] {
+            assert!(bad.parse::<IdentityId>().is_err(), "accepted {bad:?}");
+        }
+    }
+
+    #[test]
+    fn serde_rejects_a_uuid() {
+        assert!(
+            serde_json::from_str::<IdentityId>("\"0b7a2c1e-5d4f-4a3b-9c8d-1e2f3a4b5c6d\"").is_err()
+        );
+        assert!(serde_json::from_str::<IdentityId>(&format!("\"{ID}\"")).is_ok());
+    }
+
+    #[test]
+    fn derive_matches_the_shared_vector() {
+        let key: [u8; 32] =
+            hex::decode("d759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48")
+                .unwrap()
+                .try_into()
+                .unwrap();
+        let id = IdentityId::derive(&key);
+        assert_eq!(id.to_string(), ID);
+        assert!(id.matches_key(&key));
+        assert!(!id.matches_key(&[1u8; 32]));
     }
 }

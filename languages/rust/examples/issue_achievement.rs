@@ -63,6 +63,6 @@ async fn main() {
         "issue_achievement() failed — see this example's own doc comment for prerequisites",
     );
 
-    println!("Issued '{achievement_key}' to {}.", session.identity().id.0);
+    println!("Issued '{achievement_key}' to {}.", session.identity().id);
     println!("Attestation id: {attestation_id}");
 }

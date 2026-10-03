@@ -29,15 +29,15 @@ async fn test_pool() -> PgPool {
 
 /// Seeds a bare identity + session, bypassing WebAuthn entirely — same
 /// approach `rust/tests/social.rs`/`tests/guilds.rs` use.
-async fn seed_identity_session(pool: &PgPool, display_name: &str) -> (Uuid, String) {
-    let identity_id = Uuid::new_v4();
+async fn seed_identity_session(pool: &PgPool, display_name: &str) -> (IdentityId, String) {
+    let identity_id = IdentityId::random_for_tests();
     sqlx::query("INSERT INTO identities (id) VALUES ($1)")
-        .bind(identity_id)
+        .bind(identity_id.to_string())
         .execute(pool)
         .await
         .expect("failed to seed identity");
     sqlx::query("INSERT INTO profiles (identity_id, display_name) VALUES ($1, $2)")
-        .bind(identity_id)
+        .bind(identity_id.to_string())
         .bind(display_name)
         .execute(pool)
         .await
@@ -47,7 +47,7 @@ async fn seed_identity_session(pool: &PgPool, display_name: &str) -> (Uuid, Stri
     let expires_at = OffsetDateTime::now_utc() + time::Duration::hours(1);
     sqlx::query("INSERT INTO sessions (token, identity_id, expires_at) VALUES ($1, $2, $3)")
         .bind(&token)
-        .bind(identity_id)
+        .bind(identity_id.to_string())
         .bind(expires_at)
         .execute(pool)
         .await
@@ -63,11 +63,15 @@ async fn seed_identity_session(pool: &PgPool, display_name: &str) -> (Uuid, Stri
 /// `crates/server/src/friends.rs` to read the indexer projection instead,
 /// and a row seeded there is invisible to `create_conversation`'s
 /// relationship check now.
-async fn seed_friendship(pool: &PgPool, x: Uuid, y: Uuid) {
-    let (a, b) = if x < y { (x, y) } else { (y, x) };
+async fn seed_friendship(pool: &PgPool, x: &IdentityId, y: &IdentityId) {
+    let (a, b) = if x.as_str() < y.as_str() {
+        (x, y)
+    } else {
+        (y, x)
+    };
     sqlx::query("INSERT INTO indexer_friendships (a, b, since) VALUES ($1, $2, now())")
-        .bind(a)
-        .bind(b)
+        .bind(a.to_string())
+        .bind(b.to_string())
         .execute(pool)
         .await
         .expect("failed to seed friendship");
@@ -93,7 +97,7 @@ async fn dm_then_send_then_messages_round_trips_across_two_sessions() {
         seed_identity_session(&pool, &format!("sdk-conv-alice-{}", Uuid::new_v4())).await;
     let (bob_id, bob_token) =
         seed_identity_session(&pool, &format!("sdk-conv-bob-{}", Uuid::new_v4())).await;
-    seed_friendship(&pool, alice_id, bob_id).await;
+    seed_friendship(&pool, &alice_id, &bob_id).await;
 
     let alice = client
         .authenticate(&alice_token)
@@ -102,16 +106,13 @@ async fn dm_then_send_then_messages_round_trips_across_two_sessions() {
         .grant_for_testing("messages.send")
         .grant_for_testing("messages.read");
 
-    let conversation = alice
-        .dm(IdentityId(bob_id))
-        .await
-        .expect("dm() should succeed");
+    let conversation = alice.dm(&bob_id).await.expect("dm() should succeed");
 
     let sent = conversation
         .send("hello from alice")
         .await
         .expect("send() should succeed");
-    assert_eq!(sent.author.0, alice_id);
+    assert_eq!(sent.author, alice_id);
     assert_eq!(sent.body, "hello from alice");
 
     let alice_messages = conversation
@@ -139,15 +140,15 @@ async fn dm_then_send_then_messages_round_trips_across_two_sessions() {
         .iter()
         .find(|c| c.id == conversation.conversation_id())
         .expect("bob should see the conversation alice started");
-    assert!(found.participants.contains(&IdentityId(alice_id)));
-    assert!(found.participants.contains(&IdentityId(bob_id)));
+    assert!(found.participants.contains(&alice_id));
+    assert!(found.participants.contains(&bob_id));
 
     let bob_handle = bob.conversation(found.id);
     let bob_reply = bob_handle
         .send("hi alice")
         .await
         .expect("bob's send() should succeed");
-    assert_eq!(bob_reply.author.0, bob_id);
+    assert_eq!(bob_reply.author, bob_id);
 
     let bob_messages = bob_handle
         .messages(None, None)
@@ -170,7 +171,7 @@ async fn subscribe_messages_receives_a_message_pushed_by_the_other_participant()
         seed_identity_session(&pool, &format!("sdk-conv-ws-alice-{}", Uuid::new_v4())).await;
     let (bob_id, bob_token) =
         seed_identity_session(&pool, &format!("sdk-conv-ws-bob-{}", Uuid::new_v4())).await;
-    seed_friendship(&pool, alice_id, bob_id).await;
+    seed_friendship(&pool, &alice_id, &bob_id).await;
 
     let alice = client
         .authenticate(&alice_token)
@@ -185,10 +186,7 @@ async fn subscribe_messages_receives_a_message_pushed_by_the_other_participant()
         .grant_for_testing("messages.send")
         .grant_for_testing("messages.read");
 
-    let conversation = alice
-        .dm(IdentityId(bob_id))
-        .await
-        .expect("dm() should succeed");
+    let conversation = alice.dm(&bob_id).await.expect("dm() should succeed");
 
     let mut updates = conversation
         .subscribe_messages()
@@ -206,7 +204,7 @@ async fn subscribe_messages_receives_a_message_pushed_by_the_other_participant()
         .expect("a pushed message should arrive without polling")
         .expect("channel should still be open");
     assert_eq!(pushed.body, "hello from bob");
-    assert_eq!(pushed.author.0, bob_id);
+    assert_eq!(pushed.author, bob_id);
 }
 
 #[tokio::test]
@@ -218,7 +216,7 @@ async fn dm_without_grant_is_rejected_before_any_request_live() {
     let client = client();
 
     let session = client.authenticate(&token).await.unwrap();
-    let result = session.dm(IdentityId(Uuid::new_v4())).await;
+    let result = session.dm(&IdentityId::random_for_tests()).await;
     assert!(matches!(
         result,
         Err(avalon_sdk::SdkError::CapabilityNotGranted(_))
@@ -237,14 +235,14 @@ async fn a_non_participant_reading_another_pairs_conversation_is_rejected() {
         seed_identity_session(&pool, &format!("sdk-conv-b-{}", Uuid::new_v4())).await;
     let (_mallory_id, mallory_token) =
         seed_identity_session(&pool, &format!("sdk-conv-m-{}", Uuid::new_v4())).await;
-    seed_friendship(&pool, alice_id, bob_id).await;
+    seed_friendship(&pool, &alice_id, &bob_id).await;
 
     let alice = client
         .authenticate(&alice_token)
         .await
         .unwrap()
         .grant_for_testing("messages.send");
-    let conversation = alice.dm(IdentityId(bob_id)).await.unwrap();
+    let conversation = alice.dm(&bob_id).await.unwrap();
     let conversation_id = conversation.conversation_id();
 
     let mallory = client

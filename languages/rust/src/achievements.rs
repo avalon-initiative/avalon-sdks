@@ -63,6 +63,7 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+use crate::types::ids::IdentityId;
 use crate::types::integrators::IntegratorCategory;
 
 use crate::{AvalonClient, SdkError, Session};
@@ -130,7 +131,7 @@ pub struct VerifiedAttestation {
     /// The issuer that issued it, e.g. `"game:<slug>"`.
     pub issuer: String,
     /// The identity this attestation is about.
-    pub subject: Uuid,
+    pub subject: IdentityId,
     /// The achievement/milestone definition this attestation claims,
     /// e.g. `"game:<slug>:achievement:<key>"`.
     pub achievement: String,
@@ -178,7 +179,7 @@ struct IssueResponse {
 pub fn attestation_signing_bytes(
     claim_kind: &str,
     issuer_ref: &str,
-    subject: Uuid,
+    subject: &IdentityId,
     achievement: &str,
 ) -> Vec<u8> {
     format!("avalon:{claim_kind}.issued:v1:{issuer_ref}:{subject}:{achievement}").into_bytes()
@@ -196,7 +197,7 @@ pub fn attestation_signing_bytes(
 pub fn bulk_attestation_signing_bytes(
     claim_kind: &str,
     issuer_ref: &str,
-    subject: Uuid,
+    subject: &IdentityId,
     achievements: &[String],
 ) -> Vec<u8> {
     let mut message =
@@ -233,7 +234,7 @@ pub struct BulkIssuedAttestation {
     /// The issuer that issued it, e.g. `"game:<slug>"`.
     pub issuer: String,
     /// The identity this attestation is about.
-    pub subject: Uuid,
+    pub subject: IdentityId,
     /// The achievement definition this attestation claims, e.g.
     /// `"game:<slug>:achievement:<key>"`.
     pub achievement: String,
@@ -401,12 +402,12 @@ impl Session {
         // Proof two: this key specifically authorized this attestation —
         // independent of the challenge-response above, checked
         // server-side against the same canonical bytes.
-        let subject = self.identity.id.0;
+        let subject = self.identity.id.clone();
         let claim_kind = IntegratorCategory::Game.claim_kind();
         let issuer_ref = format!("game:{slug}");
         let achievement = format!("game:{slug}:achievement:{key}");
         let signing_bytes =
-            attestation_signing_bytes(claim_kind, &issuer_ref, subject, &achievement);
+            attestation_signing_bytes(claim_kind, &issuer_ref, &subject, &achievement);
         let signature = signing_key.sign(&signing_bytes);
 
         let response = crate::http::send(&self.http, &self.retry, false, |c| {
@@ -496,7 +497,7 @@ impl Session {
             .map_err(|_| SdkError::MissingIssuerCredentials)?;
         let challenge_signature = signing_key.sign(&nonce);
 
-        let subject = self.identity.id.0;
+        let subject = self.identity.id.clone();
         let claim_kind = IntegratorCategory::Game.claim_kind();
         let issuer_ref = format!("game:{slug}");
         let achievements: Vec<String> = keys
@@ -504,7 +505,7 @@ impl Session {
             .map(|key| format!("game:{slug}:achievement:{key}"))
             .collect();
         let signing_bytes =
-            bulk_attestation_signing_bytes(claim_kind, &issuer_ref, subject, &achievements);
+            bulk_attestation_signing_bytes(claim_kind, &issuer_ref, &subject, &achievements);
         let signature = signing_key.sign(&signing_bytes);
 
         let response = crate::http::send(&self.http, &self.retry, false, |c| {
@@ -899,12 +900,12 @@ impl Session {
             .map_err(|_| SdkError::MissingIssuerCredentials)?;
         let challenge_signature = signing_key.sign(&nonce);
 
-        let subject = self.identity.id.0;
+        let subject = self.identity.id.clone();
         let claim_kind = category.claim_kind();
         let issuer_ref = format!("{}:{slug}", category.as_str());
         let achievement = format!("{}:{slug}:milestone:{key}", category.as_str());
         let signing_bytes =
-            attestation_signing_bytes(claim_kind, &issuer_ref, subject, &achievement);
+            attestation_signing_bytes(claim_kind, &issuer_ref, &subject, &achievement);
         let signature = signing_key.sign(&signing_bytes);
 
         let response = crate::http::send(&self.http, &self.retry, false, |c| {
@@ -993,7 +994,7 @@ impl Session {
             .map_err(|_| SdkError::MissingIssuerCredentials)?;
         let challenge_signature = signing_key.sign(&nonce);
 
-        let subject = self.identity.id.0;
+        let subject = self.identity.id.clone();
         let claim_kind = category.claim_kind();
         let issuer_ref = format!("{}:{slug}", category.as_str());
         let achievements: Vec<String> = keys
@@ -1001,7 +1002,7 @@ impl Session {
             .map(|key| format!("{}:{slug}:milestone:{key}", category.as_str()))
             .collect();
         let signing_bytes =
-            bulk_attestation_signing_bytes(claim_kind, &issuer_ref, subject, &achievements);
+            bulk_attestation_signing_bytes(claim_kind, &issuer_ref, &subject, &achievements);
         let signature = signing_key.sign(&signing_bytes);
 
         let response = crate::http::send(&self.http, &self.retry, false, |c| {
@@ -1250,7 +1251,7 @@ mod definition_tests {
         let raw = serde_json::json!({
             "id": Uuid::nil(),
             "issuer": "game:ashen-realms",
-            "subject": Uuid::nil(),
+            "subject": crate::types::ids::IdentityId::random_for_tests(),
             "achievement": "game:ashen-realms:achievement:first_blood",
             "issued_at": "2026-01-01T00:00:00Z",
             "authenticity": { "status": "authentic", "key_id": Uuid::nil() },

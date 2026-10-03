@@ -3,6 +3,7 @@
 // conventions as account.live.test.ts (AVALON_SERVER_URL/
 // AVALON_LIVE_DATABASE_URL, `npm run test:live`).
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { randomIdentityId } from './testIds.js'
 import pg from 'pg'
 import { AvalonClient } from '../src/client.js'
 import { generateSigningKey } from '../src/crypto/signing.js'
@@ -43,7 +44,7 @@ function freshSlug(prefix: string): string {
 }
 
 async function seedIdentitySession(displayName: string): Promise<{ identityId: string; token: string }> {
-  const identityId = crypto.randomUUID()
+  const identityId = randomIdentityId()
   await pool.query('INSERT INTO identities (id) VALUES ($1)', [identityId])
   await pool.query('INSERT INTO profiles (identity_id, display_name) VALUES ($1, $2)', [identityId, displayName])
   const token = `test-token-${crypto.randomUUID()}`

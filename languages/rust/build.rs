@@ -75,6 +75,7 @@ const SCHEMA_NAMES: &[&str] = &[
     "DeviceGrantResponse",
     "RequestDeviceGrantRequest",
     "ApproveDeviceGrantRequest",
+    "RevokeDeviceRequest",
     "RenameDeviceRequest",
     "ApprovePairingRequest",
     "UserCodeRequest",
@@ -183,6 +184,7 @@ const SCHEMA_NAMES: &[&str] = &[
     "StopReason",
     "NameClaimRequest",
     "NameClaimResponse",
+    "IdentityId",
 ];
 
 /// Typify hardcodes `"format": "date-time"` to `chrono::DateTime<Utc>`,

@@ -100,11 +100,7 @@ fn parse_key(key_hex: &str) -> Option<VerifyingKey> {
     }
     let bytes: [u8; 32] = hex::decode(key_hex).ok()?.try_into().ok()?;
     let key = VerifyingKey::from_bytes(&bytes).ok()?;
-    // p = 2^255 - 19, so y >= p iff the low 255 bits are ff..ff with a first byte >= 0xed.
-    let non_canonical_y =
-        bytes[0] >= 0xed && bytes[1..31].iter().all(|b| *b == 0xff) && bytes[31] & 0x7f == 0x7f;
-    // Small order covers x = 0 with the sign bit set, which only occurs at the order-1 and order-2 points.
-    (!non_canonical_y && !key.is_weak()).then_some(key)
+    crate::identity_signing::is_acceptable_ed25519_key(&key).then_some(key)
 }
 
 /// Verifies `sth` as a head of the self-certifying shard `shard_id` using only

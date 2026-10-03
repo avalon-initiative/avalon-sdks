@@ -1,6 +1,7 @@
 //! `AccountSession` rollback surface against a mocked server, plus one
 //! opt-in live test (`--ignored`) against a real `avalon-server`.
 
+use avalon_sdk::types::ids::IdentityId;
 use avalon_sdk::{AccountSession, AvalonClient, AvalonConfig, SdkError};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use ed25519_dalek::{Signature, SigningKey, Verifier};
@@ -25,8 +26,12 @@ fn since() -> OffsetDateTime {
 
 const SINCE_STR: &str = "2023-11-14T22:13:20Z";
 
-async fn session(server: &MockServer, key: &SigningKey, key_id: Uuid) -> (AccountSession, Uuid) {
-    let identity_id = Uuid::new_v4();
+async fn session(
+    server: &MockServer,
+    key: &SigningKey,
+    key_id: Uuid,
+) -> (AccountSession, IdentityId) {
+    let identity_id = IdentityId::random_for_tests();
     Mock::given(method("GET"))
         .and(path("/me"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
