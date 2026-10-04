@@ -174,11 +174,8 @@ export interface paths {
         put?: never;
         /**
          * `POST /auth/device/approve` — requires the approver's own existing
-         *     authenticated session (normal session-bearer auth). Mints a real session
-         *     for the approver's own identity via `auth::generate_session_token`/the
-         *     `sessions` table — the exact same mechanism `handlers::session_finish`
-         *     uses for a normal login — and attaches it to the pairing so the waiting
-         *     client picks it up on its next poll.
+         *     authenticated session (normal session-bearer auth). Marks the pairing approved for the
+         *     approver's identity and signing key; the waiting client's next poll mints the session.
          */
         post: operations["approve_pairing"];
         delete?: never;
@@ -2677,6 +2674,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /me/sessions` — the caller's live sessions, newest first. */
+        get: operations["list_sessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/sessions/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /me/sessions/{id}/revoke` — ends one of the caller's own sessions (404 for any other). */
+        post: operations["revoke_session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/nodes/probe": {
         parameters: {
             query?: never;
@@ -2991,6 +3022,23 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["session_finish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sessions/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /sessions/logout` — ends the session the request authenticated with. */
+        post: operations["logout"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4136,6 +4184,9 @@ export interface components {
              */
             next_cursor?: string | null;
         };
+        ListSessionsResponse: {
+            sessions: components["schemas"]["SessionSummary"][];
+        };
         LocationsResponse: {
             locations: string[];
         };
@@ -4965,6 +5016,27 @@ export interface components {
             challenge: Record<string, never>;
             /** Format: uuid */
             ticket_id: string;
+        };
+        SessionSummary: {
+            /** Format: date-time */
+            created_at: string;
+            /** @description Whether this is the session the request itself authenticated with. */
+            current: boolean;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The passkey that produced this session, when it came from a passkey login.
+             */
+            origin_passkey_id?: string | null;
+            /**
+             * Format: uuid
+             * @description The signing key that approved this session, when it came from device pairing or a
+             *     cross-node login.
+             */
+            origin_signing_key_id?: string | null;
         };
         SetFavoriteGamesRequest: {
             /**
@@ -8860,6 +8932,53 @@ export interface operations {
             };
         };
     };
+    list_sessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's live sessions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListSessionsResponse"];
+                };
+            };
+        };
+    };
+    revoke_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session revoked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description SESSION_NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     probe: {
         parameters: {
             query?: never;
@@ -9227,6 +9346,24 @@ export interface operations {
             };
         };
     };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The presented session no longer exists */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     session_start: {
         parameters: {
             query?: never;
@@ -9359,4 +9496,4 @@ export interface operations {
 }
 
 // Issue #735: the info.version this file's types were generated from.
-export const OPENAPI_SCHEMA_VERSION = "0.11.0" as const
+export const OPENAPI_SCHEMA_VERSION = "0.12.0" as const

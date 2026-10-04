@@ -56,6 +56,8 @@ use typify::{TypeSpace, TypeSpaceSettings};
 const SCHEMA_NAMES: &[&str] = &[
     "ProfileResponse",
     "DeviceResponse",
+    "SessionSummary",
+    "ListSessionsResponse",
     "RegisterStartRequest",
     "RegisterFinishResponse",
     "SessionStartRequest",
