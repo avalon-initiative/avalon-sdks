@@ -13,6 +13,7 @@ export type {
   Passkey,
   Device,
   DeviceGrant,
+  SessionSummary,
   GuardianSettings,
   RollbackCandidate,
   RollbackCandidates,

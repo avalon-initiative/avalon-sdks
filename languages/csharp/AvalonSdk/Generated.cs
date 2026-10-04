@@ -2141,6 +2141,15 @@ namespace Avalon.Sdk.Generated
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class ListSessionsResponse
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("sessions")]
+        public System.Collections.Generic.ICollection<SessionSummary> Sessions { get; set; } = new System.Collections.ObjectModel.Collection<SessionSummary>();
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class LocationsResponse
     {
 
@@ -3832,6 +3841,40 @@ namespace Avalon.Sdk.Generated
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class SessionSummary
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("created_at")]
+        public System.DateTimeOffset CreatedAt { get; set; } = default!;
+
+        /// <summary>
+        /// Whether this is the session the request itself authenticated with.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("current")]
+        public bool Current { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("expires_at")]
+        public System.DateTimeOffset ExpiresAt { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("id")]
+        public System.Guid Id { get; set; } = default!;
+
+        /// <summary>
+        /// The passkey that produced this session, when it came from a passkey login.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("origin_passkey_id")]
+        public System.Guid? OriginPasskeyId { get; set; } = default!;
+
+        /// <summary>
+        /// The signing key that approved this session, when it came from device pairing or a
+        /// <br/>cross-node login.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("origin_signing_key_id")]
+        public System.Guid? OriginSigningKeyId { get; set; } = default!;
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class SetFavoriteGamesRequest
     {
 
@@ -4625,6 +4668,6 @@ namespace Avalon.Sdk
         /// <summary>Issue #735/#725: the docs/generated/openapi.json `info.version`
         /// this file's generated types were produced from — generated straight from
         /// the same schema file, so it can't drift by construction.</summary>
-        public const string OpenApiSchemaVersion = "0.11.0";
+        public const string OpenApiSchemaVersion = "0.12.0";
     }
 }
