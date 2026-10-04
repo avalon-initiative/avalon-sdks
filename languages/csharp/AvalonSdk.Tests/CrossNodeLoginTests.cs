@@ -20,7 +20,7 @@ public class CrossNodeLoginTests
 {
     private const string MeResponseBody = """
         {
-            "identity_id": "11111111-1111-1111-1111-111111111111",
+            "identity_id": "7c26a0e34260b2c5bb6a795e29cdfe878c907df4bf8c7425c5a8ce00235558e9",
             "identity_created_at": "2026-01-01T00:00:00Z",
             "display_name": "dragon-friend",
             "avatar_url": null,
@@ -172,7 +172,7 @@ public class CrossNodeLoginTests
         var privateKey = (Ed25519PrivateKeyParameters)keyPair.Private;
 
         var session = await client.SubmitCrossNodeLoginGrantAsync(
-            Guid.NewGuid(), Guid.NewGuid(), privateKey.GetEncoded());
+            IdentityId.RandomForTests(), Guid.NewGuid(), privateKey.GetEncoded());
 
         Assert.Equal("dragon-friend", session.Profile.DisplayName);
         Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);

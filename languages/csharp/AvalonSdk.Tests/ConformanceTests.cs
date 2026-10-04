@@ -28,7 +28,7 @@ namespace Avalon.Sdk.Tests;
 /// </summary>
 public class ConformanceTests
 {
-    private static string VectorsDir()
+    internal static string VectorsDir()
     {
         // bin/Debug/net10.0 (or similar) under AvalonSdk.Tests -> walk up to the repo root,
         // then into conformance/vectors. AppContext.BaseDirectory is the build output dir.
@@ -45,7 +45,7 @@ public class ConformanceTests
         return Path.Combine(dir.FullName, "conformance", "vectors");
     }
 
-    private static JsonDocument LoadVector(string name)
+    internal static JsonDocument LoadVector(string name)
     {
         var path = Path.Combine(VectorsDir(), name);
         return JsonDocument.Parse(File.ReadAllText(path));
@@ -84,7 +84,7 @@ public class ConformanceTests
     // migrating AvalonSdk/*.cs's own DTOs onto generated types, so this test avoids touching
     // that file directly and reaches its private members through reflection instead.
     private static byte[] InvokeCrossNodeLoginSigningBytes(
-        Guid identityId, Guid signingKeyId, string destinationBaseUrl, string requestingContext,
+        IdentityId identityId, Guid signingKeyId, string destinationBaseUrl, string requestingContext,
         Guid nonce, DateTimeOffset issuedAt, DateTimeOffset expiresAt)
     {
         var method = typeof(AvalonClient).GetMethod(
@@ -146,7 +146,7 @@ public class ConformanceTests
         var input = vector.GetProperty("input");
         var expected = vector.GetProperty("expected");
 
-        var identityId = Guid.Parse(input.GetProperty("identityId").GetString()!);
+        var identityId = IdentityId.Parse(input.GetProperty("identityId").GetString()!);
         var signingKeyId = Guid.Parse(input.GetProperty("signingKeyId").GetString()!);
         var destinationBaseUrl = input.GetProperty("destinationBaseUrl").GetString()!;
         var requestingContext = input.GetProperty("requestingContext").GetString()!;
@@ -267,7 +267,7 @@ public class ConformanceTests
             case "issue":
                 bytes = InvokeSessionSigningBytes(
                     "AttestationSigningBytes",
-                    claimKind, issuerRef, Guid.Parse(input.GetProperty("subject").GetString()!),
+                    claimKind, issuerRef, IdentityId.Parse(input.GetProperty("subject").GetString()!),
                     input.GetProperty("achievement").GetString()!);
                 break;
             case "bulk_issue":
@@ -278,7 +278,7 @@ public class ConformanceTests
                 }
                 bytes = InvokeSessionSigningBytes(
                     "BulkAttestationSigningBytes",
-                    claimKind, issuerRef, Guid.Parse(input.GetProperty("subject").GetString()!),
+                    claimKind, issuerRef, IdentityId.Parse(input.GetProperty("subject").GetString()!),
                     (IReadOnlyList<string>)refs);
                 break;
             case "revoke":

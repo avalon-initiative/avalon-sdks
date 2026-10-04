@@ -95,7 +95,10 @@ checked-in copies, kept in sync by hand whenever the upstream schema changes:
   signing logic against these; `avalon-protocol`'s own
   `crates/protocol/tests/conformance.rs` asserts the server side of the
   same files, so a real drift between the two repos fails a test on
-  whichever side changed first, not silently.
+  whichever side changed first, not silently. `identity-chain.json` (the protocol crate only) and `node-request.json`
+  (node-to-node routes, not SDK-facing) are not vendored; the vendored `supportedIn` of the four vectors the protocol
+  still lists as unsupported (`attestation-signing`, `cross-node-login`, `session-continuation`,
+  `websocket-interest-claim`) is set to what each SDK actually asserts.
 
 Until real cross-repo tooling exists, resyncing any of these is a manual
 copy from the corresponding path in `avalon-protocol`, then this repo's
@@ -115,6 +118,52 @@ generated schema. Path values are percent-encoded. The SDKs do not sign claims y
 | Rust | `resolve_name(node_url, name)` | `list_shard_names(node_url, id)` | `submit_name_claim(node_url, &claim)` |
 | C# | `ResolveNameAsync(name, nodeUrl?)` | `ListShardNamesAsync(id, nodeUrl?)` | `SubmitNameClaimAsync(claim, nodeUrl?)` |
 | TypeScript | `resolveName(nodeUrl, name)` | `listShardNames(nodeUrl, id)` | `submitNameClaim(nodeUrl, claim)` |
+
+## Identity ids and registration
+
+An identity id is the 64 lowercase hex characters of `SHA-256("avalon-identity-id-v1" || key)`, where `key` is the
+identity's first (inception) Ed25519 public key (32 raw bytes). It is not a UUID. Parsing is strict and never
+normalises: uppercase, any other length, `id:` or `node:` prefixes, UUID text and surrounding whitespace are all
+rejected. Each SDK has a validated type that rejects anything else, and the generated wire types still carry plain
+strings that the hand-written layers parse with it.
+
+| | Type | Parse | Derive from an inception key |
+| --- | --- | --- | --- |
+| Rust | `types::ids::IdentityId` (no longer `Copy`; pass `&IdentityId`) | `"...".parse::<IdentityId>()` | `IdentityId::derive(&key_bytes)` |
+| C# | `IdentityId` (readonly struct; `default` is invalid) | `IdentityId.Parse` / `TryParse` | `IdentityId.Derive(key)` |
+| TypeScript | `IdentityId` (branded string) | `parseIdentityId` / `isIdentityId` | `deriveIdentityId(key)` |
+
+Registration generates the inception key first, derives the id, sends the base64 public key as
+`event_signing_public_key` at `POST /identities/register/start`, then signs the v2 `identity.created` bytes. Those bytes are
+`avalon:identity.created:v2:{len(network_id)}:{network_id}:{len(shard_id)}:{shard_id}:{ticket_id}:{identity_id}:{public_key_hex}:{display_name}`
+with `len` the UTF-8 byte length; the network id, shard id and ticket come from the `register/start` response, so a copied
+signature does not verify for another ticket, network or shard. `register/finish` no longer takes the key, and its response id
+must equal the derived one. Rust and TypeScript implement `register`; C# does not (see its README), but it has the id type, the
+derivation and every signing function below.
+
+The `network_id` and `shard_id` in the signed bytes are supplied by the node answering `register/start` and are signed as given: the
+client trusts the node it registers with and does not pin them. Stored credentials are checked on login: `login` / `account_login`
+fail if the stored secret does not derive to the credentials' identity id. Approving a device grant also requires the requested key
+to be strict canonical base64 of 32 bytes and acceptable (canonical, not small-order), and the grant, ticket and key ids that go
+into signed bytes must be lowercase hyphenated UUID text.
+
+A public key is lowercase hex inside every signing-byte string and standard base64 on the wire. Device grant approval signs
+`avalon:device_grant.approved:v2:{grant_id}:{identity_id}:{requested_public_key_hex}`, and revoking a signing key
+(`revoke_device` / `RevokeDeviceAsync` / `revokeDevice`) now signs
+`avalon:identity.signing_key_revoked:v2:{identity_id}:{signing_key_id}:{revoked_by_signing_key_id}` with one of the
+identity's active keys and sends it with `revoked_by_signing_key_id`; the call needs a local signing key and the server refuses
+to revoke the last active key. The functions are public (`identity_signing` in Rust, `IdentitySigning` in C#, the top-level
+exports in TypeScript), together with strict Ed25519 verification (S below the group order, no small-order key or R) and the
+key-acceptability rule (canonical encoding, not of small order; a key with a torsion component such as y = 3 is accepted).
+Shared vectors: `conformance/vectors/identity-id.json`, `identity-created-signing.json`, `device-grant-approval.json` and
+`signing-key-revoked.json`; the attestation, cross-node-login, session-continuation and websocket-interest-claim vectors carry
+hex ids.
+
+## Integrator shards
+
+`GET /integrations/{slug}/shards` lists an owner's sibling shards this node knows of and could verify a head for, plus the
+ids it could not verify (`partial`, `missing_shard_ids`). It is public and advisory, and a family over 256 shards is refused
+with 413. Rust `list_integrator_shards(slug)`, C# `ListIntegratorShardsAsync(slug)`, TypeScript `listIntegratorShards(serverUrl, slug)`.
 
 ## Self-certifying shard heads
 
@@ -143,7 +192,60 @@ Rust the existing `sth::SignedTreeHead` is unchanged and `self_certifying::SelfC
 the key. A verified head proves the key holder signed it and that the key belongs to the id; it says nothing about
 whether the shard is honest or current. Shared vectors: `conformance/vectors/self-certifying-tree-head.json`.
 
+## Shard family head
+
+A game, app or service can run sibling shards: `{namespace}:{slug}` and `{namespace}:{slug}/{instance}` (such as `game:x` and
+`game:x/2`) share an owner, `game:x`. `GET /ledger/shard-family?owner=<owner>[&member=<shard id>]` serves the owner's
+family head: a root over the member heads, the members it was computed from (sorted by shard id), whether the family is
+`partial`, and with `member` an inclusion proof for that shard. The route is under `/ledger/*`, which the OpenAPI document
+excludes, so all three SDKs hand-write the call and the pure helpers, pinned by `conformance/vectors/shard-family-head.json`.
+A node does not sign the root: anyone recomputes it from the member heads, and a proof ties one head to it. Heads of any
+other shard are ignored; `game:xy`, `core`, `node:<hash>` and invalid ids belong to no family.
+
+| | Fetch | Recompute the root | Verify a proof | Owner of a shard id |
+| --- | --- | --- | --- | --- |
+| Rust | `AvalonClient::fetch_shard_family(owner, member)` | `shard_family::family_root(owner, &heads)` | `shard_family::verify_family_inclusion(owner, root, &proof, &head)` | `shard_family::shard_family_owner(id)` |
+| C# | `GetShardFamilyAsync(owner, member?)` | `ShardFamily.Root(owner, heads)` | `ShardFamily.VerifyInclusion(owner, root, proof, head)` | `ShardFamily.OwnerOf(id)` |
+| TypeScript | `getShardFamily(nodeUrl, owner, { member? })` | `familyRoot(owner, heads)` | `verifyFamilyInclusion(owner, root, proof, head)` | `shardFamilyOwner(id)` |
+
+Each response also has `root_matches` / `RootMatches()` / `familyRootMatches(response)` (the served root equals the
+recomputed one) and `proof_verifies` / `ProofVerifies()` / `familyProofVerifies(response)` (the served proof verifies for
+its member). The membership helpers are `is_family_member(owner, id)` and `is_family_owner_id(id)` (`IsMember`, `IsOwnerId`,
+`isFamilyMember`, `isFamilyOwnerId`). Verification returns false, never an error, for malformed input. A leaf commits to the
+member's shard id, tree size, root hash, signing key id and signature text, so a head's own signature is not checked here:
+verify member heads separately where that matters. The head itself is not authenticated by this call. A `partial`
+response means a known family member has no head on that node; atomic writes across siblings do not exist.
+In TypeScript a tree size beyond 2^53 is lost by `JSON.parse`; pass a `bigint` to the helpers if you hold one.
+
+### Routing a write to a sibling
+
+An integrator running sibling shards chooses which instance each write goes to. The SDKs give a small deterministic
+helper for that: given the owner, a caller-supplied partition key (any string) and the sibling shard ids, it returns the
+sibling the write for that key should go to, or nothing when no candidate is a member of the family.
+
+| | Route | Weight | From a fetched family |
+| --- | --- | --- | --- |
+| Rust | `shard_family::route_write(owner, key, &siblings) -> Option<&str>` | `shard_family::route_weight(owner, key, id)` | `family.route_write(key)`, `family.sibling_ids()` |
+| C# | `ShardFamily.RouteWrite(owner, key, siblings) -> string?` | `ShardFamily.RouteWeight(owner, key, id)` | `family.RouteWrite(key)`, `family.SiblingIds()` |
+| TypeScript | `routeWrite(owner, key, siblings): string \| null` | `routeWeight(owner, key, id)` | `familyRouteWrite(family, key)`, `familySiblingIds(family)` |
+
+The rule is rendezvous (highest-random-weight) hashing. The weight of a candidate shard id is SHA-256 of the bytes
+`avalon-shard-route-v1` (UTF-8, no length) followed by the owner, the key and the shard id, each as a 4-byte big-endian
+length of its UTF-8 bytes and then those bytes (no Unicode normalisation of the key). The candidate with the greatest
+weight, compared as 32 big-endian bytes, wins. Candidates are first reduced to the unique ids that are members of the
+owner's family (`is_family_member`), so other owners' ids, `core`, `node:` ids and malformed ids are ignored and the order
+of the list does not matter. Equal weights can only come from equal ids, so the tie-break is the bytewise smaller id.
+Adding a sibling moves only the keys that now win on it; removing one moves only the keys that were on it.
+
+Limits: this is client-side routing only. The server does not route writes, and writes to different siblings are never
+atomic together; there are no cross-sibling transactions. A `partial` family response omits siblings that have no head on
+that node, so for routing prefer the sibling list you manage yourself. The family head is for verification, not for
+choosing. Pinned by `conformance/vectors/shard-sibling-routing.json`.
+
 ## Node topology, probe and trace
+
+`Connectivity` and `PathType` are open vocabularies: a value this SDK does not know decodes instead of failing the
+whole response (Rust `Unknown(String)`, C# `Unknown`, TypeScript keeps the string).
 
 All three SDKs expose the node's read-only topology view and its probe and trace
 endpoints, typed from the generated schema (`GET /nodes/topology`,

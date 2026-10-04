@@ -89,7 +89,7 @@ public class IntegratorSpaceTests
     [Fact]
     public async Task PublishInstanceAsync_SendsAChallengeThenAPublishRequest()
     {
-        var subject = Guid.NewGuid();
+        var subject = IdentityId.RandomForTests();
         var integratorId = Guid.NewGuid();
         var nonce = Convert.ToBase64String(new byte[] { 1, 2, 3, 4 });
         var handler = new StubHttpMessageHandler()
@@ -109,14 +109,14 @@ public class IntegratorSpaceTests
 
         var instance = await session.PublishInstanceAsync(1, subject, new { level = 5 });
 
-        Assert.Equal(subject, instance.Subject);
+        Assert.Equal(subject.ToString(), instance.Subject);
         Assert.Contains("/integrations/dragons-inc/schemas/1/data", handler.Requests[1].Url);
     }
 
     [Fact]
     public async Task DeleteInstanceAsync_SendsAChallengeThenADeleteRequest()
     {
-        var subject = Guid.NewGuid();
+        var subject = IdentityId.RandomForTests();
         var nonce = Convert.ToBase64String(new byte[] { 1, 2, 3, 4 });
         var handler = new StubHttpMessageHandler()
             .Enqueue($$"""{ "challenge_id": "11111111-1111-1111-1111-111111111111", "nonce": "{{nonce}}" }""")
@@ -140,7 +140,7 @@ public class IntegratorSpaceTests
         var handler = new StubHttpMessageHandler().Enqueue("[]");
         var session = Session.ForTesting(Array.Empty<string>(), handler.ToHttpClient());
 
-        var data = await session.GetIdentityIntegratorDataAsync(Guid.NewGuid());
+        var data = await session.GetIdentityIntegratorDataAsync(IdentityId.RandomForTests());
 
         Assert.Empty(data);
         Assert.Equal(HttpMethod.Get, handler.Requests[0].Method);

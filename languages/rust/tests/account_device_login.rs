@@ -10,6 +10,7 @@
 //! whether `AccountDeviceLogin::wait` correctly turns an approval/denial
 //! into an `AccountSession`/`SdkError`.
 
+use avalon_sdk::types::ids::IdentityId;
 use avalon_sdk::{AvalonClient, AvalonConfig, SdkError};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
@@ -31,15 +32,16 @@ async fn test_pool() -> PgPool {
         .expect("failed to connect to Postgres — is it reachable?")
 }
 
-async fn seed_identity_session(pool: &PgPool, display_name: &str) -> (Uuid, String) {
-    let identity_id = Uuid::new_v4();
-    sqlx::query("INSERT INTO identities (id) VALUES ($1)")
-        .bind(identity_id)
+async fn seed_identity_session(pool: &PgPool, display_name: &str) -> (IdentityId, String) {
+    let (identity_id, inception_key) = IdentityId::random_with_key_for_tests();
+    sqlx::query("INSERT INTO identities (id, inception_public_key) VALUES ($1, $2)")
+        .bind(identity_id.to_string())
+        .bind(inception_key.as_slice())
         .execute(pool)
         .await
         .expect("failed to seed identity");
     sqlx::query("INSERT INTO profiles (identity_id, display_name) VALUES ($1, $2)")
-        .bind(identity_id)
+        .bind(identity_id.to_string())
         .bind(display_name)
         .execute(pool)
         .await
@@ -49,7 +51,7 @@ async fn seed_identity_session(pool: &PgPool, display_name: &str) -> (Uuid, Stri
     let expires_at = OffsetDateTime::now_utc() + time::Duration::hours(1);
     sqlx::query("INSERT INTO sessions (token, identity_id, expires_at) VALUES ($1, $2, $3)")
         .bind(&token)
-        .bind(identity_id)
+        .bind(identity_id.to_string())
         .bind(expires_at)
         .execute(pool)
         .await
@@ -58,13 +60,13 @@ async fn seed_identity_session(pool: &PgPool, display_name: &str) -> (Uuid, Stri
     (identity_id, token)
 }
 
-async fn seed_signing_key(pool: &PgPool, identity_id: Uuid) -> (Uuid, SigningKey) {
+async fn seed_signing_key(pool: &PgPool, identity_id: &IdentityId) -> (Uuid, SigningKey) {
     let signing_key = SigningKey::generate(&mut rand::rng());
     let public_key = signing_key.verifying_key().to_bytes();
     let row = sqlx::query(
         "INSERT INTO identity_signing_keys (identity_id, public_key) VALUES ($1, $2) RETURNING id",
     )
-    .bind(identity_id)
+    .bind(identity_id.to_string())
     .bind(public_key.as_slice())
     .fetch_one(pool)
     .await
@@ -74,7 +76,7 @@ async fn seed_signing_key(pool: &PgPool, identity_id: Uuid) -> (Uuid, SigningKey
 
 fn sign_device_pairing_approve(
     signing_key: &SigningKey,
-    identity_id: Uuid,
+    identity_id: &IdentityId,
     user_code: &str,
 ) -> String {
     let message = format!("avalon:device_pairing.approve:v1:{identity_id}:{user_code}");
@@ -99,7 +101,7 @@ async fn wait_resolves_to_a_real_account_session_once_approved() {
     let http = reqwest::Client::new();
     let display_name = format!("account-device-login-test-{}", Uuid::new_v4());
     let (approver_id, approver_token) = seed_identity_session(&pool, &display_name).await;
-    let (approver_key_id, approver_signing_key) = seed_signing_key(&pool, approver_id).await;
+    let (approver_key_id, approver_signing_key) = seed_signing_key(&pool, &approver_id).await;
 
     let client = client(&base);
     let pairing = client
@@ -114,7 +116,8 @@ async fn wait_resolves_to_a_real_account_session_once_approved() {
     let base_for_approval = base.clone();
     let approval = tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        let signature = sign_device_pairing_approve(&approver_signing_key, approver_id, &user_code);
+        let signature =
+            sign_device_pairing_approve(&approver_signing_key, &approver_id, &user_code);
         let response = http
             .post(format!("{base_for_approval}/auth/device/approve"))
             .bearer_auth(&approver_token)

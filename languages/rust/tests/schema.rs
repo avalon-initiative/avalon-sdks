@@ -14,7 +14,9 @@
 //! parse against `serde_json::to_value` of the same struct with no
 //! `#[serde(rename_all = ...)]` needed.
 
+use avalon_sdk::identity_signing::identity_created_signing_bytes_v2;
 use avalon_sdk::schema::AvalonSchema;
+use avalon_sdk::types::ids::IdentityId;
 use avalon_sdk::{AvalonClient, AvalonConfig};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
@@ -35,20 +37,13 @@ fn webauthn_origin() -> String {
     std::env::var("AVALON_WEBAUTHN_ORIGIN").unwrap_or_else(|_| "http://localhost:8080".to_string())
 }
 
-/// Must match `avalon-server`'s `handlers::identity_created_signing_bytes`
-/// exactly — duplicated here since this test doesn't depend on
-/// `avalon-server`, matching `achievements.rs`'s own copy.
-fn identity_created_signing_bytes(identity_id: Uuid, display_name: &str) -> Vec<u8> {
-    format!("avalon:identity.created:v1:{identity_id}:{display_name}").into_bytes()
-}
-
 /// #697/#698: `signing_key`/`signing_key_id` let a caller sign a later
 /// signature-required action (e.g. `POST /integrations/{slug}/connect`)
 /// with the same key `register_finish` just registered as this identity's
 /// first `identity_signing_keys` row — same shape `achievements.rs`'s own
 /// copy of this helper uses.
 struct RegisteredIdentity {
-    identity_id: Uuid,
+    identity_id: IdentityId,
     token: String,
     signing_key: SigningKey,
     signing_key_id: String,
@@ -69,7 +64,6 @@ async fn register_and_login(
     base: &str,
     display_name: &str,
 ) -> RegisteredIdentity {
-    let identity_id = Uuid::new_v4();
     let origin_str = webauthn_origin();
     let origin_url =
         url::Url::parse(&origin_str).expect("AVALON_WEBAUTHN_ORIGIN must be a valid URL");
@@ -77,6 +71,7 @@ async fn register_and_login(
     let mut csprng = rand::rng();
     let signing_key = SigningKey::generate(&mut csprng);
     let event_signing_public_key = BASE64.encode(signing_key.verifying_key().to_bytes());
+    let identity_id = IdentityId::derive(signing_key.verifying_key().as_bytes());
 
     let store = MemoryStore::new();
     let user_mock = MockUserValidationMethod::verified_user(2);
@@ -85,7 +80,11 @@ async fn register_and_login(
 
     let start: serde_json::Value = http
         .post(format!("{base}/identities/register/start"))
-        .json(&json!({ "identity_id": identity_id, "display_name": display_name }))
+        .json(&json!({
+            "identity_id": identity_id,
+            "event_signing_public_key": event_signing_public_key,
+            "display_name": display_name,
+        }))
         .send()
         .await
         .expect("register/start request failed — is `make start` running?")
@@ -105,7 +104,14 @@ async fn register_and_login(
         .await
         .expect("WebAuthn registration ceremony failed");
 
-    let signing_bytes = identity_created_signing_bytes(identity_id, display_name);
+    let signing_bytes = identity_created_signing_bytes_v2(
+        start["network_id"].as_str().unwrap(),
+        start["shard_id"].as_str().unwrap(),
+        ticket_id.parse().unwrap(),
+        &identity_id,
+        signing_key.verifying_key().as_bytes(),
+        display_name,
+    );
     let signature = signing_key.sign(&signing_bytes);
 
     let register_finish = http
@@ -113,7 +119,6 @@ async fn register_and_login(
         .json(&json!({
             "ticket_id": ticket_id,
             "webauthn_credential": webauthn_credential,
-            "event_signing_public_key": event_signing_public_key,
             "event_signature": BASE64.encode(signature.to_bytes()),
         }))
         .send()

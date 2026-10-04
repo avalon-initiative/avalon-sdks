@@ -52,6 +52,7 @@ pub use crate::generated::{
     Coordinate, KnownPeer, MirrorSource, Neighbor, ObservedLatency, ProbeResponse as ProbeResult,
     StopReason, TopologyResponse as Topology, TraceHop, TraceResponse as TraceResult,
 };
+pub use crate::tolerant::{Connectivity, PathType};
 
 /// `POST` bodies for probe/trace, kept internal so callers pass plain arguments.
 use crate::generated::{ProbeRequest, TraceRequest};

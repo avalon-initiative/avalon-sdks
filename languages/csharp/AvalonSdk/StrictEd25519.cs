@@ -169,6 +169,33 @@ namespace Avalon.Sdk
             return !IsIdentity(Multiply(8, point.Value));
         }
 
+        /// <summary>Whether the 32-byte encoding decodes to a point of order 1, 2, 4 or 8.</summary>
+        private static bool IsSmallOrderEncoding(byte[] encoded)
+        {
+            var point = Decode(encoded);
+            return point != null && IsIdentity(Multiply(8, point.Value));
+        }
+
+        /// <summary><see cref="Verify"/> that also rejects a small-order key or a small-order R,
+        /// like ed25519-dalek's <c>verify_strict</c>; what identity-bound signatures need.</summary>
+        internal static bool VerifyStrict(byte[] publicKey, byte[] message, byte[] signature)
+        {
+            try
+            {
+                if (publicKey.Length != 32 || signature.Length != 64)
+                {
+                    return false;
+                }
+                var r = new byte[32];
+                Array.Copy(signature, 0, r, 0, 32);
+                return !IsSmallOrderEncoding(publicKey) && !IsSmallOrderEncoding(r) && Verify(publicKey, message, signature);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         /// <summary>Cofactorless verification of a 64-byte <paramref name="signature"/> over
         /// <paramref name="message"/> under the 32-byte <paramref name="publicKey"/>; false for
         /// every failure, never throws.</summary>

@@ -65,7 +65,7 @@ gives one.
 ```rust
 let profile = session.profile();
 println!("Hello, {}", profile.display_name);
-println!("Identity id: {}", session.identity().id.0);
+println!("Identity id: {}", session.identity().id);
 ```
 
 No capability grant needed for this much — `GET /me` only requires a valid

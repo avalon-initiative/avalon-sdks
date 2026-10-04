@@ -31,6 +31,7 @@
 use uuid::Uuid;
 
 use crate::account::webauthn;
+use crate::types::ids::IdentityId;
 use crate::{AvalonClient, SdkError};
 
 /// A recovery request in progress or resolved — mirrors
@@ -41,7 +42,7 @@ pub struct RecoveryRequest {
     /// This request's own id.
     pub id: Uuid,
     /// The identity being recovered.
-    pub identity_id: Uuid,
+    pub identity_id: IdentityId,
     /// `"pending_approvals"`, `"delay"`, `"completed"`, `"cancelled"`, or
     /// `"expired"` — `crates/server/src/recovery.rs`'s own stable
     /// vocabulary.
@@ -60,7 +61,7 @@ pub struct RecoveryRequest {
 
 #[derive(serde::Serialize)]
 struct StartRequestWire<'a> {
-    identity_id: Uuid,
+    identity_id: &'a IdentityId,
     #[serde(skip_serializing_if = "Option::is_none")]
     device_label: Option<&'a str>,
 }
@@ -89,7 +90,7 @@ impl AvalonClient {
     /// display once recovery completes.
     pub async fn start_recovery_request(
         &self,
-        identity_id: Uuid,
+        identity_id: &IdentityId,
         device_label: Option<&str>,
     ) -> Result<RecoveryRequest, SdkError> {
         let start_response = crate::http::send(&self.http, &self.config.retry, false, |c| {
@@ -175,7 +176,7 @@ impl AvalonClient {
     /// already know a request id. `None` means no active recovery.
     pub async fn identity_recovery_status(
         &self,
-        identity_id: Uuid,
+        identity_id: &IdentityId,
     ) -> Result<Option<RecoveryRequest>, SdkError> {
         let response = crate::http::send(&self.http, &self.config.retry, true, |c| {
             c.get(format!(
@@ -228,7 +229,7 @@ mod tests {
     fn recovery_request_deserializes_from_the_documented_wire_shape() {
         let raw = serde_json::json!({
             "id": Uuid::nil(),
-            "identity_id": Uuid::nil(),
+            "identity_id": crate::types::ids::IdentityId::random_for_tests(),
             "status": "pending_approvals",
             "threshold": 2,
             "approvals_count": 1,

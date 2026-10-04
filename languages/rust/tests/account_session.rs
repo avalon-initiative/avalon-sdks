@@ -59,7 +59,7 @@ async fn register_then_a_signature_required_guild_action_verifies_server_side() 
         .create_guild(&unique_name("guild"), &unique_tag(), "a test guild")
         .await
         .expect("create_guild should succeed");
-    assert_eq!(guild.owner, session.identity().id.0);
+    assert_eq!(guild.owner, session.identity().id);
 
     // `guild.role.create` is signature-required (#697/#698) — this call
     // only succeeds if `AccountSession::create_role` actually attached a
@@ -117,10 +117,10 @@ async fn register_then_account_login_then_a_signature_required_action_round_trip
         .expect("registering a second identity should succeed");
 
     let transferred = session
-        .transfer_ownership(guild.id, other.identity().id.0)
+        .transfer_ownership(guild.id, &other.identity().id)
         .await
         .expect("transfer_ownership should succeed with an auto-minted signature");
-    assert_eq!(transferred.owner, other.identity().id.0);
+    assert_eq!(transferred.owner, other.identity().id);
 }
 
 #[tokio::test]
@@ -235,7 +235,7 @@ async fn account_session_conversation_message_round_trip() {
         .expect("register bob");
 
     let req = alice
-        .create_friend_request(bob.identity().id.0)
+        .create_friend_request(&bob.identity().id)
         .await
         .expect("create_friend_request");
     bob.accept_friend_request(req.id)
@@ -243,7 +243,7 @@ async fn account_session_conversation_message_round_trip() {
         .expect("accept_friend_request");
 
     let conversation = alice
-        .create_conversation(&[bob.identity().id.0])
+        .create_conversation(&[bob.identity().id.clone()])
         .await
         .expect("create_conversation should succeed");
 

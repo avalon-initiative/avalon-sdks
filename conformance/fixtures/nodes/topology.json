@@ -73,7 +73,8 @@
                 "failed_recent": 0,
                 "attempts_recent": 20,
                 "loss_ratio": 0.0,
-                "last_success_at": "2026-09-25T02:44:23.657565111Z"
+                "last_success_at": "2026-09-25T02:44:23.657565111Z",
+                "path": "direct"
             },
             "coordinate": {
                 "vector": [
@@ -105,7 +106,8 @@
                 "failed_recent": 0,
                 "attempts_recent": 20,
                 "loss_ratio": 0.0,
-                "last_success_at": "2026-09-25T02:44:23.65865273Z"
+                "last_success_at": "2026-09-25T02:44:23.65865273Z",
+                "path": "direct"
             },
             "coordinate": {
                 "vector": [
@@ -137,7 +139,8 @@
                 "failed_recent": 0,
                 "attempts_recent": 20,
                 "loss_ratio": 0.0,
-                "last_success_at": "2026-09-25T02:44:23.659973351Z"
+                "last_success_at": "2026-09-25T02:44:23.659973351Z",
+                "path": "direct"
             },
             "coordinate": {
                 "vector": [
@@ -169,7 +172,8 @@
                 "failed_recent": 0,
                 "attempts_recent": 20,
                 "loss_ratio": 0.0,
-                "last_success_at": "2026-09-25T02:44:23.661697646Z"
+                "last_success_at": "2026-09-25T02:44:23.661697646Z",
+                "path": "direct"
             },
             "coordinate": {
                 "vector": [

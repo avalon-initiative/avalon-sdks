@@ -12,6 +12,7 @@
 // with `npm run test:live` from this package's own directory, after
 // `make start` from the repo root.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { randomIdentityWithKey } from './testIds.js'
 import pg from 'pg'
 import { AvalonClient } from '../src/client.js'
 import { generateSigningKey, canonicalMessage, sign, bytesToBase64 } from '../src/crypto/signing.js'
@@ -37,8 +38,11 @@ afterAll(async () => {
 })
 
 async function seedIdentitySession(displayName: string): Promise<{ identityId: string; token: string }> {
-  const identityId = crypto.randomUUID()
-  await pool.query('INSERT INTO identities (id) VALUES ($1)', [identityId])
+  const { identityId, inceptionKey } = randomIdentityWithKey()
+  await pool.query('INSERT INTO identities (id, inception_public_key) VALUES ($1, $2)', [
+    identityId,
+    Buffer.from(inceptionKey),
+  ])
   await pool.query('INSERT INTO profiles (identity_id, display_name) VALUES ($1, $2)', [identityId, displayName])
   const token = `test-token-${crypto.randomUUID()}`
   const expiresAt = new Date(Date.now() + 60 * 60 * 1000)
@@ -173,7 +177,7 @@ maybeDescribe('AccountSession.subscribePresence live round trip (issue #136)', (
     // `friend_partners` reads the indexer's own `indexer_friendships`
     // projection, not `friendships` directly (crates/indexer/src/
     // projections/friendships.rs::partners_of) — seed both.
-    const friendshipParams = ['LEAST($1::uuid, $2::uuid)', 'GREATEST($1::uuid, $2::uuid)', '$3']
+    const friendshipParams = ['LEAST($1::text, $2::text)', 'GREATEST($1::text, $2::text)', '$3']
     await pool.query(
       `INSERT INTO friendships (a, b, since) VALUES (${friendshipParams.join(', ')})`,
       [viewerId, subjectId, new Date()],
@@ -279,7 +283,7 @@ maybeDescribe('AccountSession conversation message live round trip (issue #726)'
   it('sendConversationMessage/conversationMessages round-trip a real message', async () => {
     const alice = await seedIdentitySession(`conv-alice-${crypto.randomUUID()}`)
     const bob = await seedIdentitySession(`conv-bob-${crypto.randomUUID()}`)
-    const friendshipParams = ['LEAST($1::uuid, $2::uuid)', 'GREATEST($1::uuid, $2::uuid)', '$3']
+    const friendshipParams = ['LEAST($1::text, $2::text)', 'GREATEST($1::text, $2::text)', '$3']
     await pool.query(
       `INSERT INTO friendships (a, b, since) VALUES (${friendshipParams.join(', ')})`,
       [alice.identityId, bob.identityId, new Date()],

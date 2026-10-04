@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   getIntegrator,
+  listIntegratorShards,
   listIntegrators,
   listIssuerKeys,
   listAchievementDefinitions,
@@ -214,5 +215,49 @@ describe('listRecognitions / listRecognizedBy', () => {
   it('listRecognizedBy passes through a non-array body instead of crashing on it', async () => {
     mockFetchOnce(null)
     expect(await listRecognizedBy('http://127.0.0.1:1', 'ashen-realms')).toBeNull()
+  })
+})
+
+describe('listIntegratorShards', () => {
+  it('converts the wire shape and calls the shards route', async () => {
+    let requested = ''
+    globalThis.fetch = (async (url: string) => {
+      requested = url
+      return new Response(
+        JSON.stringify({
+          owner: 'game:ashen-realms',
+          shards: [
+            {
+              shard_id: 'game:ashen-realms/1',
+              tree_size: 12,
+              root_hash: 'ab',
+              signing_key_id: 'k1',
+              created_at: '2026-01-01T00:00:00Z',
+              last_seen_at: null,
+            },
+          ],
+          partial: true,
+          missing_shard_ids: ['game:ashen-realms/2'],
+        }),
+        { status: 200 },
+      )
+    }) as typeof fetch
+    const result = await listIntegratorShards('http://127.0.0.1:1', 'ashen-realms')
+    expect(requested).toBe('http://127.0.0.1:1/integrations/ashen-realms/shards')
+    expect(result).toEqual({
+      owner: 'game:ashen-realms',
+      shards: [
+        {
+          shardId: 'game:ashen-realms/1',
+          treeSize: 12,
+          rootHash: 'ab',
+          signingKeyId: 'k1',
+          createdAt: '2026-01-01T00:00:00Z',
+          lastSeenAt: null,
+        },
+      ],
+      partial: true,
+      missingShardIds: ['game:ashen-realms/2'],
+    })
   })
 })

@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
+use crate::types::ids::IdentityId;
 use crate::{AvalonClient, SdkError, Session};
 
 /// How long a grant is valid for after `issued_at`, at mint time — the
@@ -39,7 +40,7 @@ pub const DEFAULT_TTL_SECONDS: i64 = 60;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CrossNodeLoginGrant {
     /// The identity being logged in.
-    pub identity_id: Uuid,
+    pub identity_id: IdentityId,
     /// Which of the identity's (possibly several) signing keys approved
     /// this.
     pub signing_key_id: Uuid,
@@ -69,7 +70,7 @@ impl CrossNodeLoginGrant {
     /// approving client and the verifying node compute independently.
     pub fn signing_bytes(&self) -> Vec<u8> {
         signing_bytes(
-            self.identity_id,
+            &self.identity_id,
             self.signing_key_id,
             &self.destination_base_url,
             &self.requesting_context,
@@ -91,7 +92,7 @@ impl CrossNodeLoginGrant {
 /// the C#/TypeScript SDKs' — `conformance/vectors/cross-node-login.json`
 /// is what proves it still is.
 pub fn signing_bytes(
-    identity_id: Uuid,
+    identity_id: &IdentityId,
     signing_key_id: Uuid,
     destination_base_url: &str,
     requesting_context: &str,
@@ -239,7 +240,7 @@ impl AvalonClient {
     /// via [`AvalonClient::authenticate`].
     pub async fn submit_cross_node_login_grant(
         &self,
-        identity_id: Uuid,
+        identity_id: &IdentityId,
         signing_key_id: Uuid,
         signing_key: &SigningKey,
     ) -> Result<Session, SdkError> {
@@ -263,7 +264,7 @@ impl AvalonClient {
         );
         let signature = signing_key.sign(&bytes);
         let grant = CrossNodeLoginGrant {
-            identity_id,
+            identity_id: identity_id.clone(),
             signing_key_id,
             destination_base_url,
             requesting_context,
@@ -351,7 +352,10 @@ impl AvalonClient {
     /// posture, matching `crates/server/src/identity_locator.rs::get_locations`).
     /// Empty, never an error, for an identity with no advertised location
     /// (e.g. no DHT identity configured on the node it's home to).
-    pub async fn identity_locations(&self, identity_id: Uuid) -> Result<Vec<String>, SdkError> {
+    pub async fn identity_locations(
+        &self,
+        identity_id: &IdentityId,
+    ) -> Result<Vec<String>, SdkError> {
         #[derive(Deserialize)]
         struct LocationsResponse {
             locations: Vec<String>,

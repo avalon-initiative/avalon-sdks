@@ -11,7 +11,7 @@ channels, the social graph's own invariants), see
 ```rust
 let friends = session.friends().await?; // requires friends.read
 for friend in friends {
-    println!("{}: {:?}", friend.identity_id.0, friend.presence);
+    println!("{}: {:?}", friend.identity_id, friend.presence);
 }
 ```
 
@@ -69,7 +69,7 @@ under their own session, never as your integrator.
 
 ```rust
 let conversations = session.conversations().await?;              // messages.read
-let handle = session.dm(other_identity_id).await?;                // messages.send
+let handle = session.dm(&other_identity_id).await?;                // messages.send
 let messages = handle.messages(None, None).await?;                // messages.read
 handle.send("hi").await?;                                          // messages.send
 ```

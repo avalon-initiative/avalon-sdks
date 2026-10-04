@@ -22,6 +22,10 @@ are both implemented for real, not stubbed out.
 
 ## Shape of the API
 
+- Identity ids are branded `IdentityId` strings (64 lowercase hex characters derived from the inception key):
+  `parseIdentityId`, `deriveIdentityId`, and the v2 signing-bytes functions are exported. `register` generates the key
+  first and derives the id; see the root README's "Identity ids and registration".
+
 - `AvalonClient` — the entry point: `register(displayName)`,
   `login(credentials)`, `resumeAccountSession(token)`,
   `resumeAccountSessionWithSigningKey(token, seed)`,
@@ -49,6 +53,9 @@ are both implemented for real, not stubbed out.
   `DeviceLoginDeniedError`/`DeviceLoginExpiredError`/
   `NoLocalSigningKeyError`), mapped from HTTP status + the server's own
   `{ error, code }` body.
+- Shard family heads: `getShardFamily`, `familyRoot` and `verifyFamilyInclusion` fetch and check an owner's
+  `GET /ledger/shard-family` head (`familyRootMatches` / `familyProofVerifies` on a response); `routeWrite` picks the sibling a
+  write for a key goes to (no cross-sibling atomicity); see the root README.
 - Self-certifying shard heads: `getShardTreeHead`,
   `verifySelfCertifyingTreeHead` and `shardCheck` verify a `node:<sha256-of-key>`
   shard's head from the served `signing_public_key` and the id alone; see

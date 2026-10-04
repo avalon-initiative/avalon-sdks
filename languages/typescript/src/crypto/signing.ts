@@ -3,6 +3,8 @@
 // this SDK's hard invariant is zero dependency on that package. Same library
 // (@noble/curves), same wire shapes.
 import { ed25519 } from '@noble/curves/ed25519.js'
+import { bytesToHex } from '@noble/hashes/utils.js'
+import { parseIdentityId, type IdentityId } from '../identityId.js'
 
 export interface SigningKeyPair {
   secretKey: Uint8Array
@@ -63,20 +65,77 @@ export interface SignatureFields {
   signature: string | null
 }
 
-/** Must produce exactly the bytes `avalon-server`'s
- * `handlers::identity_created_signing_bytes` reconstructs. */
-export function identityCreatedSigningBytes(identityId: string, displayName: string): Uint8Array {
-  return new TextEncoder().encode(`avalon:identity.created:v1:${identityId}:${displayName}`)
+const encoder = new TextEncoder()
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+function requireUuid(value: string, name: string): string {
+  if (typeof value !== 'string' || !UUID_PATTERN.test(value)) {
+    throw new TypeError(`${name} must be a lowercase hyphenated UUID`)
+  }
+  return value
 }
 
-/** Must match `device_grant_approval_signing_bytes` in
- * `crates/server/src/devices.rs` byte-for-byte. */
+function requireKey(key: Uint8Array): string {
+  if (key.length !== 32) {
+    throw new TypeError('an Ed25519 public key is exactly 32 bytes')
+  }
+  return bytesToHex(key)
+}
+
+/** Bytes signed for `identity.created` v2:
+ * `avalon:identity.created:v2:{len(networkId)}:{networkId}:{len(shardId)}:{shardId}:{ticketId}:{identityId}:{publicKeyHex}:{displayName}`
+ * with `len` the decimal UTF-8 byte length (not the UTF-16 length). The public key is lowercase hex here and
+ * base64 on the wire. */
+export function identityCreatedSigningBytes(
+  networkId: string,
+  shardId: string,
+  ticketId: string,
+  identityId: IdentityId,
+  publicKey: Uint8Array,
+  displayName: string,
+): Uint8Array {
+  const networkLen = encoder.encode(networkId).length
+  const shardLen = encoder.encode(shardId).length
+  return encoder.encode(
+    `avalon:identity.created:v2:${networkLen}:${networkId}:${shardLen}:${shardId}:${requireUuid(ticketId, 'ticketId')}:${parseIdentityId(identityId)}:${requireKey(publicKey)}:${displayName}`,
+  )
+}
+
+/** Bytes the approving device signs for a grant:
+ * `avalon:device_grant.approved:v2:{grantId}:{identityId}:{requestedPublicKeyHex}`. */
 export function deviceGrantApprovalSigningBytes(
   grantId: string,
-  identityId: string,
-  requestedSigningPublicKeyB64: string,
+  identityId: IdentityId,
+  requestedPublicKey: Uint8Array,
 ): Uint8Array {
-  return new TextEncoder().encode(
-    `avalon:device_grant.approved:v1:${grantId}:${identityId}:${requestedSigningPublicKeyB64}`,
+  return encoder.encode(
+    `avalon:device_grant.approved:v2:${requireUuid(grantId, 'grantId')}:${parseIdentityId(identityId)}:${requireKey(requestedPublicKey)}`,
   )
+}
+
+/** Bytes a signing-key revocation signs:
+ * `avalon:identity.signing_key_revoked:v2:{identityId}:{signingKeyId}:{revokedBySigningKeyId}`. */
+export function signingKeyRevokedSigningBytes(
+  identityId: IdentityId,
+  signingKeyId: string,
+  revokedBySigningKeyId: string,
+): Uint8Array {
+  return encoder.encode(
+    `avalon:identity.signing_key_revoked:v2:${parseIdentityId(identityId)}:${requireUuid(signingKeyId, 'signingKeyId')}:${requireUuid(revokedBySigningKeyId, 'revokedBySigningKeyId')}`,
+  )
+}
+
+/** Strictly decodes a standard-base64 32-byte Ed25519 public key; throws otherwise. */
+export function decodePublicKey(publicKeyB64: string): Uint8Array {
+  let bytes: Uint8Array
+  try {
+    bytes = base64ToBytes(publicKeyB64)
+  } catch {
+    throw new TypeError('public key must be standard base64 of exactly 32 bytes')
+  }
+  if (bytes.length !== 32 || bytesToBase64(bytes) !== publicKeyB64) {
+    throw new TypeError('public key must be standard base64 of exactly 32 bytes')
+  }
+  return bytes
 }

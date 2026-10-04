@@ -60,6 +60,9 @@ conversations/`sync_journal` without a full web framework:
   **`Achievements.cs`**, **`SyncJournal.cs`**, **`CrossNodeLogin.cs`** —
   the remaining domain surfaces, one file per area, mirroring the Rust
   SDK's own module split.
+- **Shard family heads** — `AvalonClient.GetShardFamilyAsync`, `ShardFamily.Root` and `ShardFamily.VerifyInclusion` fetch
+  and check an owner's `GET /ledger/shard-family` head (`RootMatches` / `ProofVerifies` on a response); `ShardFamily.RouteWrite`
+  picks the sibling a write for a key goes to (no cross-sibling atomicity); see the root README.
 - **Self-certifying shard heads** — `AvalonClient.GetShardTreeHeadAsync`
   and `SelfCertifying.Verify` / `ShardCheckFor` verify a `node:<sha256-of-key>`
   shard's head from the served `SigningPublicKey` and the id alone; see
@@ -87,6 +90,11 @@ Session session = await client.AuthenticateAsync(identityToken);
 
 var profile = await session.IdentityProfileAsync(someIdentityId);
 ```
+
+Identity ids are `IdentityId` values (a readonly struct over the 64 lowercase hex characters derived from the
+identity's inception key), not `Guid`s: `IdentityId.Parse`, `IdentityId.Derive(publicKey)`, and the v2 signing bytes in
+`IdentitySigning` are public. `AccountSession.RevokeDeviceAsync` now signs the revocation and needs a local signing key. See
+the root README's "Identity ids and registration".
 
 ## Known scoping gap, not an oversight
 

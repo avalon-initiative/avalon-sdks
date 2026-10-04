@@ -4,6 +4,7 @@
 // a presence/chat update over the wire) is only honestly covered by
 // account.live.test.ts — see this file's own header comment for why.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { randomIdentityId } from '../testIds.js'
 import { AccountSession } from '../../src/accountSession/core.js'
 import { generateSigningKey } from '../../src/crypto/signing.js'
 import '../../src/accountSession/realtime.js'
@@ -65,7 +66,7 @@ afterEach(() => {
 })
 
 function testSession(signing?: { secretKey: Uint8Array; publicKey: Uint8Array; signingKeyId: string }): AccountSession {
-  const identity = { id: crypto.randomUUID(), createdAt: new Date().toISOString() }
+  const identity = { id: randomIdentityId(), createdAt: new Date().toISOString() }
   return new AccountSession({
     identity,
     profile: {

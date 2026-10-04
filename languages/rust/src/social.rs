@@ -73,18 +73,18 @@ pub struct Friend {
 /// `presence: None`.
 fn merge_friend(
     friendship: &Friendship,
-    self_id: IdentityId,
+    self_id: &IdentityId,
     presence_by_id: &HashMap<IdentityId, Presence>,
 ) -> Friend {
-    let other = if friendship.a == self_id {
-        friendship.b
+    let other = if friendship.a == *self_id {
+        friendship.b.clone()
     } else {
-        friendship.a
+        friendship.a.clone()
     };
     Friend {
+        presence: presence_by_id.get(&other).cloned(),
         identity_id: other,
         display_name: None,
-        presence: presence_by_id.get(&other).cloned(),
     }
 }
 
@@ -128,12 +128,18 @@ impl Session {
             if self.require(Capability::PresenceRead).is_ok() && !friendships.is_empty() {
                 let other_ids: Vec<IdentityId> = friendships
                     .iter()
-                    .map(|f| if f.a == self.identity().id { f.b } else { f.a })
+                    .map(|f| {
+                        if f.a == self.identity().id {
+                            f.b.clone()
+                        } else {
+                            f.a.clone()
+                        }
+                    })
                     .collect();
                 self.presence_of(&other_ids)
                     .await?
                     .into_iter()
-                    .map(|p| (p.identity_id, p))
+                    .map(|p| (p.identity_id.clone(), p))
                     .collect()
             } else {
                 HashMap::new()
@@ -141,7 +147,7 @@ impl Session {
 
         Ok(friendships
             .iter()
-            .map(|f| merge_friend(f, self.identity().id, &presence_by_id))
+            .map(|f| merge_friend(f, &self.identity().id, &presence_by_id))
             .collect())
     }
 
@@ -149,7 +155,9 @@ impl Session {
     /// Requires `presence.read`.
     pub async fn presence(&self) -> Result<Presence, SdkError> {
         self.require(Capability::PresenceRead)?;
-        let mine = self.presence_of(&[self.identity().id]).await?;
+        let mine = self
+            .presence_of(std::slice::from_ref(&self.identity().id))
+            .await?;
         // The store always answers for any id (missing/stale reads as
         // Offline — see crates/server/src/presence.rs), so this is always
         // populated; `expect` documents that invariant rather than masking
@@ -170,7 +178,7 @@ impl Session {
 
         let ids_param = ids
             .iter()
-            .map(|id| id.0.to_string())
+            .map(|id| id.to_string())
             .collect::<Vec<_>>()
             .join(",");
         let response = crate::http::send(&self.http, &self.retry, true, |c| {
@@ -263,7 +271,7 @@ impl Session {
             .map_err(|_| SdkError::MissingIssuerCredentials)?;
         let challenge_signature = signing_key.sign(&nonce);
 
-        let subject = self.identity().id.0;
+        let subject = self.identity().id.clone();
         let response = crate::http::send(&self.http, &self.retry, false, |c| {
             c.put(format!("{}/presence/{subject}", self.server_url))
                 .header("x-avalon-integrator-key-id", &self.integrator_key_id)
@@ -344,12 +352,11 @@ mod tests {
     use super::*;
     use crate::types::identity::{Identity, Profile};
     use time::OffsetDateTime;
-    use uuid::Uuid;
 
-    fn make_friendship(a: Uuid, b: Uuid) -> Friendship {
+    fn make_friendship(a: IdentityId, b: IdentityId) -> Friendship {
         Friendship {
-            a: IdentityId(a),
-            b: IdentityId(b),
+            a,
+            b,
             since: OffsetDateTime::now_utc(),
         }
     }
@@ -367,10 +374,10 @@ mod tests {
     /// either never makes a request (capability check fails first) or
     /// exercises pure logic (`merge_friend`) directly.
     fn test_session(granted: Vec<&str>) -> Session {
-        let self_id = IdentityId(Uuid::new_v4());
+        let self_id = IdentityId::random_for_tests();
         Session {
             identity: Identity {
-                id: self_id,
+                id: self_id.clone(),
                 created_at: OffsetDateTime::now_utc(),
             },
             profile: Profile {
@@ -419,7 +426,7 @@ mod tests {
     #[tokio::test]
     async fn presence_of_without_grant_is_rejected_before_any_request() {
         let session = test_session(vec![]);
-        let result = session.presence_of(&[IdentityId(Uuid::new_v4())]).await;
+        let result = session.presence_of(&[IdentityId::random_for_tests()]).await;
         assert!(matches!(result, Err(SdkError::CapabilityNotGranted(_))));
     }
 
@@ -432,11 +439,11 @@ mod tests {
 
     #[test]
     fn merge_friend_has_no_presence_when_map_is_empty() {
-        let self_id = IdentityId(Uuid::new_v4());
-        let other_id = IdentityId(Uuid::new_v4());
-        let friendship = make_friendship(self_id.0, other_id.0);
+        let self_id = IdentityId::random_for_tests();
+        let other_id = IdentityId::random_for_tests();
+        let friendship = make_friendship(self_id.clone(), other_id.clone());
 
-        let friend = merge_friend(&friendship, self_id, &HashMap::new());
+        let friend = merge_friend(&friendship, &self_id, &HashMap::new());
 
         assert_eq!(friend.identity_id, other_id);
         assert!(friend.presence.is_none());
@@ -444,13 +451,13 @@ mod tests {
 
     #[test]
     fn merge_friend_picks_up_presence_when_present_in_map() {
-        let self_id = IdentityId(Uuid::new_v4());
-        let other_id = IdentityId(Uuid::new_v4());
-        let friendship = make_friendship(self_id.0, other_id.0);
+        let self_id = IdentityId::random_for_tests();
+        let other_id = IdentityId::random_for_tests();
+        let friendship = make_friendship(self_id.clone(), other_id.clone());
         let mut presence_by_id = HashMap::new();
-        presence_by_id.insert(other_id, make_presence(other_id));
+        presence_by_id.insert(other_id.clone(), make_presence(other_id.clone()));
 
-        let friend = merge_friend(&friendship, self_id, &presence_by_id);
+        let friend = merge_friend(&friendship, &self_id, &presence_by_id);
 
         assert_eq!(friend.identity_id, other_id);
         assert!(friend.presence.is_some());
@@ -458,20 +465,20 @@ mod tests {
 
     #[test]
     fn merge_friend_resolves_the_other_party_regardless_of_a_b_order() {
-        let self_id = IdentityId(Uuid::new_v4());
-        let other_id = IdentityId(Uuid::new_v4());
+        let self_id = IdentityId::random_for_tests();
+        let other_id = IdentityId::random_for_tests();
 
         // self as `a`
-        let friendship_1 = make_friendship(self_id.0, other_id.0);
+        let friendship_1 = make_friendship(self_id.clone(), other_id.clone());
         assert_eq!(
-            merge_friend(&friendship_1, self_id, &HashMap::new()).identity_id,
+            merge_friend(&friendship_1, &self_id, &HashMap::new()).identity_id,
             other_id
         );
 
         // self as `b`
-        let friendship_2 = make_friendship(other_id.0, self_id.0);
+        let friendship_2 = make_friendship(other_id.clone(), self_id.clone());
         assert_eq!(
-            merge_friend(&friendship_2, self_id, &HashMap::new()).identity_id,
+            merge_friend(&friendship_2, &self_id, &HashMap::new()).identity_id,
             other_id
         );
     }
@@ -480,7 +487,7 @@ mod tests {
     async fn subscribe_presence_without_grant_is_rejected_before_any_connection() {
         let session = test_session(vec![]);
         let result = session
-            .subscribe_presence(&[IdentityId(Uuid::new_v4())])
+            .subscribe_presence(&[IdentityId::random_for_tests()])
             .await;
         assert!(matches!(result, Err(SdkError::CapabilityNotGranted(_))));
     }

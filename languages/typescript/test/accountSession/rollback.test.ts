@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { randomIdentityId } from '../testIds.js'
 import { AccountSession } from '../../src/accountSession/core.js'
 import { canonicalMessage, generateSigningKey } from '../../src/crypto/signing.js'
 import { ed25519 } from '@noble/curves/ed25519.js'
@@ -6,7 +7,7 @@ import { ConflictError, NotFoundError, RejectedError } from '../../src/errors.js
 import '../../src/accountSession/rollback.js'
 
 function testSession(signing?: { secretKey: Uint8Array; publicKey: Uint8Array; signingKeyId: string }): AccountSession {
-  const identity = { id: crypto.randomUUID(), createdAt: new Date().toISOString() }
+  const identity = { id: randomIdentityId(), createdAt: new Date().toISOString() }
   return new AccountSession({
     identity,
     profile: {

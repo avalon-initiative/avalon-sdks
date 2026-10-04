@@ -179,7 +179,7 @@ namespace Avalon.Sdk
         /// every other signed request in this repo (see <c>Achievements.cs</c>'s own
         /// <c>AttestationSigningBytes</c>).</summary>
         private static byte[] CrossNodeLoginSigningBytes(
-            Guid identityId,
+            IdentityId identityId,
             Guid signingKeyId,
             string destinationBaseUrl,
             string requestingContext,
@@ -227,7 +227,7 @@ namespace Avalon.Sdk
         /// does, via <see cref="AuthenticateAsync"/>.
         /// </summary>
         public async Task<Session> SubmitCrossNodeLoginGrantAsync(
-            Guid identityId,
+            IdentityId identityId,
             Guid signingKeyId,
             byte[] signingKeySeed,
             CancellationToken ct = default)
@@ -248,7 +248,7 @@ namespace Avalon.Sdk
 
             var grant = new Avalon.Sdk.Generated.CrossNodeLoginGrant
             {
-                IdentityId = identityId,
+                IdentityId = identityId.ToString(),
                 SigningKeyId = signingKeyId,
                 DestinationBaseUrl = destinationBaseUrl,
                 RequestingContext = requestingContext,

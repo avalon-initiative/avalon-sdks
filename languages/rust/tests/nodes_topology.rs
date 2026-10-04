@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use avalon_sdk::nodes::{Connectivity, PathType};
 use avalon_sdk::{AvalonClient, AvalonConfig, SdkError, StopReason};
 use wiremock::matchers::{body_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -184,4 +185,82 @@ async fn malformed_bodies_surface_as_protocol_errors() {
         c.trace("http://n:1", None).await,
         Err(SdkError::Protocol(_))
     ));
+}
+
+#[tokio::test]
+async fn topology_tolerates_unknown_connectivity_and_path_values() {
+    let mut body: serde_json::Value = serde_json::from_str(TOPOLOGY).unwrap();
+    let neighbor = body["neighbors"][0].clone();
+    let with = |connectivity: &str, path: &str| {
+        let mut n = neighbor.clone();
+        n["connectivity"] = connectivity.into();
+        n["latency"]["path"] = path.into();
+        n
+    };
+    body["neighbors"] = serde_json::json!([
+        with("nat_traversed", "traversed"),
+        with("outbound_only", "relayed"),
+        with("made_up_value", "made_up_path"),
+    ]);
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/nodes/topology"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(body))
+        .mount(&server)
+        .await;
+    let topology = client(server.uri()).topology(None).await.unwrap();
+    let connectivity: Vec<_> = topology
+        .neighbors
+        .iter()
+        .map(|n| n.connectivity.clone().unwrap())
+        .collect();
+    assert_eq!(
+        connectivity,
+        [
+            Connectivity::NatTraversed,
+            Connectivity::OutboundOnly,
+            Connectivity::Unknown("made_up_value".to_string())
+        ]
+    );
+    let paths: Vec<_> = topology
+        .neighbors
+        .iter()
+        .map(|n| n.latency.clone().unwrap().path)
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            PathType::Traversed,
+            PathType::Relayed,
+            PathType::Unknown("made_up_path".to_string())
+        ]
+    );
+}
+
+#[tokio::test]
+async fn probe_and_trace_decode_new_path_fields_and_tolerate_unknown_values() {
+    let server = MockServer::start().await;
+    let mut probe: serde_json::Value = serde_json::from_str(PROBE).unwrap();
+    probe["path"] = "traversed".into();
+    let mut trace: serde_json::Value = serde_json::from_str(TRACE).unwrap();
+    trace["hops"][0]["path_to_next"] = "made_up_path".into();
+    Mock::given(method("POST"))
+        .and(path("/nodes/probe"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(probe))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/nodes/trace"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(trace))
+        .mount(&server)
+        .await;
+    let client = client(server.uri());
+    let probed = client.probe("http://n:1", None).await.unwrap();
+    assert_eq!(probed.path, Some(PathType::Traversed));
+    let traced = client.trace("http://n:1", None).await.unwrap();
+    assert_eq!(
+        traced.hops[0].path_to_next,
+        Some(PathType::Unknown("made_up_path".to_string()))
+    );
+    assert_eq!(traced.hops[1].path_to_next, None);
 }

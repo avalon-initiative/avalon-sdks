@@ -20,7 +20,16 @@ import {
   bulkAttestationSigningBytes,
 } from '../src/integratorSession.js'
 import { revocationSigningBytes } from '../src/integratorAccount.js'
-import { sign, verify } from '../src/crypto/signing.js'
+import {
+  deviceGrantApprovalSigningBytes,
+  identityCreatedSigningBytes,
+  publicKeyFromSecretKey,
+  sign,
+  signingKeyRevokedSigningBytes,
+  verify,
+} from '../src/crypto/signing.js'
+import { deriveIdentityId, identityIdMatchesKey, isIdentityId, parseIdentityId } from '../src/identityId.js'
+import { isAcceptableShardKey, verifyStrict } from '../src/network/strictEd25519.js'
 import { signingMessage } from '../src/network/sthMessage.js'
 import type { CosignedTreeHead, KnownWitness, SignedTreeHeadResponse } from '../src/types.js'
 import {
@@ -31,6 +40,16 @@ import {
 } from '../src/network/witness.js'
 import { diversityPrefixForUrl, selectKnownList } from '../src/network/knownListRules.js'
 import { selfCertifyingId, shardCheck, verifySelfCertifyingTreeHead } from '../src/network/selfCertifying.js'
+import {
+  familyRoot,
+  isFamilyMember,
+  isFamilyOwnerId,
+  routeWeight,
+  routeWrite,
+  shardFamilyOwner,
+  verifyFamilyInclusion,
+  type FamilyHead,
+} from '../src/shardFamily.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const VECTORS_DIR = path.resolve(__dirname, '../../../conformance/vectors')
@@ -360,6 +379,229 @@ describe('conformance: self-certifying tree heads', () => {
       const result = verifySelfCertifyingTreeHead(shardId, sth, signingPublicKeyHex)
       expect(result.verified).toBe(vector.expected.verified)
       expect(result.verified ? null : result.failure).toBe(vector.expected.failure)
+    })
+  }
+})
+
+describe('conformance: shard family head', () => {
+  const doc = loadVector('shard-family-head.json')
+  // Decimal strings carry tree sizes beyond 2^53, which a JSON double cannot hold.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const head = (h: any): FamilyHead => ({
+    shard_id: h.shardId,
+    tree_size: typeof h.treeSize === 'string' ? BigInt(h.treeSize) : h.treeSize,
+    root_hash: h.rootHashHex,
+    signing_key_id: h.signingKeyId,
+    signature: h.signatureHex,
+  })
+
+  it('lists typescript as supported', () => {
+    requireSupported(doc, 'typescript')
+  })
+
+  for (const v of doc.familyVectors) {
+    it(`root: ${v.name}`, () => {
+      expect(familyRoot(v.input.owner, v.input.heads.map(head))).toBe(v.expected.rootHashHex)
+    })
+  }
+
+  for (const v of doc.proofVectors) {
+    it(`proof: ${v.name}`, () => {
+      const { owner, rootHashHex, shardId, proof } = v.input
+      const claimed = { ...head(v.input.head), shard_id: shardId }
+      const wire = { shard_id: shardId, leaf_index: proof.leafIndex, tree_size: proof.treeSize, path: proof.pathHex }
+      expect(verifyFamilyInclusion(owner, rootHashHex, wire, claimed)).toBe(v.expected.verified)
+    })
+  }
+
+  it('maps shard ids to owners', () => {
+    for (const v of doc.familyOwnerVectors) expect([v.shardId, shardFamilyOwner(v.shardId)]).toEqual([v.shardId, v.expectedOwner])
+  })
+
+  it('recognizes owner ids', () => {
+    for (const v of doc.ownerIdVectors) expect([v.owner, isFamilyOwnerId(v.owner)]).toEqual([v.owner, v.expected])
+  })
+
+  it('decides membership', () => {
+    for (const v of doc.memberVectors) {
+      expect([v.owner, v.shardId, isFamilyMember(v.owner, v.shardId)]).toEqual([v.owner, v.shardId, v.expected])
+    }
+  })
+})
+
+describe('conformance: identity ids', () => {
+  const doc = loadVector('identity-id.json')
+
+  it('lists typescript as supported', () => {
+    requireSupported(doc, 'typescript')
+  })
+
+  for (const vector of doc.vectors) {
+    it(`${vector.kind}: ${vector.name}`, () => {
+      const { input, expected } = vector
+      switch (vector.kind) {
+        case 'derive': {
+          const publicKey = publicKeyFromSecretKey(hexToBytes(input.seedHex))
+          expect(bytesToHex(publicKey)).toBe(input.publicKeyHex)
+          const id = deriveIdentityId(publicKey)
+          expect(id).toBe(expected.identityId)
+          expect(identityIdMatchesKey(id, publicKey)).toBe(true)
+          break
+        }
+        case 'parse':
+          expect(isIdentityId(input.identityId)).toBe(expected.valid)
+          if (!expected.valid) expect(() => parseIdentityId(input.identityId)).toThrow(TypeError)
+          break
+        case 'key_acceptability':
+          expect(isAcceptableShardKey(hexToBytes(input.publicKeyHex))).toBe(expected.acceptable)
+          break
+        case 'distinct_from_shard_id': {
+          const key = hexToBytes(input.publicKeyHex)
+          expect(deriveIdentityId(key)).toBe(expected.identityId)
+          expect(selfCertifyingId(key)).toBe(expected.nodeShardId)
+          expect(deriveIdentityId(key)).not.toBe(selfCertifyingId(key))
+          expect(expected.equal).toBe(false)
+          break
+        }
+        case 'strict_verify':
+          expect(
+            verifyStrict(hexToBytes(input.publicKeyHex), hexToBytes(input.messageHex), hexToBytes(input.signatureHex)),
+          ).toBe(expected.valid)
+          break
+        default:
+          throw new Error(`unknown identity-id vector kind ${vector.kind}`)
+      }
+    })
+  }
+
+  it('rejects a trailing newline and non-strings', () => {
+    const id = deriveIdentityId(new Uint8Array(32).fill(7))
+    expect(isIdentityId(`${id}\n`)).toBe(false)
+    expect(isIdentityId(undefined)).toBe(false)
+    expect(isIdentityId(null)).toBe(false)
+  })
+})
+
+describe('conformance: identity.created v2 signing', () => {
+  const doc = loadVector('identity-created-signing.json')
+  const secretKey = hexToBytes(doc.signingKeySeedHex)
+  const publicKey = publicKeyFromSecretKey(secretKey)
+  const identityId = parseIdentityId(doc.identityId)
+
+  it('lists typescript as supported and derives the shared key and id', () => {
+    requireSupported(doc, 'typescript')
+    expect(bytesToHex(publicKey)).toBe(doc.signingPublicKeyHex)
+    expect(identityIdMatchesKey(identityId, publicKey)).toBe(true)
+  })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const bytesFor = (input: any, id = identityId) =>
+    identityCreatedSigningBytes(input.networkId, input.shardId, input.ticketId, id, publicKey, input.displayName)
+
+  for (const vector of doc.vectors) {
+    it(`matches the shared vector: ${vector.name}`, () => {
+      const bytes = bytesFor(vector.input)
+      expect(bytesToHex(bytes)).toBe(vector.expected.signingBytesHex)
+      expect(toUtf8(bytes)).toBe(vector.expected.signingBytesUtf8)
+      expect(bytesToHex(sign(secretKey, bytes))).toBe(vector.expected.signatureHex)
+      expect(verifyStrict(publicKey, bytes, hexToBytes(vector.expected.signatureHex))).toBe(true)
+    })
+  }
+
+  for (const vector of doc.replayVectors) {
+    it(`replay: ${vector.name}`, () => {
+      const valid = verifyStrict(publicKey, bytesFor(vector.input), hexToBytes(vector.input.signatureHex))
+      expect(valid).toBe(vector.expected.valid)
+    })
+  }
+
+  for (const vector of doc.domainSeparationVectors) {
+    it(`domain separation: ${vector.name}`, () => {
+      const v2 = bytesFor(vector.input, parseIdentityId(vector.input.identityId))
+      expect(bytesToHex(v2)).toBe(vector.expected.v2SigningBytesHex)
+      expect(toUtf8(v2)).not.toBe(vector.expected.v1SigningBytesUtf8)
+      expect(vector.expected.equal).toBe(false)
+    })
+  }
+})
+
+describe('conformance: device grant approval v2 signing', () => {
+  const doc = loadVector('device-grant-approval.json')
+  const secretKey = hexToBytes(doc.signingKeySeedHex)
+
+  it('lists typescript as supported and derives the shared keys', () => {
+    requireSupported(doc, 'typescript')
+    expect(bytesToHex(publicKeyFromSecretKey(secretKey))).toBe(doc.signingPublicKeyHex)
+    expect(bytesToHex(publicKeyFromSecretKey(hexToBytes(doc.requestedKeySeedHex)))).toBe(doc.requestedPublicKeyHex)
+  })
+
+  for (const vector of doc.vectors) {
+    it(`matches the shared vector: ${vector.name}`, () => {
+      const bytes = deviceGrantApprovalSigningBytes(
+        vector.input.grantId,
+        parseIdentityId(vector.input.identityId),
+        hexToBytes(vector.input.requestedPublicKeyHex),
+      )
+      expect(bytesToHex(bytes)).toBe(vector.expected.signingBytesHex)
+      expect(toUtf8(bytes)).toBe(vector.expected.signingBytesUtf8)
+      expect(bytesToHex(sign(secretKey, bytes))).toBe(vector.expected.signatureHex)
+    })
+  }
+})
+
+describe('conformance: signing key revocation v2 signing', () => {
+  const doc = loadVector('signing-key-revoked.json')
+  const secretKey = hexToBytes(doc.signingKeySeedHex)
+
+  it('lists typescript as supported and derives the shared key', () => {
+    requireSupported(doc, 'typescript')
+    expect(bytesToHex(publicKeyFromSecretKey(secretKey))).toBe(doc.signingPublicKeyHex)
+  })
+
+  for (const vector of doc.vectors) {
+    it(`matches the shared vector: ${vector.name}`, () => {
+      const bytes = signingKeyRevokedSigningBytes(
+        parseIdentityId(vector.input.identityId),
+        vector.input.signingKeyId,
+        vector.input.revokedBySigningKeyId,
+      )
+      expect(bytesToHex(bytes)).toBe(vector.expected.signingBytesHex)
+      expect(toUtf8(bytes)).toBe(vector.expected.signingBytesUtf8)
+      expect(bytesToHex(sign(secretKey, bytes))).toBe(vector.expected.signatureHex)
+    })
+  }
+})
+
+describe('conformance: shard sibling routing', () => {
+  const doc = loadVector('shard-sibling-routing.json')
+
+  it('lists typescript as supported', () => {
+    requireSupported(doc, 'typescript')
+  })
+
+  for (const v of doc.weightVectors) {
+    it(`weight: ${v.name}`, () => {
+      const { owner, key, shardId } = v.input
+      expect(bytesToHex(routeWeight(owner, key, shardId))).toBe(v.expected.weightHex)
+    })
+  }
+
+  for (const v of doc.routeVectors) {
+    it(`route: ${v.name}`, () => {
+      expect(routeWrite(v.input.owner, v.input.key, v.input.siblings)).toBe(v.expected.shardId)
+    })
+  }
+
+  for (const v of doc.movementVectors) {
+    it(`movement: ${v.name}`, () => {
+      const { owner, keys, before, after } = v.input
+      keys.forEach((key: string, n: number) => {
+        const b = routeWrite(owner, key, before)
+        const a = routeWrite(owner, key, after)
+        expect([key, b, a]).toEqual([key, v.expected.before[n], v.expected.after[n]])
+        // A key only moves onto a sibling that was added, or off one that was removed.
+        if (a !== b) expect(!before.includes(a) || !after.includes(b)).toBe(true)
+      })
     })
   }
 })

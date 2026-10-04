@@ -75,6 +75,9 @@ const SCHEMA_NAMES: &[&str] = &[
     "DeviceGrantResponse",
     "RequestDeviceGrantRequest",
     "ApproveDeviceGrantRequest",
+    "RevokeDeviceRequest",
+    "IntegratorShardEntry",
+    "IntegratorShardsResponse",
     "RenameDeviceRequest",
     "ApprovePairingRequest",
     "UserCodeRequest",
@@ -162,11 +165,13 @@ const SCHEMA_NAMES: &[&str] = &[
     "SelfView",
     "Coordinate",
     "Neighbor",
+    "Connectivity",
     "KnownPeer",
     "MirrorSource",
     "OpenFinding",
     "ObservedLatency",
     "RoundTripStats",
+    "PathType",
     "ShardHead",
     "NodeResourceMetrics",
     "CpuMetrics",
@@ -181,6 +186,7 @@ const SCHEMA_NAMES: &[&str] = &[
     "StopReason",
     "NameClaimRequest",
     "NameClaimResponse",
+    "IdentityId",
 ];
 
 /// Typify hardcodes `"format": "date-time"` to `chrono::DateTime<Utc>`,
@@ -242,9 +248,12 @@ fn main() {
         })
         .collect();
 
-    // No `with_replacement` overrides: every schema in `SCHEMA_NAMES` is
-    // generated fresh from `docs/generated/openapi.json` (issue #774).
-    let settings = TypeSpaceSettings::default();
+    // Every schema in `SCHEMA_NAMES` is generated fresh from `docs/generated/openapi.json` (issue
+    // #774), except these two open vocabularies, which tolerate a value this SDK does not know yet.
+    let mut settings = TypeSpaceSettings::default();
+    for name in ["Connectivity", "PathType"] {
+        settings.with_replacement(name, format!("crate::tolerant::{name}"), std::iter::empty());
+    }
     let mut type_space = TypeSpace::new(&settings);
     type_space
         .add_ref_types(defs)

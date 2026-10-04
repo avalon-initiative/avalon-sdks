@@ -7,6 +7,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,7 +19,7 @@ namespace Avalon.Sdk
     public sealed class AccountGuardianSettings
     {
         [JsonPropertyName("guardian_ids")]
-        public List<Guid> GuardianIds { get; set; } = new List<Guid>();
+        public List<IdentityId> GuardianIds { get; set; } = new List<IdentityId>();
 
         [JsonPropertyName("threshold")]
         public int Threshold { get; set; }
@@ -35,7 +36,7 @@ namespace Avalon.Sdk
         public Guid Id { get; set; }
 
         [JsonPropertyName("identity_id")]
-        public Guid IdentityId { get; set; }
+        public IdentityId IdentityId { get; set; }
 
         /// <summary>"pending", "approved", "completed", "cancelled", or "expired" —
         /// <c>crates/server/src/recovery.rs</c>'s own stable vocabulary.</summary>
@@ -71,7 +72,7 @@ namespace Avalon.Sdk
     public sealed class AccountGuardianOf
     {
         [JsonPropertyName("identity_id")]
-        public Guid IdentityId { get; set; }
+        public IdentityId IdentityId { get; set; }
 
         [JsonPropertyName("display_name")]
         public string DisplayName { get; set; } = "";
@@ -92,7 +93,7 @@ namespace Avalon.Sdk
         /// guardian or raises the threshold (the only cases #697 requires it for) — same
         /// unused-but-valid-signature-is-harmless simplification every other
         /// conditionally-signed method makes.</summary>
-        public async Task<AccountGuardianSettings> SetGuardiansAsync(IReadOnlyList<Guid> guardianIds, int threshold, CancellationToken ct = default)
+        public async Task<AccountGuardianSettings> SetGuardiansAsync(IReadOnlyList<IdentityId> guardianIds, int threshold, CancellationToken ct = default)
         {
             var sorted = new List<string>();
             foreach (var id in guardianIds)
@@ -101,12 +102,12 @@ namespace Avalon.Sdk
             }
             sorted.Sort(StringComparer.Ordinal);
             var (signingKeyId, signature) = Sign(
-                "recovery.guardians.set", IdentityGuid.ToString(), string.Join(",", sorted), threshold.ToString());
+                "recovery.guardians.set", OwnIdentityId.ToString(), string.Join(",", sorted), threshold.ToString());
             return await PutAsync<Avalon.Sdk.Generated.SetGuardiansRequest, AccountGuardianSettings>(
                 "/me/recovery/guardians",
                 new Avalon.Sdk.Generated.SetGuardiansRequest
                 {
-                    GuardianIds = new List<Guid>(guardianIds),
+                    GuardianIds = guardianIds.Select(g => g.ToString()).ToList(),
                     Threshold = threshold,
                     SigningKeyId = signingKeyId,
                     Signature = signature,
@@ -132,7 +133,7 @@ namespace Avalon.Sdk
         /// <summary><c>DELETE /me/recovery/guardian-of/{identity_id}</c> — the caller
         /// self-removing as someone else's guardian. Not signature-required (self-removal
         /// only narrows a guardian assignment).</summary>
-        public async Task ResignAsGuardianAsync(Guid identityId, CancellationToken ct = default) =>
+        public async Task ResignAsGuardianAsync(IdentityId identityId, CancellationToken ct = default) =>
             await DeleteAsync($"/me/recovery/guardian-of/{identityId}", ct).ConfigureAwait(false);
 
         /// <summary><c>POST /recovery/requests/{id}/approve</c> — a guardian approving

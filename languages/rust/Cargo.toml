@@ -9,7 +9,7 @@ keywords = ["avalon", "sdk", "identity", "games"]
 categories = ["api-bindings"]
 # The tests listed last read files outside this directory (the shared conformance vectors and
 # fixtures) and are left out of the package; the other tests are self-contained.
-exclude = ["tests/conformance.rs", "tests/nodes_topology.rs", "tests/topology_walk.rs"]
+exclude = ["tests/conformance.rs", "tests/nodes_topology.rs", "tests/topology_walk.rs", "tests/shard_family.rs"]
 description = "Rust reference SDK for integrating a game with Avalon. Talks to the avalon-server API over its published schema and owns its own wire types — no dependency on any other crate in this workspace, and it never exposes internal database structures. The C# SDK (bindings/csharp) is the flagship developer-facing surface; this crate is both the reference implementation and directly usable by Rust-based games/tools."
 
 [dependencies]
@@ -51,6 +51,8 @@ passkey-client.workspace = true
 passkey-authenticator.workspace = true
 coset = "0.4"
 url.workspace = true
+# Pattern-validated generated id types (IdentityId).
+regress = "0.12"
 
 [features]
 # Exposes Session::grant_for_testing, a capability-grant escape hatch that

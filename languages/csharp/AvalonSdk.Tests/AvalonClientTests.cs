@@ -19,7 +19,7 @@ public class AvalonClientTests
     [Fact]
     public async Task AuthenticateAsync_PopulatesIdentityAndProfileFromMe()
     {
-        var identityId = Guid.NewGuid();
+        var identityId = IdentityId.RandomForTests();
         var handler = new StubHttpMessageHandler()
             .Enqueue($$"""
             {
@@ -50,7 +50,7 @@ public class AvalonClientTests
         Assert.Equal("dragon-friend", session.Profile.DisplayName);
         Assert.Equal("https://example.invalid/avatar.png", session.Profile.AvatarUrl);
         Assert.Equal(new[] { Genre.Rpg, Genre.Strategy }, session.Profile.FavoriteGenres);
-        Assert.Equal(identityId.ToString(), session.IdentityId);
+        Assert.Equal(identityId, session.IdentityId);
     }
 
     [Fact]

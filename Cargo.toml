@@ -6,13 +6,13 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.4"
+version = "0.1.6"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/avalon-initiative/avalon-sdks"
 
 [workspace.dependencies]
-avalon-schema-derive = { path = "languages/rust/schema-derive", version = "0.1.4" }
+avalon-schema-derive = { path = "languages/rust/schema-derive", version = "0.1.6" }
 async-trait = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

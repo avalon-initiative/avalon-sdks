@@ -107,7 +107,7 @@ public class AccountSessionTests
     [Fact]
     public async Task UpdateProfileAsync_OmitsUntouchedFieldsAndClearsEmptyStringFields()
     {
-        var self = Guid.NewGuid();
+        var self = IdentityId.RandomForTests();
         var handler = new StubHttpMessageHandler().Enqueue(HttpStatusCodeOk(),
             $@"{{""identity_id"":""{self}"",""identity_created_at"":""2026-01-01T00:00:00Z"",""display_name"":""newname"",""avatar_url"":null,""bio"":"""",""favorite_genres"":[],""pronouns"":null,""banner_url"":null,""status"":null,""links"":[],""timezone"":null,""theme_color"":null,""location"":null,""main_guild"":null}}");
         var session = AccountSession.ForTesting(handler.ToHttpClient(), identityId: self);

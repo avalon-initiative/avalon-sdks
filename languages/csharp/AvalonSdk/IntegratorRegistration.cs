@@ -157,6 +157,12 @@ namespace Avalon.Sdk
         public async Task<Avalon.Sdk.Generated.IntegratorPublicResponse> GetIntegratorAsync(string slug, CancellationToken ct = default) =>
             await GetJsonAsync<Avalon.Sdk.Generated.IntegratorPublicResponse>($"{ServerUrl}/integrations/{slug}", ct).ConfigureAwait(false);
 
+        /// <summary>GET /integrations/{slug}/shards — the owner's sibling shards this node knows of and
+        /// could verify a head for. Public and advisory: a silent sibling is invisible, and unverified
+        /// ones appear only in <c>MissingShardIds</c>. A family over 256 shards is refused (HTTP 413).</summary>
+        public async Task<Avalon.Sdk.Generated.IntegratorShardsResponse> ListIntegratorShardsAsync(string slug, CancellationToken ct = default) =>
+            await GetJsonAsync<Avalon.Sdk.Generated.IntegratorShardsResponse>($"{ServerUrl}/integrations/{slug}/shards", ct).ConfigureAwait(false);
+
         /// <summary>GET /integrations/{slug}/keys — an issuer's full key history (any role,
         /// any status), oldest first. Public: public keys are already public by
         /// definition.</summary>

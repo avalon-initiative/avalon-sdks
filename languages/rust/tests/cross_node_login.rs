@@ -12,6 +12,8 @@
 //! HTTP, the same way `crates/server/tests/cross_node_login.rs` already
 //! does server-side.
 
+use avalon_sdk::identity_signing::identity_created_signing_bytes_v2;
+use avalon_sdk::types::ids::IdentityId;
 use avalon_sdk::{AvalonClient, AvalonConfig, SdkError};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
@@ -43,13 +45,13 @@ async fn register_identity(
     http: &reqwest::Client,
     base: &str,
     display_name: &str,
-) -> (Uuid, SigningKey, Uuid) {
-    let identity_id = Uuid::new_v4();
+) -> (IdentityId, SigningKey, Uuid) {
     let origin_url =
         url::Url::parse(&webauthn_origin()).expect("AVALON_WEBAUTHN_ORIGIN must be a valid URL");
 
     let signing_key = SigningKey::generate(&mut rand::rng());
     let event_signing_public_key = BASE64.encode(signing_key.verifying_key().to_bytes());
+    let identity_id = IdentityId::derive(signing_key.verifying_key().as_bytes());
 
     // One authenticator drives both ceremonies below — registration's
     // make_credential and login's get_assertion each check user presence
@@ -61,7 +63,11 @@ async fn register_identity(
 
     let start: serde_json::Value = http
         .post(format!("{base}/identities/register/start"))
-        .json(&json!({ "identity_id": identity_id, "display_name": display_name }))
+        .json(&json!({
+            "identity_id": identity_id,
+            "event_signing_public_key": event_signing_public_key,
+            "display_name": display_name,
+        }))
         .send()
         .await
         .expect("register/start request failed — is `make start` running?")
@@ -81,15 +87,20 @@ async fn register_identity(
         .await
         .expect("WebAuthn registration ceremony failed");
 
-    let signing_bytes_for_creation =
-        format!("avalon:identity.created:v1:{identity_id}:{display_name}").into_bytes();
+    let signing_bytes_for_creation = identity_created_signing_bytes_v2(
+        start["network_id"].as_str().unwrap(),
+        start["shard_id"].as_str().unwrap(),
+        ticket_id.parse().unwrap(),
+        &identity_id,
+        signing_key.verifying_key().as_bytes(),
+        display_name,
+    );
     let signature = signing_key.sign(&signing_bytes_for_creation);
 
     http.post(format!("{base}/identities/register/finish"))
         .json(&json!({
             "ticket_id": ticket_id,
             "webauthn_credential": webauthn_credential,
-            "event_signing_public_key": event_signing_public_key,
             "event_signature": BASE64.encode(signature.to_bytes()),
             "device_label": null,
         }))
@@ -165,7 +176,7 @@ fn client(base: &str) -> AvalonClient {
 }
 
 fn mint_grant(
-    identity_id: Uuid,
+    identity_id: &IdentityId,
     signing_key_id: Uuid,
     signing_key: &SigningKey,
     destination_base_url: &str,
@@ -185,7 +196,7 @@ fn mint_grant(
     );
     let signature = signing_key.sign(&bytes);
     CrossNodeLoginGrant {
-        identity_id,
+        identity_id: identity_id.clone(),
         signing_key_id,
         destination_base_url: destination_base_url.to_string(),
         requesting_context,
@@ -223,7 +234,7 @@ async fn wait_resolves_to_a_real_session_once_a_grant_is_submitted() {
     let base_for_submit = base.clone();
     let submit = tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        let grant = mint_grant(identity_id, signing_key_id, &signing_key, &base_for_submit);
+        let grant = mint_grant(&identity_id, signing_key_id, &signing_key, &base_for_submit);
         let response = http
             .post(format!("{base_for_submit}/auth/cross-node/submit"))
             .json(&json!({ "user_code": user_code, "grant": grant }))
@@ -287,7 +298,7 @@ async fn submit_cross_node_login_grant_resolves_directly_to_a_session() {
 
     let client = client(&base);
     let session = client
-        .submit_cross_node_login_grant(identity_id, signing_key_id, &signing_key)
+        .submit_cross_node_login_grant(&identity_id, signing_key_id, &signing_key)
         .await
         .expect("submit_cross_node_login_grant should resolve to a real session");
 
@@ -308,7 +319,7 @@ async fn submit_cross_node_login_grant_rejects_a_grant_signed_by_the_wrong_key()
     let impostor_key = SigningKey::generate(&mut rand::rng());
     let client = client(&base);
     let result = client
-        .submit_cross_node_login_grant(identity_id, signing_key_id, &impostor_key)
+        .submit_cross_node_login_grant(&identity_id, signing_key_id, &impostor_key)
         .await;
 
     assert!(matches!(result, Err(SdkError::Unauthorized)));
