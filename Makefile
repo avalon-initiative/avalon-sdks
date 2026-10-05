@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help check check-rust check-csharp check-ts coverage \
+.PHONY: help check check-rust check-csharp check-ts coverage check-vector-sync \
 	release-bump release-tag release-tag-skip-tests
 
 help: ## List available targets
@@ -21,6 +21,9 @@ check-ts: ## TypeScript SDK: lint, type-check, tests, generated-types check
 
 coverage: ## Every SDK-facing server route is covered by each SDK
 	python3 scripts/check-sdk-coverage.py
+
+check-vector-sync: ## Vendored conformance/vectors/ match avalon-protocol main (needs network; not part of check)
+	bash scripts/check-vector-sync.sh
 
 ## One release covers all three SDKs at one shared version.
 ##   make release-bump VER=0.2.0     set every SDK's version files (commit them and open a PR)

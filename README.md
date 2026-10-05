@@ -95,10 +95,9 @@ checked-in copies, kept in sync by hand whenever the upstream schema changes:
   signing logic against these; `avalon-protocol`'s own
   `crates/protocol/tests/conformance.rs` asserts the server side of the
   same files, so a real drift between the two repos fails a test on
-  whichever side changed first, not silently. `identity-chain.json` (the protocol crate only) and `node-request.json`
-  (node-to-node routes, not SDK-facing) are not vendored; the vendored `supportedIn` of the four vectors the protocol
-  still lists as unsupported (`attestation-signing`, `cross-node-login`, `session-continuation`,
-  `websocket-interest-claim`) is set to what each SDK actually asserts.
+  whichever side changed first, not silently. The directory is a byte-for-byte copy: runners load vectors by file name
+  and gate on `supportedIn`, so protocol-only files (`identity-chain.json`, `node-request.json`) sit here unused.
+  `make check-vector-sync` (network; run by the vector-sync workflow, not by `make check`) fails on any difference.
 
 Until real cross-repo tooling exists, resyncing any of these is a manual
 copy from the corresponding path in `avalon-protocol`, then this repo's

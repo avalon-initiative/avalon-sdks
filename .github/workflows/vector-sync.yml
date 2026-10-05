@@ -1,0 +1,22 @@
+name: Vector sync
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    paths:
+      - 'conformance/**'
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vector-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Vendored vectors match avalon-protocol main
+        run: bash scripts/check-vector-sync.sh
