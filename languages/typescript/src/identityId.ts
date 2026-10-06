@@ -11,15 +11,29 @@ export type IdentityId = string & { readonly __brand: 'IdentityId' }
 const IDENTITY_ID_PATTERN = /^[0-9a-f]{64}$/
 const DOMAIN_TAG = new TextEncoder().encode('avalon-identity-id-v1')
 
+/** An identity id whose length is not 64 UTF-8 bytes: possibly an id from a newer scheme this build
+ * cannot read, so it is reported apart from a malformed 64-character id (a plain `TypeError`). */
+export class UnknownIdSchemeError extends TypeError {
+  constructor(public readonly length: number) {
+    super(`unknown identity id scheme: ${length} characters; this version only reads 64-character ids, a newer version may be required`)
+    this.name = 'UnknownIdSchemeError'
+  }
+}
+
 /** Whether `text` is a canonical identity id (uppercase, other lengths, `id:`/`node:` prefixes, UUID text
  * and surrounding whitespace or newlines are all rejected). */
 export function isIdentityId(text: unknown): text is IdentityId {
   return typeof text === 'string' && IDENTITY_ID_PATTERN.test(text)
 }
 
-/** Strictly parses an identity id; throws a `TypeError` for anything but the canonical form. */
+/** Strictly parses an identity id. Throws `UnknownIdSchemeError` (with the UTF-8 byte `length`) for any
+ * length other than 64, and a plain `TypeError` for 64 bytes that are not lowercase hex. */
 export function parseIdentityId(text: unknown): IdentityId {
   if (!isIdentityId(text)) {
+    if (typeof text === 'string') {
+      const length = new TextEncoder().encode(text).length
+      if (length !== 64) throw new UnknownIdSchemeError(length)
+    }
     throw new TypeError('identity id must be exactly 64 lowercase hex characters')
   }
   return text

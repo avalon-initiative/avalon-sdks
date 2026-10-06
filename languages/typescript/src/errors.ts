@@ -76,6 +76,18 @@ export class RejectedError extends AvalonSdkError {
   }
 }
 
+/** The server refused an identity id of a length it does not read (`UNKNOWN_ID_SCHEME`, HTTP 400): possibly
+ * an id from a newer scheme. `length` is parsed from the server's message, absent when it carried none. */
+export class UnknownIdSchemeRejectedError extends RejectedError {
+  constructor(
+    reason: string,
+    public readonly length?: number,
+  ) {
+    super(reason)
+    this.name = 'UnknownIdSchemeRejectedError'
+  }
+}
+
 /** A connection error, timeout, or 5xx — a node hiccup, not this request
  * being wrong. */
 export class UnavailableError extends AvalonSdkError {
@@ -174,6 +186,11 @@ function errorForStatus(status: number, message: string): AvalonSdkError {
   }
 }
 
+function unknownIdSchemeLength(message: string | undefined): number | undefined {
+  const match = message === undefined ? null : /(\d+) characters/.exec(message)
+  return match ? Number.parseInt(match[1]!, 10) : undefined
+}
+
 /** Parses `Retry-After` as integer delta-seconds; the HTTP-date form and
  * anything non-numeric yield `undefined`. */
 export function parseRetryAfter(value: string | null | undefined): number | undefined {
@@ -200,7 +217,10 @@ export async function mapErrorResponse(response: Response): Promise<AvalonSdkErr
   }
   const message = code ?? serverMessage ?? response.statusText ?? `HTTP ${response.status}`
 
-  const error = errorForStatus(response.status, message)
+  const error =
+    code === 'UNKNOWN_ID_SCHEME' && response.status === 400
+      ? new UnknownIdSchemeRejectedError(message, unknownIdSchemeLength(serverMessage))
+      : errorForStatus(response.status, message)
   error.status = response.status
   const retryAfter = parseRetryAfter(response.headers?.get('retry-after'))
   if (retryAfter !== undefined) {
