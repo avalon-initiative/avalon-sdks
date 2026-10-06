@@ -64,6 +64,16 @@ describe('parseStrict', () => {
     expect(codeOf(() => parseStrict('{"a":1.0,"a":2}'))).toBe('invalid_number')
   })
 
+  it('rejects U+0000 in strings and keys on every path, but a raw NUL stays malformed', () => {
+    for (const text of ['["a\\u0000b"]', '{"a\\u0000":1}', '{"a":{"\\u0000":1}}', '"\\u0000"']) {
+      expect(codeOf(() => canonicalizeStr(text)), text).toBe('nul_character')
+    }
+    expect(codeOf(() => canonicalize({ k: ['x\0'] }))).toBe('nul_character')
+    expect(codeOf(() => canonicalize({ 'k\0': 1 }))).toBe('nul_character')
+    expect(codeOf(() => canonicalizeStr('["a\0b"]'))).toBe('malformed')
+    expect(codeOf(() => canonicalizeStr('["\\u0000", 1.0]'))).toBe('nul_character')
+  })
+
   it('keeps a __proto__ key as data', () => {
     const value = parseStrict('{"__proto__":{"x":1}}') as Record<string, unknown>
     expect(Object.getPrototypeOf(value)).toBe(Object.prototype)
