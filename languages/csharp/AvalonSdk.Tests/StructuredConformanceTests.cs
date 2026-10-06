@@ -256,7 +256,7 @@ public class StructuredConformanceTests
             }
             count++;
         }
-        Assert.Equal(86, count);
+        Assert.Equal(100, count);
     }
 
     [Fact]
@@ -302,6 +302,19 @@ public class StructuredConformanceTests
         Assert.Equal("{\"a\":[true,null],\"b\":1}", CanonicalPayload.Canonicalize(ok.RootElement));
         using var dup = JsonDocument.Parse("{\"a\":1,\"a\":2}");
         Assert.Equal(CanonicalPayloadError.DuplicateKey, Assert.Throws<CanonicalPayloadException>(() => CanonicalPayload.Canonicalize(dup.RootElement)).Error);
+    }
+
+    [Fact]
+    public void CanonicalPayload_NulIsRejectedInStringsAndKeys_ButARawNulIsMalformed()
+    {
+        foreach (var json in new[] { "[\"a\\u0000b\"]", "{\"a\\u0000\":1}", "{\"a\":{\"\\u0000\":1}}", "\"\\u0000\"" })
+        {
+            Assert.Equal(CanonicalPayloadError.NulCharacter, Assert.Throws<CanonicalPayloadException>(() => CanonicalPayload.Canonicalize(json)).Error);
+        }
+        using var el = JsonDocument.Parse("{\"k\":[\"x\\u0000\"]}");
+        Assert.Equal(CanonicalPayloadError.NulCharacter, Assert.Throws<CanonicalPayloadException>(() => CanonicalPayload.Canonicalize(el.RootElement)).Error);
+        Assert.Equal(CanonicalPayloadError.Malformed, Assert.Throws<CanonicalPayloadException>(() => CanonicalPayload.Canonicalize("[\"a\0b\"]")).Error);
+        Assert.Equal(CanonicalPayloadError.NulCharacter, Assert.Throws<CanonicalPayloadException>(() => CanonicalPayload.Canonicalize("[\"\\u0000\", 1.0]")).Error);
     }
 
     private static LedgerEntryHashInput EntryInput(JsonElement input, out string? payloadJson)

@@ -1,7 +1,9 @@
 // Canonical encoding of free-form payloads: RFC 8785 restricted so every SDK reproduces it byte for byte. Mirrors
 // crates/protocol/src/canonical_payload.rs; conformance/vectors/canonical-payload.json is the shared arbiter.
 // A number is valid only if its text is an integer within +/-2^53 or a non-integral decimal of at most 15
-// significant digits written exactly as ECMAScript prints it; duplicate keys are rejected.
+// significant digits written exactly as ECMAScript prints it; duplicate keys are rejected; U+0000 is rejected in
+// every string and key. A string may hold any Unicode scalar value except U+0000; U+0001..U+001F are valid only as
+// escapes and lone surrogates are malformed.
 
 using System;
 using System.Collections.Generic;
@@ -19,6 +21,8 @@ namespace Avalon.Sdk
         InvalidNumber,
         /// <summary>An object with the same key twice (compared after unescaping).</summary>
         DuplicateKey,
+        /// <summary>A string or object key containing U+0000 (a raw NUL byte is <see cref="Malformed"/>).</summary>
+        NulCharacter,
         /// <summary>Not JSON, or JSON outside the strict grammar.</summary>
         Malformed,
         /// <summary>Nesting deeper than <see cref="CanonicalPayload.MaxDepth"/>.</summary>
@@ -393,6 +397,10 @@ namespace Avalon.Sdk
                             case 't': sb.Append('\t'); break;
                             case 'u':
                                 var hi = Hex4();
+                                if (hi == 0)
+                                {
+                                    throw new CanonicalPayloadException(CanonicalPayloadError.NulCharacter, "string or object key contains U+0000");
+                                }
                                 if (hi >= 0xD800 && hi < 0xDC00)
                                 {
                                     if (!Eat("\\u"))

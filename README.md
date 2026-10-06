@@ -161,6 +161,10 @@ torsion component such as y = 3 is accepted). Shared vectors: `conformance/vecto
 `domain-tags.json`, `canonical-payload.json` and `ledger-entry-hash.json`, all run by the three SDKs; the attestation,
 cross-node-login, session-continuation and websocket-interest-claim vectors carry hex ids.
 
+The canonical payload permits every Unicode scalar value in a string or object key except U+0000: U+0001 to U+001F are valid
+only as escapes, lone surrogates are `malformed`, and U+0000 (`\u0000`, anywhere, including keys) is rejected with the error
+code `nul_character`. A raw NUL byte in the JSON text stays `malformed`.
+
 ## Integrator shards
 
 `GET /integrations/{slug}/shards` lists an owner's sibling shards this node knows of and could verify a head for, plus the
