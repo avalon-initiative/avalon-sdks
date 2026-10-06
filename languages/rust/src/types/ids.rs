@@ -11,9 +11,76 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+/// Why a string is not a canonical identity id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum IdentityIdParseError {
+    /// Not 64 bytes long: possibly an id from a newer scheme this build cannot read.
+    #[error("unknown identity id scheme: {length} characters; this version only reads 64-character ids, a newer version may be required")]
+    UnknownScheme {
+        /// The UTF-8 byte length of the rejected text.
+        length: usize,
+    },
+    /// 64 bytes long but not lowercase hex.
+    #[error("identity id must be lowercase hex [0-9a-f]")]
+    NotLowercaseHex,
+}
+
 /// A self-certifying identity id: 64 lowercase hex characters, `SHA-256("avalon-identity-id-v1" || key)`
 /// of the identity's inception Ed25519 public key. Parsing (`FromStr`, serde) is strict and never normalises.
-pub use crate::generated::IdentityId;
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+pub struct IdentityId(String);
+
+impl std::str::FromStr for IdentityId {
+    type Err = IdentityIdParseError;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        if text.len() != 64 {
+            return Err(IdentityIdParseError::UnknownScheme { length: text.len() });
+        }
+        if !text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+            return Err(IdentityIdParseError::NotLowercaseHex);
+        }
+        Ok(Self(text.to_owned()))
+    }
+}
+
+impl TryFrom<&str> for IdentityId {
+    type Error = IdentityIdParseError;
+
+    fn try_from(text: &str) -> Result<Self, Self::Error> {
+        text.parse()
+    }
+}
+
+impl TryFrom<String> for IdentityId {
+    type Error = IdentityIdParseError;
+
+    fn try_from(text: String) -> Result<Self, Self::Error> {
+        text.parse()
+    }
+}
+
+impl<'de> Deserialize<'de> for IdentityId {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(serde::de::Error::custom)
+    }
+}
+
+impl std::ops::Deref for IdentityId {
+    type Target = String;
+
+    fn deref(&self) -> &String {
+        &self.0
+    }
+}
+
+impl From<IdentityId> for String {
+    fn from(id: IdentityId) -> Self {
+        id.0
+    }
+}
 
 /// Domain-separation tag hashed ahead of the inception key when deriving an identity id.
 pub const IDENTITY_ID_DOMAIN_TAG: &[u8] = b"avalon-identity-id-v1";
@@ -115,7 +182,7 @@ impl fmt::Display for GlobalId {
 
 impl fmt::Display for IdentityId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self)
+        f.write_str(&self.0)
     }
 }
 
@@ -140,6 +207,35 @@ mod tests {
         ] {
             assert!(bad.parse::<IdentityId>().is_err(), "accepted {bad:?}");
         }
+    }
+
+    #[test]
+    fn length_other_than_64_is_an_unknown_scheme() {
+        assert_eq!(
+            ID[..63].parse::<IdentityId>(),
+            Err(IdentityIdParseError::UnknownScheme { length: 63 })
+        );
+        assert_eq!(
+            format!("{ID}\n").parse::<IdentityId>(),
+            Err(IdentityIdParseError::UnknownScheme { length: 65 })
+        );
+        assert_eq!(
+            "".parse::<IdentityId>(),
+            Err(IdentityIdParseError::UnknownScheme { length: 0 })
+        );
+        // 32 two-byte characters: 64 bytes, so a malformed id rather than another scheme.
+        assert_eq!(
+            "é".repeat(32).parse::<IdentityId>(),
+            Err(IdentityIdParseError::NotLowercaseHex)
+        );
+        assert_eq!(
+            "é".repeat(33).parse::<IdentityId>(),
+            Err(IdentityIdParseError::UnknownScheme { length: 66 })
+        );
+        assert_eq!(
+            ID.to_uppercase().parse::<IdentityId>(),
+            Err(IdentityIdParseError::NotLowercaseHex)
+        );
     }
 
     #[test]
