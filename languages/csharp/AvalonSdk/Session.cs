@@ -97,6 +97,24 @@ namespace Avalon.Sdk
     }
 
     /// <summary>
+    /// The server refused an identity id of a length it does not read (400 <c>UNKNOWN_ID_SCHEME</c>): possibly an id
+    /// from a newer scheme. <see cref="Length"/> is parsed from the server's message, null when it carried none.
+    /// </summary>
+    public sealed class AvalonUnknownIdSchemeException : AvalonRequestException
+    {
+        internal const string ErrorCode = "UNKNOWN_ID_SCHEME";
+
+        public AvalonUnknownIdSchemeException(int? length, TimeSpan? retryAfter = null)
+            : base(System.Net.HttpStatusCode.BadRequest, ErrorCode, retryAfter)
+        {
+            Length = length;
+        }
+
+        /// <summary>The length the server reported, in characters.</summary>
+        public int? Length { get; }
+    }
+
+    /// <summary>
     /// The server answered successfully but the body did not parse as the shape the call
     /// expected. Mirrors <c>SdkError::Protocol</c>.
     /// </summary>
@@ -351,6 +369,15 @@ namespace Avalon.Sdk
                         && codeElement.ValueKind == System.Text.Json.JsonValueKind.String)
                     {
                         code = codeElement.GetString();
+                        if (response.StatusCode == System.Net.HttpStatusCode.BadRequest && code == AvalonUnknownIdSchemeException.ErrorCode)
+                        {
+                            var message = doc.RootElement.TryGetProperty("error", out var e) && e.ValueKind == System.Text.Json.JsonValueKind.String
+                                ? e.GetString()
+                                : null;
+                            var match = message == null ? null : System.Text.RegularExpressions.Regex.Match(message, @"(\d+) characters");
+                            int? length = match != null && match.Success && int.TryParse(match.Groups[1].Value, out var n) ? n : (int?)null;
+                            return new AvalonUnknownIdSchemeException(length, ParseRetryAfter(response));
+                        }
                         if (response.StatusCode == System.Net.HttpStatusCode.Conflict && code == AvalonChainPositionStaleException.ErrorCode
                             && doc.RootElement.TryGetProperty("head_seq", out var seq) && seq.TryGetInt64(out var headSeq))
                         {
