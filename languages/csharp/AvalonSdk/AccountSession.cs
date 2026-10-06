@@ -138,9 +138,8 @@ namespace Avalon.Sdk
         }
 
         /// <summary>Signs <paramref name="message"/> directly with this session's local key —
-        /// for the one call site (<c>ApproveDeviceGrantAsync</c>) whose signed bytes predate
-        /// #698's generalized <c>avalon:&lt;tag&gt;:v1:...</c> shape enough that it's clearer
-        /// to build them explicitly. Throws if this session holds no local signing key;
+        /// for the identity key events, whose structured bytes are built explicitly
+        /// (see <see cref="IdentitySigning"/>). Throws if this session holds no local signing key;
         /// callers must check <see cref="SigningKeyId"/> first.</summary>
         internal string SignRaw(byte[] message)
         {
