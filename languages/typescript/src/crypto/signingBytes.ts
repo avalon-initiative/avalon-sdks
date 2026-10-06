@@ -46,6 +46,7 @@ export const tags = {
   SIGNATURE_GATE_ACTION: new DomainTag('avalon.signature_gate.action'),
   INTEGRATOR_NONCE_CHALLENGE: new DomainTag('avalon.integrator.nonce_challenge'),
   LEDGER_ENTRY: new DomainTag('avalon.ledger.entry'),
+  IDENTITY_CHAIN_EVENT: new DomainTag('avalon.identity.chain_event'),
   /** Reserved for conformance vectors; no key ever signs it in production. */
   CONFORMANCE: new DomainTag('avalon.conformance.vector'),
 } as const

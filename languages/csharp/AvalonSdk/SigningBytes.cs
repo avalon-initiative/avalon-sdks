@@ -91,6 +91,7 @@ namespace Avalon.Sdk
         public static readonly DomainTag SignatureGateAction = new DomainTag("avalon.signature_gate.action");
         public static readonly DomainTag IntegratorNonceChallenge = new DomainTag("avalon.integrator.nonce_challenge");
         public static readonly DomainTag LedgerEntry = new DomainTag("avalon.ledger.entry");
+        public static readonly DomainTag IdentityChainEvent = new DomainTag("avalon.identity.chain_event");
 
         /// <summary>Reserved for conformance vectors; never signed in production.</summary>
         public static readonly DomainTag Conformance = new DomainTag("avalon.conformance.vector");
@@ -99,7 +100,8 @@ namespace Avalon.Sdk
         {
             IdentityCreated, DeviceGrantApproved, IdentitySigningKeyRevoked, CrossNodeLogin, SessionContinuation,
             InterestClaim, AttestationIssue, AttestationBulkIssue, AttestationRevoke, IssuerRegistered,
-            SignatureGateAction, IntegratorNonceChallenge, LedgerEntry, Conformance,
+            SignatureGateAction, IntegratorNonceChallenge, LedgerEntry,
+            IdentityChainEvent, Conformance,
         };
     }
 
