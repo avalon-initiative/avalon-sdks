@@ -12,7 +12,7 @@
 //! HTTP, the same way `crates/server/tests/cross_node_login.rs` already
 //! does server-side.
 
-use avalon_sdk::identity_signing::identity_created_signing_bytes_v2;
+use avalon_sdk::identity_signing::identity_created_signing_bytes;
 use avalon_sdk::types::ids::IdentityId;
 use avalon_sdk::{AvalonClient, AvalonConfig, SdkError};
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -87,7 +87,7 @@ async fn register_identity(
         .await
         .expect("WebAuthn registration ceremony failed");
 
-    let signing_bytes_for_creation = identity_created_signing_bytes_v2(
+    let signing_bytes_for_creation = identity_created_signing_bytes(
         start["network_id"].as_str().unwrap(),
         start["shard_id"].as_str().unwrap(),
         ticket_id.parse().unwrap(),

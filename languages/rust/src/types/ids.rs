@@ -46,6 +46,14 @@ impl IdentityId {
         (Self::derive(&key), key)
     }
 
+    /// The raw 32-byte digest the id's hex text encodes.
+    pub fn to_bytes(&self) -> [u8; 32] {
+        let mut out = [0u8; 32];
+        hex::decode_to_slice(self.to_string(), &mut out)
+            .expect("an identity id is 64 lowercase hex characters");
+        out
+    }
+
     /// Whether this id is the one derived from `public_key`.
     pub fn matches_key(&self, public_key: &[u8; 32]) -> bool {
         Self::derive(public_key) == *self

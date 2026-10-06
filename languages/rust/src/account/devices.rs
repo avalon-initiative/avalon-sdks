@@ -11,11 +11,45 @@ use crate::SdkError;
 
 use super::AccountSession;
 
-/// Device approve/revoke now sign the v3 structured layout with a chain position (`seq`, `prev_hash`).
-fn identity_key_event_unsupported(call: &str) -> SdkError {
-    SdkError::Protocol(format!(
-        "{call} is not supported until v3 identity key event signing lands (avalon-sdks #99, #100, #101)"
-    ))
+/// Where the next identity-chain event goes: the head's `seq` plus one and the head's event hash.
+#[derive(Clone, Copy)]
+struct ChainPosition {
+    seq: u64,
+    prev_hash: Option<[u8; 32]>,
+}
+
+impl ChainPosition {
+    /// The first event of a chain with no events yet, where the first attempt signs.
+    const NEW_CHAIN: Self = Self {
+        seq: 1,
+        prev_hash: None,
+    };
+
+    /// The wire `seq`; a position is at most `i64::MAX` because it comes from an `i64` head plus one.
+    fn seq_wire(&self) -> i64 {
+        i64::try_from(self.seq).expect("chain seq fits the wire's i64")
+    }
+
+    fn prev_hash_hex(&self) -> Option<String> {
+        self.prev_hash.as_ref().map(hex::encode)
+    }
+
+    /// The position after the head a 409 `IDENTITY_CHAIN_POSITION_STALE` reports.
+    fn after(head: crate::generated::ChainPositionStaleBody) -> Result<Self, SdkError> {
+        let bad_head =
+            || SdkError::Protocol("the server returned an invalid chain head".to_string());
+        let prev_hash = match head.head_hash {
+            Some(text) => {
+                Some(crate::ledger_entry::parse_hash("head_hash", &text).map_err(|_| bad_head())?)
+            }
+            None => None,
+        };
+        Ok(Self {
+            seq: u64::try_from(head.head_seq.checked_add(1).ok_or_else(bad_head)?)
+                .map_err(|_| bad_head())?,
+            prev_hash,
+        })
+    }
 }
 
 /// One of this identity's registered signing-key devices.
@@ -102,7 +136,61 @@ fn decode_public_key(public_key_b64: &str) -> Result<[u8; 32], SdkError> {
         })
 }
 
+/// The typed 409 body when it is an `IDENTITY_CHAIN_POSITION_STALE`.
+fn stale_head(body: &[u8]) -> Option<crate::generated::ChainPositionStaleBody> {
+    let head: crate::generated::ChainPositionStaleBody = serde_json::from_slice(body).ok()?;
+    (head.code == "IDENTITY_CHAIN_POSITION_STALE").then_some(head)
+}
+
+/// The `code` (else `error`) of a generic error body, like the rest of the SDK's error mapping.
+fn conflict_message(body: &[u8]) -> String {
+    let value: serde_json::Value = serde_json::from_slice(body).unwrap_or_default();
+    ["code", "error"]
+        .iter()
+        .find_map(|k| value[*k].as_str())
+        .unwrap_or("409 Conflict")
+        .to_string()
+}
+
 impl AccountSession {
+    /// Posts a key event signed at a chain position. Starts at a new chain; on a stale-position 409
+    /// re-signs once at the returned head, then fails if the head moved again.
+    async fn post_chain_event<B: serde::Serialize>(
+        &self,
+        path: &str,
+        body_at: impl Fn(ChainPosition) -> B,
+    ) -> Result<reqwest::Response, SdkError> {
+        let mut position = ChainPosition::NEW_CHAIN;
+        for attempt in 0..2 {
+            let body = body_at(position);
+            let response = crate::http::send(&self.http, &self.retry, false, |c| {
+                c.post(self.url(path)).bearer_auth(&self.token).json(&body)
+            })
+            .await?;
+            if response.status().is_success() {
+                return Ok(response);
+            }
+            if response.status() != reqwest::StatusCode::CONFLICT {
+                return Err(crate::http::map_error_response(response).await);
+            }
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|e| SdkError::Protocol(e.to_string()))?;
+            let Some(head) = stale_head(&bytes) else {
+                return Err(SdkError::Conflict(conflict_message(&bytes)));
+            };
+            if attempt == 1 {
+                return Err(SdkError::Conflict(
+                    "IDENTITY_CHAIN_POSITION_STALE: the identity chain head moved again after re-signing; retry"
+                        .to_string(),
+                ));
+            }
+            position = ChainPosition::after(head)?;
+        }
+        unreachable!("the loop returns on both attempts")
+    }
+
     /// `GET /me/devices` — every signing-key device registered to this
     /// identity, active and revoked alike.
     pub async fn list_devices(&self) -> Result<Vec<Device>, SdkError> {
@@ -133,16 +221,37 @@ impl AccountSession {
         raw.try_into()
     }
 
-    /// `POST /me/devices/{signing_key_id}/revoke`. Always fails until v3 identity key event signing
-    /// lands (avalon-sdks #99-#101): the server now requires a chain position (`seq`, `prev_hash`).
-    pub async fn revoke_device(&self, _signing_key_id: Uuid) -> Result<(), SdkError> {
-        let _revoker = self.signing_key_id().ok_or_else(|| {
+    /// `POST /me/devices/{signing_key_id}/revoke`, signed at the identity chain's next position.
+    pub async fn revoke_device(&self, signing_key_id: Uuid) -> Result<(), SdkError> {
+        let revoker = self.signing_key_id().ok_or_else(|| {
             SdkError::Protocol(
                 "revoke_device requires a local signing key — this AccountSession has none"
                     .to_string(),
             )
         })?;
-        Err(identity_key_event_unsupported("revoke_device"))
+        let identity_id = self.identity().id.clone();
+        self.post_chain_event(
+            &super::path(
+                crate::generated::paths::devices::REVOKE_DEVICE,
+                &[("id", &signing_key_id.to_string())],
+            ),
+            |position| crate::generated::RevokeDeviceRequest {
+                revoked_by_signing_key_id: revoker,
+                seq: position.seq_wire(),
+                prev_hash: position.prev_hash_hex(),
+                signature: self.sign_raw(
+                    &crate::identity_signing::signing_key_revoked_signing_bytes(
+                        &identity_id,
+                        signing_key_id,
+                        revoker,
+                        position.seq,
+                        position.prev_hash.as_ref(),
+                    ),
+                ),
+            },
+        )
+        .await?;
+        Ok(())
     }
 
     /// `POST /me/devices/grants` — requests a new device's signing key be
@@ -199,15 +308,14 @@ impl AccountSession {
         raw.try_into()
     }
 
-    /// `POST /me/devices/grants/{id}/approve`. Validates the requested key, then always fails until
-    /// v3 identity key event signing lands (avalon-sdks #99-#101): the server now requires `seq` and
-    /// `prev_hash`.
+    /// `POST /me/devices/grants/{id}/approve`, signed at the identity chain's next position. The
+    /// requested key must be an acceptable Ed25519 key; the new device's key id is the grant id.
     pub async fn approve_device_grant(
         &self,
-        _grant_id: Uuid,
+        grant_id: Uuid,
         requested_signing_public_key_b64: &str,
     ) -> Result<Device, SdkError> {
-        let _signing = self.signing_key_id().ok_or_else(|| {
+        let approver = self.signing_key_id().ok_or_else(|| {
             SdkError::Protocol(
                 "approve_device_grant requires a local signing key — this AccountSession has none"
                     .to_string(),
@@ -222,7 +330,35 @@ impl AccountSession {
                 "the requested key is not an acceptable Ed25519 key".to_string(),
             ));
         }
-        Err(identity_key_event_unsupported("approve_device_grant"))
+        let identity_id = self.identity().id.clone();
+        let response = self
+            .post_chain_event(
+                &super::path(
+                    crate::generated::paths::devices::APPROVE_DEVICE_GRANT,
+                    &[("id", &grant_id.to_string())],
+                ),
+                |position| crate::generated::ApproveDeviceGrantRequest {
+                    approver_signing_key_id: approver,
+                    seq: position.seq_wire(),
+                    prev_hash: position.prev_hash_hex(),
+                    signature: self.sign_raw(
+                        &crate::identity_signing::device_grant_approval_signing_bytes(
+                            grant_id,
+                            &identity_id,
+                            approver,
+                            &requested_key,
+                            position.seq,
+                            position.prev_hash.as_ref(),
+                        ),
+                    ),
+                },
+            )
+            .await?;
+        let device: crate::generated::DeviceResponse = response
+            .json()
+            .await
+            .map_err(|e| SdkError::Protocol(e.to_string()))?;
+        device.try_into()
     }
 
     /// `POST /auth/device/approve` (issue #307/#704) — approves a

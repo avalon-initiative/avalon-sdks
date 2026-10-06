@@ -55,6 +55,7 @@
 
 pub mod account;
 pub mod achievements;
+pub mod canonical_payload;
 pub mod conversations;
 pub mod cross_node_login;
 pub mod device_login;
@@ -65,6 +66,7 @@ pub mod identity_signing;
 pub mod integrators;
 pub mod issuer_registration;
 pub mod known_list;
+pub mod ledger_entry;
 pub mod managed_hosting;
 pub mod network;
 pub mod nodes;
@@ -75,6 +77,7 @@ pub mod schema;
 pub mod self_certifying;
 pub mod shard_family;
 pub mod shard_names;
+pub mod signing_bytes;
 pub mod social;
 pub mod sth;
 pub mod submission;

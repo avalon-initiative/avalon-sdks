@@ -14,7 +14,7 @@
 //! parse against `serde_json::to_value` of the same struct with no
 //! `#[serde(rename_all = ...)]` needed.
 
-use avalon_sdk::identity_signing::identity_created_signing_bytes_v2;
+use avalon_sdk::identity_signing::identity_created_signing_bytes;
 use avalon_sdk::schema::AvalonSchema;
 use avalon_sdk::types::ids::IdentityId;
 use avalon_sdk::{AvalonClient, AvalonConfig};
@@ -104,7 +104,7 @@ async fn register_and_login(
         .await
         .expect("WebAuthn registration ceremony failed");
 
-    let signing_bytes = identity_created_signing_bytes_v2(
+    let signing_bytes = identity_created_signing_bytes(
         start["network_id"].as_str().unwrap(),
         start["shard_id"].as_str().unwrap(),
         ticket_id.parse().unwrap(),

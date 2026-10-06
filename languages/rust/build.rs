@@ -78,6 +78,7 @@ const SCHEMA_NAMES: &[&str] = &[
     "RequestDeviceGrantRequest",
     "ApproveDeviceGrantRequest",
     "RevokeDeviceRequest",
+    "ChainPositionStaleBody",
     "IntegratorShardEntry",
     "IntegratorShardsResponse",
     "RenameDeviceRequest",

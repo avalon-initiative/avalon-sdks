@@ -9,7 +9,7 @@
 //! HTTP API — issues an achievement to itself and reads its own history
 //! back.
 
-use avalon_sdk::identity_signing::identity_created_signing_bytes_v2;
+use avalon_sdk::identity_signing::identity_created_signing_bytes;
 use avalon_sdk::types::ids::IdentityId;
 use avalon_sdk::{AvalonClient, AvalonConfig};
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -99,7 +99,7 @@ async fn register_and_login(
         .await
         .expect("WebAuthn registration ceremony failed");
 
-    let signing_bytes = identity_created_signing_bytes_v2(
+    let signing_bytes = identity_created_signing_bytes(
         start["network_id"].as_str().unwrap(),
         start["shard_id"].as_str().unwrap(),
         ticket_id.parse().unwrap(),

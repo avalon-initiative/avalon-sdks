@@ -31,8 +31,8 @@ use avalon_sdk::achievements::{
 };
 use avalon_sdk::cross_node_login::signing_bytes as cross_node_login_signing_bytes;
 use avalon_sdk::identity_signing::{
-    device_grant_approval_signing_bytes_v2, identity_created_signing_bytes_v2,
-    is_acceptable_ed25519_key, signing_key_revoked_signing_bytes_v2, verify_strict,
+    device_grant_approval_signing_bytes, identity_created_signing_bytes, is_acceptable_ed25519_key,
+    signing_key_revoked_signing_bytes, verify_strict,
 };
 use avalon_sdk::sth::signing_message as sth_signing_message;
 use avalon_sdk::types::ids::IdentityId;
@@ -778,43 +778,38 @@ fn identity_id_matches_shared_vectors() {
     }
 }
 
-#[test]
-#[ignore = "pending v3 structured signing in the Rust SDK (avalon-sdks #99); the vector is protocol-crate only until then"]
-fn identity_created_signing_matches_shared_vectors() {
-    let doc = load("identity-created-signing.json");
-    assert!(supported_in(&doc, "rust"));
+/// The chain position a key-event vector signs: `seq` is a decimal string, `prevHashHex` null or hex.
+fn parse_position(input: &Value) -> (u64, Option<[u8; 32]>) {
+    let seq = input["seq"].as_str().expect("seq string").parse().unwrap();
+    let prev = input["prevHashHex"].as_str().map(key32);
+    (seq, prev)
+}
+
+/// Runs one identity key-event vector file: `vectors` must reproduce bytes and signature,
+/// `replayVectors` and `legacyLayoutVectors` carry a signature that must not verify for the input.
+fn run_key_event_vectors(
+    file: &str,
+    doc: &Value,
+    bytes_for: &dyn Fn(&Value, &Value) -> Vec<u8>,
+) -> usize {
     let signing_key = signing_key_from_seed_hex(doc["signingKeySeedHex"].as_str().unwrap());
-    let public_key = signing_key.verifying_key().to_bytes();
     assert_eq!(
-        to_hex(&public_key),
+        to_hex(signing_key.verifying_key().as_bytes()),
         doc["signingPublicKeyHex"].as_str().unwrap()
     );
-    let identity_id = parse_identity_id(&doc, "identityId");
-    assert!(identity_id.matches_key(&public_key));
-
-    let bytes_for = |input: &Value| {
-        identity_created_signing_bytes_v2(
-            input["networkId"].as_str().unwrap(),
-            input["shardId"].as_str().unwrap(),
-            parse_uuid(input, "ticketId"),
-            &identity_id,
-            &public_key,
-            input["displayName"].as_str().unwrap(),
-        )
+    let verifies = |bytes: &[u8], signature_hex: &str| {
+        let signature: [u8; 64] = hex::decode(signature_hex).unwrap().try_into().unwrap();
+        verify_strict(&signing_key.verifying_key(), bytes, &signature)
     };
+    let mut count = 0;
     for vector in doc["vectors"].as_array().unwrap() {
         let name = vector["name"].as_str().unwrap();
-        let bytes = bytes_for(&vector["input"]);
+        let bytes = bytes_for(doc, &vector["input"]);
         let expected = &vector["expected"];
         assert_eq!(
             to_hex(&bytes),
             expected["signingBytesHex"].as_str().unwrap(),
-            "[{name}]"
-        );
-        assert_eq!(
-            String::from_utf8(bytes.clone()).unwrap(),
-            expected["signingBytesUtf8"].as_str().unwrap(),
-            "[{name}]"
+            "[{file} {name}]"
         );
         assert_signature_matches(
             name,
@@ -822,126 +817,394 @@ fn identity_created_signing_matches_shared_vectors() {
             &bytes,
             expected["signatureHex"].as_str().unwrap(),
         );
+        count += 1;
     }
-    for vector in doc["replayVectors"].as_array().unwrap() {
-        let name = vector["name"].as_str().unwrap();
-        let input = &vector["input"];
-        let signature: [u8; 64] = hex::decode(input["signatureHex"].as_str().unwrap())
-            .unwrap()
-            .try_into()
-            .unwrap();
-        let valid = verify_strict(&signing_key.verifying_key(), &bytes_for(input), &signature);
-        assert_eq!(
-            valid,
-            vector["expected"]["valid"].as_bool().unwrap(),
-            "[{name}]"
-        );
+    for group in ["replayVectors", "legacyLayoutVectors"] {
+        let cases = doc[group].as_array().unwrap();
+        assert!(!cases.is_empty(), "{file} {group}");
+        for vector in cases {
+            let name = vector["name"].as_str().unwrap();
+            let bytes = bytes_for(doc, &vector["input"]);
+            let signature_hex = vector["signatureHex"].as_str().unwrap();
+            if let Some(legacy) = vector["legacySigningBytesUtf8"].as_str() {
+                assert_ne!(legacy.as_bytes(), &bytes[..], "[{file} {name}]");
+                assert!(
+                    verifies(legacy.as_bytes(), signature_hex),
+                    "[{file} {name}] the legacy signature is valid over the retired text"
+                );
+            }
+            assert_eq!(
+                verifies(&bytes, signature_hex),
+                vector["expected"]["valid"].as_bool().unwrap(),
+                "[{file} {name}]"
+            );
+            count += 1;
+        }
     }
-    for vector in doc["domainSeparationVectors"].as_array().unwrap() {
-        let name = vector["name"].as_str().unwrap();
-        let input = &vector["input"];
-        let identity_id = parse_identity_id(input, "identityId");
-        let v2 = identity_created_signing_bytes_v2(
-            input["networkId"].as_str().unwrap(),
-            input["shardId"].as_str().unwrap(),
-            parse_uuid(input, "ticketId"),
-            &identity_id,
-            &public_key,
-            input["displayName"].as_str().unwrap(),
-        );
-        let expected = &vector["expected"];
-        assert_eq!(
-            to_hex(&v2),
-            expected["v2SigningBytesHex"].as_str().unwrap(),
-            "[{name}]"
-        );
-        assert_ne!(
-            String::from_utf8(v2).unwrap(),
-            expected["v1SigningBytesUtf8"].as_str().unwrap()
-        );
-        assert!(!expected["equal"].as_bool().unwrap());
-    }
+    count
 }
 
 #[test]
-#[ignore = "pending v3 structured signing in the Rust SDK (avalon-sdks #99); the vector is protocol-crate only until then"]
+fn identity_created_signing_matches_shared_vectors() {
+    let count = run_key_event_vectors(
+        "identity-created-signing.json",
+        &load("identity-created-signing.json"),
+        &|doc, input| {
+            let public_key = key32(doc["signingPublicKeyHex"].as_str().unwrap());
+            let identity_id = parse_identity_id(doc, "identityId");
+            assert!(identity_id.matches_key(&public_key));
+            identity_created_signing_bytes(
+                input["networkId"].as_str().unwrap(),
+                input["shardId"].as_str().unwrap(),
+                parse_uuid(input, "ticketId"),
+                &identity_id,
+                &public_key,
+                input["displayName"].as_str().unwrap(),
+            )
+        },
+    );
+    println!("identity-created-signing.json: {count} vectors");
+}
+
+#[test]
 fn device_grant_approval_signing_matches_shared_vectors() {
     let doc = load("device-grant-approval.json");
-    assert!(supported_in(&doc, "rust"));
-    let signing_key = signing_key_from_seed_hex(doc["signingKeySeedHex"].as_str().unwrap());
-    assert_eq!(
-        to_hex(signing_key.verifying_key().as_bytes()),
-        doc["signingPublicKeyHex"].as_str().unwrap()
-    );
     let requested = signing_key_from_seed_hex(doc["requestedKeySeedHex"].as_str().unwrap());
     assert_eq!(
         to_hex(requested.verifying_key().as_bytes()),
         doc["requestedPublicKeyHex"].as_str().unwrap()
     );
-    for vector in doc["vectors"].as_array().unwrap() {
-        let name = vector["name"].as_str().unwrap();
-        let input = &vector["input"];
-        let bytes = device_grant_approval_signing_bytes_v2(
+    let count = run_key_event_vectors("device-grant-approval.json", &doc, &|_, input| {
+        let (seq, prev_hash) = parse_position(input);
+        device_grant_approval_signing_bytes(
             parse_uuid(input, "grantId"),
             &parse_identity_id(input, "identityId"),
+            parse_uuid(input, "approverSigningKeyId"),
             &key32(input["requestedPublicKeyHex"].as_str().unwrap()),
-        );
-        let expected = &vector["expected"];
-        assert_eq!(
-            to_hex(&bytes),
-            expected["signingBytesHex"].as_str().unwrap(),
-            "[{name}]"
-        );
-        assert_eq!(
-            String::from_utf8(bytes.clone()).unwrap(),
-            expected["signingBytesUtf8"].as_str().unwrap(),
-            "[{name}]"
-        );
-        assert_signature_matches(
-            name,
-            &signing_key,
-            &bytes,
-            expected["signatureHex"].as_str().unwrap(),
-        );
-    }
+            seq,
+            prev_hash.as_ref(),
+        )
+    });
+    println!("device-grant-approval.json: {count} vectors");
 }
 
 #[test]
-#[ignore = "pending v3 structured signing in the Rust SDK (avalon-sdks #99); the vector is protocol-crate only until then"]
 fn signing_key_revoked_signing_matches_shared_vectors() {
-    let doc = load("signing-key-revoked.json");
-    assert!(supported_in(&doc, "rust"));
-    let signing_key = signing_key_from_seed_hex(doc["signingKeySeedHex"].as_str().unwrap());
-    assert_eq!(
-        to_hex(signing_key.verifying_key().as_bytes()),
-        doc["signingPublicKeyHex"].as_str().unwrap()
+    let count = run_key_event_vectors(
+        "signing-key-revoked.json",
+        &load("signing-key-revoked.json"),
+        &|_, input| {
+            let (seq, prev_hash) = parse_position(input);
+            signing_key_revoked_signing_bytes(
+                &parse_identity_id(input, "identityId"),
+                parse_uuid(input, "signingKeyId"),
+                parse_uuid(input, "revokedBySigningKeyId"),
+                seq,
+                prev_hash.as_ref(),
+            )
+        },
     );
-    for vector in doc["vectors"].as_array().unwrap() {
+    println!("signing-key-revoked.json: {count} vectors");
+}
+
+fn conformance_tag(doc_tag: &str) -> avalon_sdk::signing_bytes::DomainTag {
+    *avalon_sdk::signing_bytes::tags::ALL
+        .iter()
+        .find(|t| t.as_str() == doc_tag)
+        .unwrap_or_else(|| panic!("tag {doc_tag} is not in the registry"))
+}
+
+/// The bytes a vector field stands for: text, hex, or a repeated unit for the 65536-byte cases.
+fn field_bytes(field: &Value) -> Vec<u8> {
+    let repeat = |unit: Vec<u8>| unit.repeat(field["count"].as_u64().unwrap() as usize);
+    match field["type"].as_str().unwrap() {
+        "str" => match field["utf8"].as_str() {
+            Some(s) => s.as_bytes().to_vec(),
+            None => repeat(field["repeatUtf8"].as_str().unwrap().as_bytes().to_vec()),
+        },
+        "bytes" => match field["hex"].as_str() {
+            Some(h) => hex::decode(h).unwrap(),
+            None => repeat(hex::decode(field["repeatByteHex"].as_str().unwrap()).unwrap()),
+        },
+        _ => hex::decode(field["hex"].as_str().unwrap()).unwrap(),
+    }
+}
+
+fn field_int(field: &Value) -> String {
+    field["value"].as_str().unwrap().to_string()
+}
+
+#[test]
+fn structured_signing_bytes_build_and_read_back_per_shared_vectors() {
+    use avalon_sdk::signing_bytes::{Builder, Reader};
+    use sha2::{Digest, Sha256};
+    let doc = load("structured-signing-bytes.json");
+    let vectors = doc["vectors"].as_array().unwrap();
+    assert!(!vectors.is_empty());
+    for vector in vectors {
         let name = vector["name"].as_str().unwrap();
         let input = &vector["input"];
-        let bytes = signing_key_revoked_signing_bytes_v2(
-            &parse_identity_id(input, "identityId"),
-            parse_uuid(input, "signingKeyId"),
-            parse_uuid(input, "revokedBySigningKeyId"),
-        );
+        let tag = conformance_tag(input["tag"].as_str().unwrap());
+        let version = input["version"].as_u64().unwrap() as u16;
+        let fields = input["fields"].as_array().unwrap();
+
+        let mut builder = Builder::new(tag, version);
+        for f in fields {
+            builder = match f["type"].as_str().unwrap() {
+                "str" => builder.str(std::str::from_utf8(&field_bytes(f)).unwrap()),
+                "bytes" => builder.bytes(&field_bytes(f)),
+                "key" => builder.key(&field_bytes(f).try_into().unwrap()),
+                "hash" => builder.hash(&field_bytes(f).try_into().unwrap()),
+                "fixed" => builder.fixed::<4>(&field_bytes(f).try_into().unwrap()),
+                "uuid" => builder.uuid(Uuid::parse_str(f["value"].as_str().unwrap()).unwrap()),
+                "u8" => builder.u8(field_int(f).parse().unwrap()),
+                "u16" => builder.u16(field_int(f).parse().unwrap()),
+                "u32" => builder.u32(field_int(f).parse().unwrap()),
+                "u64" => builder.u64(field_int(f).parse().unwrap()),
+                "i64" => builder.i64(field_int(f).parse().unwrap()),
+                other => panic!("[{name}] unknown field type {other}"),
+            };
+        }
+        let message = builder.finish().unwrap();
+
         let expected = &vector["expected"];
+        match expected["signingBytesHex"].as_str() {
+            Some(h) => assert_eq!(to_hex(&message), h, "[{name}] bytes diverged"),
+            None => {
+                assert_eq!(
+                    message.len() as u64,
+                    expected["signingBytesLength"].as_u64().unwrap(),
+                    "[{name}] length diverged"
+                );
+                assert_eq!(
+                    to_hex(&Sha256::digest(&message)),
+                    expected["signingBytesSha256Hex"].as_str().unwrap(),
+                    "[{name}] digest diverged"
+                );
+            }
+        }
+
+        let mut reader = Reader::new(tag, &message).unwrap();
+        assert_eq!(reader.version(), version, "[{name}]");
+        for f in fields {
+            match f["type"].as_str().unwrap() {
+                "str" => assert_eq!(reader.str().unwrap().as_bytes(), field_bytes(f), "[{name}]"),
+                "bytes" => assert_eq!(reader.bytes().unwrap(), field_bytes(f), "[{name}]"),
+                "key" | "hash" => {
+                    assert_eq!(reader.fixed::<32>().unwrap().to_vec(), field_bytes(f))
+                }
+                "fixed" => assert_eq!(reader.fixed::<4>().unwrap().to_vec(), field_bytes(f)),
+                "uuid" => assert_eq!(reader.uuid().unwrap().to_string(), f["value"]),
+                "u8" => assert_eq!(reader.u8().unwrap().to_string(), field_int(f)),
+                "u16" => assert_eq!(reader.u16().unwrap().to_string(), field_int(f)),
+                "u32" => assert_eq!(reader.u32().unwrap().to_string(), field_int(f)),
+                "u64" => assert_eq!(reader.u64().unwrap().to_string(), field_int(f)),
+                "i64" => assert_eq!(reader.i64().unwrap().to_string(), field_int(f)),
+                other => panic!("[{name}] unknown field type {other}"),
+            }
+        }
+        reader.finish().unwrap_or_else(|e| panic!("[{name}] {e}"));
+    }
+    println!(
+        "structured-signing-bytes.json: {} build vectors",
+        vectors.len()
+    );
+}
+
+#[test]
+fn structured_signing_bytes_reject_per_shared_vectors() {
+    use avalon_sdk::signing_bytes::{Reader, SigningBytesError};
+    let doc = load("structured-signing-bytes.json");
+    let vectors = doc["rejectVectors"].as_array().unwrap();
+    assert!(!vectors.is_empty());
+    for vector in vectors {
+        let name = vector["name"].as_str().unwrap();
+        let input = &vector["input"];
+        let message = hex::decode(input["messageHex"].as_str().unwrap()).unwrap();
+        let read = || -> Result<(), SigningBytesError> {
+            let mut r = Reader::new(conformance_tag(input["tag"].as_str().unwrap()), &message)?;
+            for ty in input["read"].as_array().unwrap() {
+                match ty.as_str().unwrap() {
+                    "str" => drop(r.str()?),
+                    "bytes" => drop(r.bytes()?),
+                    "u32" => drop(r.u32()?),
+                    other => panic!("[{name}] unknown read type {other}"),
+                }
+            }
+            r.finish()
+        };
+        let code = match read().unwrap_err() {
+            SigningBytesError::TagMismatch => "tag_mismatch",
+            SigningBytesError::Truncated => "truncated",
+            SigningBytesError::InvalidUtf8 => "invalid_utf8",
+            SigningBytesError::TrailingBytes => "trailing_bytes",
+            SigningBytesError::FieldTooLong => "field_too_long",
+        };
         assert_eq!(
-            to_hex(&bytes),
-            expected["signingBytesHex"].as_str().unwrap(),
+            code,
+            vector["expected"]["error"].as_str().unwrap(),
             "[{name}]"
-        );
-        assert_eq!(
-            String::from_utf8(bytes.clone()).unwrap(),
-            expected["signingBytesUtf8"].as_str().unwrap(),
-            "[{name}]"
-        );
-        assert_signature_matches(
-            name,
-            &signing_key,
-            &bytes,
-            expected["signatureHex"].as_str().unwrap(),
         );
     }
+    println!(
+        "structured-signing-bytes.json: {} reject vectors",
+        vectors.len()
+    );
+}
+
+#[test]
+fn domain_tag_registry_matches_shared_vectors() {
+    let doc = load("domain-tags.json");
+    let want: Vec<&str> = doc["tags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["tag"].as_str().unwrap())
+        .collect();
+    let have: Vec<&str> = avalon_sdk::signing_bytes::tags::ALL
+        .iter()
+        .map(|t| t.as_str())
+        .collect();
+    assert_eq!(have, want, "registry diverged from domain-tags.json");
+}
+
+#[test]
+fn canonical_payload_matches_shared_vectors() {
+    use avalon_sdk::canonical_payload::{canonicalize_str, CanonicalPayloadError};
+    let doc = load("canonical-payload.json");
+    let vectors = doc["vectors"].as_array().expect("vectors array");
+    assert!(vectors.len() > 50, "vectors file looks truncated");
+    for v in vectors {
+        let name = v["name"].as_str().expect("name");
+        let got = canonicalize_str(v["input"]["jsonUtf8"].as_str().expect("jsonUtf8"));
+        match v["expected"]["error"].as_str() {
+            None => assert_eq!(
+                got.as_deref(),
+                Ok(v["expected"]["canonicalUtf8"].as_str().unwrap()),
+                "{name}"
+            ),
+            Some(code) => {
+                let got_code = match got {
+                    Ok(out) => panic!("{name}: expected {code}, got {out}"),
+                    Err(CanonicalPayloadError::InvalidNumber { .. }) => "invalid_number",
+                    Err(CanonicalPayloadError::DuplicateKey { .. }) => "duplicate_key",
+                    Err(CanonicalPayloadError::Malformed(_)) => "malformed",
+                    Err(CanonicalPayloadError::TooDeep) => "too_deep",
+                };
+                assert_eq!(got_code, code, "{name}");
+            }
+        }
+    }
+    println!("canonical-payload.json: {} vectors", vectors.len());
+}
+
+/// Builds the entry bytes and hash from a ledger vector input, the way an SDK would.
+fn build_ledger_entry(
+    input: &Value,
+) -> Result<(Vec<u8>, [u8; 32]), avalon_sdk::ledger_entry::EntryHashError> {
+    use avalon_sdk::ledger_entry::{
+        entry_hash, entry_signing_bytes, parse_hash, payload_hash, EntryHashError, EntryHashInput,
+    };
+    let text = |k: &str| input[k].as_str().unwrap().to_string();
+    let prev = parse_hash("prev_hash", &text("prevHashHex"))?;
+    let payload_hash = match input["payloadHashHex"].as_str() {
+        Some(h) => parse_hash("payload_hash", h)?,
+        None => payload_hash(
+            &avalon_sdk::canonical_payload::parse_strict(&text("payloadJsonUtf8")).unwrap(),
+        )
+        .unwrap(),
+    };
+    let seq: u64 = text("seq")
+        .parse()
+        .map_err(|_| EntryHashError::OutOfRange("seq"))?;
+    let version = u16::try_from(input["version"].as_i64().unwrap())
+        .map_err(|_| EntryHashError::OutOfRange("version"))?;
+    let entry = EntryHashInput {
+        network_id: &text("networkId"),
+        shard_id: &text("shardId"),
+        seq,
+        prev_hash: &prev,
+        event_id: Uuid::parse_str(&text("eventId")).unwrap(),
+        kind: &text("kind"),
+        issuer: &text("issuer"),
+        subject: &text("subject"),
+        payload_hash: &payload_hash,
+        timestamp_micros: text("timestampUnixMicros").parse().unwrap(),
+        version,
+    };
+    Ok((entry_signing_bytes(&entry)?, entry_hash(&entry)?))
+}
+
+#[test]
+fn ledger_entry_hash_matches_shared_vectors() {
+    use avalon_sdk::canonical_payload::{canonicalize, parse_strict};
+    use avalon_sdk::ledger_entry::{floor_to_micros, payload_hash, timestamp_micros};
+    use time::format_description::well_known::Rfc3339;
+    let doc = load("ledger-entry-hash.json");
+    let vectors = doc["vectors"].as_array().unwrap();
+    assert!(!vectors.is_empty());
+    for v in vectors {
+        let name = v["name"].as_str().unwrap();
+        let (input, expected) = (&v["input"], &v["expected"]);
+        if let Some(json) = input["payloadJsonUtf8"].as_str() {
+            let value = parse_strict(json).unwrap();
+            assert_eq!(
+                canonicalize(&value).unwrap(),
+                expected["payloadCanonicalUtf8"].as_str().unwrap(),
+                "[{name}] canonical payload"
+            );
+            assert_eq!(
+                to_hex(&payload_hash(&value).unwrap()),
+                expected["payloadHashHex"].as_str().unwrap(),
+                "[{name}] payload hash"
+            );
+        }
+        let (message, hash) = build_ledger_entry(input).unwrap_or_else(|e| panic!("[{name}] {e}"));
+        assert_eq!(
+            to_hex(&message),
+            expected["signingBytesHex"].as_str().unwrap(),
+            "[{name}] bytes"
+        );
+        assert_eq!(
+            to_hex(&hash),
+            expected["entryHashHex"].as_str().unwrap(),
+            "[{name}] hash"
+        );
+        let time =
+            OffsetDateTime::parse(input["eventTimestampRfc3339"].as_str().unwrap(), &Rfc3339)
+                .unwrap();
+        let micros = timestamp_micros(time).unwrap();
+        assert_eq!(
+            micros.to_string(),
+            input["timestampUnixMicros"].as_str().unwrap(),
+            "[{name}] timestamp micros"
+        );
+        assert_eq!(
+            timestamp_micros(floor_to_micros(time).unwrap()).unwrap(),
+            micros,
+            "[{name}] floor_to_micros"
+        );
+    }
+    println!("ledger-entry-hash.json: {} vectors", vectors.len());
+}
+
+#[test]
+fn ledger_entry_hash_rejects_per_shared_vectors() {
+    use avalon_sdk::ledger_entry::EntryHashError;
+    let doc = load("ledger-entry-hash.json");
+    let vectors = doc["rejectVectors"].as_array().unwrap();
+    assert!(!vectors.is_empty());
+    for v in vectors {
+        let name = v["name"].as_str().unwrap();
+        let got = match build_ledger_entry(&v["input"]) {
+            Err(EntryHashError::InvalidHash(_)) => "invalid_hash",
+            Err(EntryHashError::OutOfRange(_)) => "out_of_range",
+            Err(other) => panic!("[{name}] unexpected {other}"),
+            Ok(_) => panic!("[{name}] accepted"),
+        };
+        assert_eq!(got, v["expected"]["error"].as_str().unwrap(), "[{name}]");
+    }
+    println!("ledger-entry-hash.json: {} reject vectors", vectors.len());
 }
 
 #[test]
@@ -1008,28 +1271,12 @@ fn shard_sibling_routing_matches_shared_vectors() {
 /// Vector files with no runner in this SDK yet, each with the reason it is skipped.
 const NO_RUNNER: &[(&str, &str)] = &[
     (
-        "canonical-payload.json",
-        "canonical payload encoder not in the SDK (#100)",
-    ),
-    (
-        "domain-tags.json",
-        "domain tag registry not in the SDK (#99)",
-    ),
-    (
         "identity-chain.json",
         "identity chain resolution is protocol-side only",
     ),
     (
-        "ledger-entry-hash.json",
-        "ledger entry hash not in the SDK (#101)",
-    ),
-    (
         "node-request.json",
         "node-to-node route, not in OpenAPI; supportedIn is empty",
-    ),
-    (
-        "structured-signing-bytes.json",
-        "structured signing primitive not in the SDK (#99)",
     ),
 ];
 
