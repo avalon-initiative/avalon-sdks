@@ -1,7 +1,9 @@
 // Canonical encoding of free-form payloads: RFC 8785 (JCS) restricted so every SDK reproduces it byte
 // for byte, matching avalon_protocol::canonical_payload. A number is valid only if its decimal text
 // survives a round trip through an IEEE double (integers within +/-2^53, other numbers with at most
-// 15 significant digits written exactly as ECMAScript prints them); duplicate keys are rejected.
+// 15 significant digits written exactly as ECMAScript prints them); duplicate keys are rejected; U+0000
+// is rejected in every string and key. A string may hold any Unicode scalar value except U+0000;
+// U+0001..U+001F are valid only as escapes and lone surrogates are malformed.
 // conformance/vectors/canonical-payload.json is the shared arbiter.
 
 /** Largest integer magnitude an IEEE double represents exactly. */
@@ -11,7 +13,7 @@ export const MAX_SIGNIFICANT_DIGITS = 15
 /** Deepest object/array nesting a payload may have. */
 export const MAX_DEPTH = 128
 
-export type CanonicalPayloadErrorCode = 'invalid_number' | 'duplicate_key' | 'malformed' | 'too_deep'
+export type CanonicalPayloadErrorCode = 'invalid_number' | 'duplicate_key' | 'nul_character' | 'malformed' | 'too_deep'
 
 /** Why a payload has no canonical encoding; `code` is the shared vector error code. */
 export class CanonicalPayloadError extends Error {
@@ -51,7 +53,12 @@ function compareUtf16(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0
 }
 
+function nulCharacter(): CanonicalPayloadError {
+  return new CanonicalPayloadError('nul_character', 'string or object key contains U+0000')
+}
+
 function writeString(s: string, out: string[]): void {
+  if (s.includes('\0')) throw nulCharacter()
   out.push('"')
   for (let i = 0; i < s.length; i += 1) {
     const c = s.charCodeAt(i)
@@ -285,6 +292,7 @@ class Parser {
             break
           case 'u': {
             const hi = this.hex4()
+            if (hi === 0) throw nulCharacter()
             if (hi >= 0xd800 && hi < 0xdc00) {
               if (!this.eat('\\u')) throw this.malformed('lone surrogate')
               const lo = this.hex4()

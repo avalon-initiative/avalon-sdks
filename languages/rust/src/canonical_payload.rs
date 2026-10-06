@@ -7,6 +7,11 @@
 //!   most 15 significant digits and written exactly as ECMAScript prints them
 //!   (so `1.0`, `1e2`, `-0` and `1E-7` are invalid). Anything else is a string.
 //! - Duplicate object keys are rejected.
+//! - U+0000 is rejected in every string and object key, escaped (`\u0000`) or
+//!   raw (a raw control character is `malformed`).
+//!
+//! Permitted string characters: every Unicode scalar value except U+0000.
+//! U+0001 to U+001F are valid only as escapes; lone surrogates are `malformed`.
 //!
 //! Object keys sort by UTF-16 code units, strings escape only `"`, `\`, and
 //! control characters below U+0020 (`\b \t \n \f \r`, else lowercase `\u00xx`).
@@ -38,12 +43,35 @@ pub enum CanonicalPayloadError {
         /// The repeated key.
         key: String,
     },
+    /// A string or object key contains U+0000.
+    #[error("string or object key contains U+0000")]
+    NulCharacter,
     /// The text is not valid JSON.
     #[error("malformed JSON: {0}")]
     Malformed(String),
     /// The payload nests deeper than [`MAX_DEPTH`].
     #[error("payload nests deeper than {MAX_DEPTH} levels")]
     TooDeep,
+}
+
+impl CanonicalPayloadError {
+    /// Stable machine-readable code, shared with `conformance/vectors/canonical-payload.json`.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::InvalidNumber { .. } => "invalid_number",
+            Self::DuplicateKey { .. } => "duplicate_key",
+            Self::NulCharacter => "nul_character",
+            Self::Malformed(_) => "malformed",
+            Self::TooDeep => "too_deep",
+        }
+    }
+}
+
+fn check_string(s: &str) -> Result<(), CanonicalPayloadError> {
+    if s.contains('\0') {
+        return Err(CanonicalPayloadError::NulCharacter);
+    }
+    Ok(())
 }
 
 /// Canonical encoding of `value`, or the first restriction it violates. Judges numbers by
@@ -91,7 +119,7 @@ fn write_value(value: &Value, out: &mut String, depth: usize) -> Result<(), Cano
         Value::Bool(true) => out.push_str("true"),
         Value::Bool(false) => out.push_str("false"),
         Value::Number(n) => out.push_str(&number_text(n)?),
-        Value::String(s) => write_string(s, out),
+        Value::String(s) => write_string(s, out)?,
         Value::Array(items) => {
             out.push('[');
             for (i, item) in items.iter().enumerate() {
@@ -110,7 +138,7 @@ fn write_value(value: &Value, out: &mut String, depth: usize) -> Result<(), Cano
                 if i > 0 {
                     out.push(',');
                 }
-                write_string(key, out);
+                write_string(key, out)?;
                 out.push(':');
                 write_value(item, out, depth + 1)?;
             }
@@ -124,7 +152,8 @@ fn cmp_utf16(a: &str, b: &str) -> Ordering {
     a.encode_utf16().cmp(b.encode_utf16())
 }
 
-fn write_string(s: &str, out: &mut String) {
+fn write_string(s: &str, out: &mut String) -> Result<(), CanonicalPayloadError> {
+    check_string(s)?;
     out.push('"');
     for c in s.chars() {
         match c {
@@ -140,6 +169,7 @@ fn write_string(s: &str, out: &mut String) {
         }
     }
     out.push('"');
+    Ok(())
 }
 
 fn number_text(n: &Number) -> Result<String, CanonicalPayloadError> {
@@ -360,6 +390,9 @@ impl Parser<'_> {
                             } else {
                                 hi
                             };
+                            if code == 0 {
+                                return Err(CanonicalPayloadError::NulCharacter);
+                            }
                             out.push(
                                 char::from_u32(code)
                                     .ok_or_else(|| self.malformed("lone surrogate"))?,
@@ -471,6 +504,29 @@ mod tests {
             canon("[0.5,-0.000001,1e-7,12345678901234.5]"),
             "[0.5,-0.000001,1e-7,12345678901234.5]"
         );
+    }
+
+    #[test]
+    fn nul_is_rejected_in_values_and_keys_on_every_path() {
+        for text in [
+            r#"["a\u0000b"]"#,
+            r#"{"a\u0000":1}"#,
+            r#"{"a":{"\u0000":1}}"#,
+        ] {
+            assert_eq!(
+                canonicalize_str(text),
+                Err(CanonicalPayloadError::NulCharacter),
+                "{text}"
+            );
+        }
+        let v = serde_json::json!({"k": ["x\0"]});
+        assert_eq!(validate(&v), Err(CanonicalPayloadError::NulCharacter));
+        let k = serde_json::json!({"k\0": 1});
+        assert_eq!(validate(&k), Err(CanonicalPayloadError::NulCharacter));
+        assert!(matches!(
+            canonicalize_str("[\"a\0b\"]"),
+            Err(CanonicalPayloadError::Malformed(_))
+        ));
     }
 
     #[test]
