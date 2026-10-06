@@ -133,12 +133,12 @@ strings that the hand-written layers parse with it.
 | TypeScript | `IdentityId` (branded string) | `parseIdentityId` / `isIdentityId` | `deriveIdentityId(key)` |
 
 Registration generates the inception key first, derives the id, sends the base64 public key as
-`event_signing_public_key` at `POST /identities/register/start`, then signs the v2 `identity.created` bytes. Those bytes are
-`avalon:identity.created:v2:{len(network_id)}:{network_id}:{len(shard_id)}:{shard_id}:{ticket_id}:{identity_id}:{public_key_hex}:{display_name}`
-with `len` the UTF-8 byte length; the network id, shard id and ticket come from the `register/start` response, so a copied
-signature does not verify for another ticket, network or shard. `register/finish` no longer takes the key, and its response id
-must equal the derived one. Rust and TypeScript implement `register`; C# does not (see its README), but it has the id type, the
-derivation and every signing function below.
+`event_signing_public_key` at `POST /identities/register/start`, then signs the `identity.created` bytes. Those bytes use the
+structured layout (domain tag `avalon.identity.created`, a u16 version, then network id, shard id, ticket id, identity id, the
+raw public key and the display name, each string u32 length-prefixed); the network id, shard id and ticket come from the
+`register/start` response, so a copied signature does not verify for another ticket, network or shard. `register/finish` no
+longer takes the key, and its response id must equal the derived one. Rust and TypeScript implement `register`; C# does not (see
+its README), but it has the id type, the derivation and every signing function below.
 
 The `network_id` and `shard_id` in the signed bytes are supplied by the node answering `register/start` and are signed as given: the
 client trusts the node it registers with and does not pin them. Stored credentials are checked on login: `login` / `account_login`
@@ -146,17 +146,20 @@ fail if the stored secret does not derive to the credentials' identity id. Appro
 to be strict canonical base64 of 32 bytes and acceptable (canonical, not small-order), and the grant, ticket and key ids that go
 into signed bytes must be lowercase hyphenated UUID text.
 
-A public key is lowercase hex inside every signing-byte string and standard base64 on the wire. Device grant approval signs
-`avalon:device_grant.approved:v2:{grant_id}:{identity_id}:{requested_public_key_hex}`, and revoking a signing key
-(`revoke_device` / `RevokeDeviceAsync` / `revokeDevice`) now signs
-`avalon:identity.signing_key_revoked:v2:{identity_id}:{signing_key_id}:{revoked_by_signing_key_id}` with one of the
-identity's active keys and sends it with `revoked_by_signing_key_id`; the call needs a local signing key and the server refuses
-to revoke the last active key. The functions are public (`identity_signing` in Rust, `IdentitySigning` in C#, the top-level
-exports in TypeScript), together with strict Ed25519 verification (S below the group order, no small-order key or R) and the
-key-acceptability rule (canonical encoding, not of small order; a key with a torsion component such as y = 3 is accepted).
-Shared vectors: `conformance/vectors/identity-id.json`, `identity-created-signing.json`, `device-grant-approval.json` and
-`signing-key-revoked.json`; the attestation, cross-node-login, session-continuation and websocket-interest-claim vectors carry
-hex ids.
+Public keys and hashes are raw bytes inside the structured signing layouts and standard base64 on the wire. Device grant
+approval and signing-key revocation (`approve_device_grant` / `ApproveDeviceGrantAsync` / `approveDeviceGrant`,
+`revoke_device` / `RevokeDeviceAsync` / `revokeDevice`) sign the grant or key ids they act on, the approving or revoking key's
+id, and the identity chain position the event will occupy (`seq` and `prev_hash`), and send those fields with the signature. No
+route returns the chain head, so the first attempt signs at an empty chain; on a 409 `IDENTITY_CHAIN_POSITION_STALE` the SDK
+re-signs once at the `head_seq + 1` and `head_hash` the node returns and fails with a typed error if the head moves again. Both
+calls need a local signing key, and the server refuses to revoke the last active key. The signing functions are public
+(`identity_signing` in Rust, `IdentitySigning` in C#, the top-level exports in TypeScript), together with the structured
+signing-bytes primitive, the canonical payload encoder and the ledger entry hash layout, strict Ed25519 verification (S below
+the group order, no small-order key or R) and the key-acceptability rule (canonical encoding, not of small order; a key with a
+torsion component such as y = 3 is accepted). Shared vectors: `conformance/vectors/identity-id.json`,
+`identity-created-signing.json`, `device-grant-approval.json`, `signing-key-revoked.json`, `structured-signing-bytes.json`,
+`domain-tags.json`, `canonical-payload.json` and `ledger-entry-hash.json`, all run by the three SDKs; the attestation,
+cross-node-login, session-continuation and websocket-interest-claim vectors carry hex ids.
 
 ## Integrator shards
 
