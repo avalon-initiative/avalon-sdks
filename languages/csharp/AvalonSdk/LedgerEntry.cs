@@ -5,7 +5,6 @@
 
 using System;
 using System.Security.Cryptography;
-using System.Text;
 
 namespace Avalon.Sdk
 {
@@ -114,6 +113,18 @@ namespace Avalon.Sdk
                 bytes[i] = (byte)((hi << 4) | lo);
             }
             return bytes;
+        }
+
+        /// <summary>Lowercase hex of <paramref name="bytes"/>.</summary>
+        internal static string ToHex(byte[] bytes)
+        {
+            var chars = new char[bytes.Length * 2];
+            for (var i = 0; i < bytes.Length; i++)
+            {
+                chars[i * 2] = "0123456789abcdef"[bytes[i] >> 4];
+                chars[i * 2 + 1] = "0123456789abcdef"[bytes[i] & 15];
+            }
+            return new string(chars);
         }
 
         private static int HexValue(char c) =>

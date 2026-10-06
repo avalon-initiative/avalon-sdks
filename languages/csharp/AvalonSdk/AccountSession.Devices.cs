@@ -134,7 +134,7 @@ namespace Avalon.Sdk
         }
 
         private static string? HexOrNull(byte[]? bytes) =>
-            bytes == null ? null : string.Concat(System.Linq.Enumerable.Select(bytes, b => b.ToString("x2", System.Globalization.CultureInfo.InvariantCulture)));
+            bytes == null ? null : LedgerEntry.ToHex(bytes);
 
         /// <summary>Strictly decodes a standard-base64 32-byte Ed25519 public key.</summary>
         private static byte[] DecodePublicKey(string publicKeyB64)

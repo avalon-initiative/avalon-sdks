@@ -134,6 +134,9 @@ public class DeviceGrantTests
 
         Assert.Equal(5, ex.HeadSeq);
         Assert.Equal(2, h.Handler.Requests.Count);
+        AvalonRequestException asRequest = ex;
+        Assert.Equal(HttpStatusCode.Conflict, asRequest.StatusCode);
+        Assert.Equal("IDENTITY_CHAIN_POSITION_STALE", asRequest.Code);
     }
 
     [Fact]

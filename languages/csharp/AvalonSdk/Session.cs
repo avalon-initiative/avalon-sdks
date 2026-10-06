@@ -35,7 +35,7 @@ namespace Avalon.Sdk
     /// above — transport/HTTP failure, or a status this SDK doesn't yet map more precisely.
     /// Mirrors <c>SdkError</c>'s transport-level variants (<c>Unavailable</c>/<c>Protocol</c>).
     /// </summary>
-    public sealed class AvalonRequestException : Exception
+    public class AvalonRequestException : Exception
     {
         public AvalonRequestException(System.Net.HttpStatusCode statusCode)
             : this(statusCode, null)
@@ -78,12 +78,12 @@ namespace Avalon.Sdk
     /// A signed identity key event named a chain position that is no longer the next one
     /// (409 <c>IDENTITY_CHAIN_POSITION_STALE</c>). <see cref="HeadSeq"/> and <see cref="HeadHash"/> are the head to sign against.
     /// </summary>
-    public sealed class AvalonChainPositionStaleException : Exception
+    public sealed class AvalonChainPositionStaleException : AvalonRequestException
     {
         internal const string ErrorCode = "IDENTITY_CHAIN_POSITION_STALE";
 
-        public AvalonChainPositionStaleException(long headSeq, string? headHash)
-            : base("the identity chain moved: signed position is stale (head seq " + headSeq + ")")
+        public AvalonChainPositionStaleException(long headSeq, string? headHash, TimeSpan? retryAfter = null)
+            : base(System.Net.HttpStatusCode.Conflict, ErrorCode, retryAfter)
         {
             HeadSeq = headSeq;
             HeadHash = headHash;
@@ -351,13 +351,13 @@ namespace Avalon.Sdk
                         && codeElement.ValueKind == System.Text.Json.JsonValueKind.String)
                     {
                         code = codeElement.GetString();
-                        if (code == AvalonChainPositionStaleException.ErrorCode
+                        if (response.StatusCode == System.Net.HttpStatusCode.Conflict && code == AvalonChainPositionStaleException.ErrorCode
                             && doc.RootElement.TryGetProperty("head_seq", out var seq) && seq.TryGetInt64(out var headSeq))
                         {
                             var hash = doc.RootElement.TryGetProperty("head_hash", out var h) && h.ValueKind == System.Text.Json.JsonValueKind.String
                                 ? h.GetString()
                                 : null;
-                            return new AvalonChainPositionStaleException(headSeq, hash);
+                            return new AvalonChainPositionStaleException(headSeq, hash, ParseRetryAfter(response));
                         }
                     }
                 }

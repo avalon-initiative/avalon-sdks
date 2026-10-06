@@ -74,7 +74,7 @@ namespace Avalon.Sdk
             Buffer.BlockCopy(DomainTag, 0, preimage, 0, DomainTag.Length);
             Buffer.BlockCopy(publicKey, 0, preimage, DomainTag.Length, 32);
             using var sha = SHA256.Create();
-            return new IdentityId(Hex(sha.ComputeHash(preimage)));
+            return new IdentityId(LedgerEntry.ToHex(sha.ComputeHash(preimage)));
         }
 
         /// <summary>A fresh id from a random key, for tests that never verify a signature against it.</summary>
@@ -118,16 +118,6 @@ namespace Avalon.Sdk
 
         /// <summary>The canonical text; throws for <c>default</c>.</summary>
         public override string ToString() => Value;
-
-        private static string Hex(byte[] bytes)
-        {
-            var sb = new StringBuilder(bytes.Length * 2);
-            foreach (var b in bytes)
-            {
-                sb.Append(b.ToString("x2", System.Globalization.CultureInfo.InvariantCulture));
-            }
-            return sb.ToString();
-        }
     }
 
     internal sealed class IdentityIdJsonConverter : JsonConverter<IdentityId>
