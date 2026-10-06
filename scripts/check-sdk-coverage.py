@@ -294,14 +294,6 @@ def extract_csharp_calls() -> set[tuple[str, str]]:
 # design choice — not a gap this check should flag. Keep this list tiny and
 # always cite the source that makes it "documented," not just "observed."
 INTENTIONAL_GAPS: dict[tuple[str, str], dict] = {
-    ("POST", "/me/devices/grants/*/approve"): {
-        "sdks": ["csharp (languages/csharp)"],
-        "reason": "Temporary: the call fails loudly until v3 identity key event signing lands (avalon-sdks #99, #100, #101); remove then.",
-    },
-    ("POST", "/me/devices/*/revoke"): {
-        "sdks": ["csharp (languages/csharp)"],
-        "reason": "Temporary: the call fails loudly until v3 identity key event signing lands (avalon-sdks #99, #100, #101); remove then.",
-    },
     ("POST", "/identities/register/start"): {
         "sdks": ["csharp (languages/csharp)"],
         "reason": (

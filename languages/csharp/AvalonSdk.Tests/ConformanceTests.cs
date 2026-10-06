@@ -334,12 +334,8 @@ public class ConformanceTests
     // Vector files with no runner in this SDK yet, each with the reason it is skipped.
     private static readonly Dictionary<string, string> NoRunner = new()
     {
-        ["canonical-payload.json"] = "canonical payload encoder not in the SDK (#101)",
-        ["domain-tags.json"] = "domain tag registry not in the SDK (#101)",
         ["identity-chain.json"] = "identity chain resolution is protocol-side only",
-        ["ledger-entry-hash.json"] = "ledger entry hash not in the SDK (#101)",
         ["node-request.json"] = "node-to-node route, not in OpenAPI; supportedIn is empty",
-        ["structured-signing-bytes.json"] = "structured signing primitive not in the SDK (#101)",
     };
 
     /// <summary>Every vector file is either referenced by a runner in this test project or listed in

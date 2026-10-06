@@ -75,6 +75,28 @@ namespace Avalon.Sdk
     }
 
     /// <summary>
+    /// A signed identity key event named a chain position that is no longer the next one
+    /// (409 <c>IDENTITY_CHAIN_POSITION_STALE</c>). <see cref="HeadSeq"/> and <see cref="HeadHash"/> are the head to sign against.
+    /// </summary>
+    public sealed class AvalonChainPositionStaleException : Exception
+    {
+        internal const string ErrorCode = "IDENTITY_CHAIN_POSITION_STALE";
+
+        public AvalonChainPositionStaleException(long headSeq, string? headHash)
+            : base("the identity chain moved: signed position is stale (head seq " + headSeq + ")")
+        {
+            HeadSeq = headSeq;
+            HeadHash = headHash;
+        }
+
+        /// <summary>The identity chain's head <c>seq</c>; 0 for a chain with no events yet.</summary>
+        public long HeadSeq { get; }
+
+        /// <summary>Lowercase hex event hash of the head; null for an empty chain.</summary>
+        public string? HeadHash { get; }
+    }
+
+    /// <summary>
     /// The server answered successfully but the body did not parse as the shape the call
     /// expected. Mirrors <c>SdkError::Protocol</c>.
     /// </summary>
@@ -329,6 +351,14 @@ namespace Avalon.Sdk
                         && codeElement.ValueKind == System.Text.Json.JsonValueKind.String)
                     {
                         code = codeElement.GetString();
+                        if (code == AvalonChainPositionStaleException.ErrorCode
+                            && doc.RootElement.TryGetProperty("head_seq", out var seq) && seq.TryGetInt64(out var headSeq))
+                        {
+                            var hash = doc.RootElement.TryGetProperty("head_hash", out var h) && h.ValueKind == System.Text.Json.JsonValueKind.String
+                                ? h.GetString()
+                                : null;
+                            return new AvalonChainPositionStaleException(headSeq, hash);
+                        }
                     }
                 }
             }

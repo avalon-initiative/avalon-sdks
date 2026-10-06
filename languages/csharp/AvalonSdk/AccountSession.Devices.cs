@@ -79,22 +79,62 @@ namespace Avalon.Sdk
             await PatchAsync<Avalon.Sdk.Generated.RenameDeviceRequest, AccountDevice>(
                 $"/me/devices/{signingKeyId}", new Avalon.Sdk.Generated.RenameDeviceRequest { Label = label }, ct).ConfigureAwait(false);
 
-        private static NotSupportedException IdentityKeyEventUnsupported(string call) =>
-            new NotSupportedException($"{call} is not supported until v3 identity key event signing lands (avalon-sdks #99, #100, #101)");
-
-        /// <summary><c>POST /me/devices/{signing_key_id}/revoke</c>. Always throws until v3 identity
-        /// key event signing lands (avalon-sdks #99-#101): the server now requires a chain position
-        /// (<c>seq</c>, <c>prev_hash</c>). Throws <see cref="InvalidOperationException"/> first, without
-        /// any HTTP call, if this session has no local signing key.</summary>
-#pragma warning disable CS1998 // async so the failure surfaces on the returned task like the other validation errors
+        /// <summary><c>POST /me/devices/{signing_key_id}/revoke</c>. Signs the revocation at the identity chain
+        /// position it will occupy; on a stale position it re-signs once at the head the server returns.
+        /// Needs a local signing key (<see cref="InvalidOperationException"/> otherwise, with no HTTP call).</summary>
         public async Task RevokeDeviceAsync(Guid signingKeyId, CancellationToken ct = default)
         {
             if (SigningKeyId == null)
             {
                 throw new InvalidOperationException("RevokeDeviceAsync requires a local signing key — this AccountSession has none");
             }
-            throw IdentityKeyEventUnsupported("RevokeDeviceAsync");
+            var revokedBy = SigningKeyId.Value;
+            await SignAtChainPositionAsync(async (seq, prevHash) =>
+            {
+                var bytes = IdentitySigning.SigningKeyRevokedSigningBytes(OwnIdentityId, signingKeyId, revokedBy, seq, prevHash);
+                await PostNoResponseAsync(
+                    $"/me/devices/{signingKeyId}/revoke",
+                    new Avalon.Sdk.Generated.RevokeDeviceRequest
+                    {
+                        RevokedBySigningKeyId = revokedBy,
+                        Seq = checked((long)seq),
+                        PrevHash = HexOrNull(prevHash),
+                        Signature = SignRaw(bytes),
+                    },
+                    ct).ConfigureAwait(false);
+                return true;
+            }).ConfigureAwait(false);
         }
+
+        /// <summary>Runs <paramref name="send"/> at the first chained position (seq 1, no prev hash); on a stale
+        /// position it runs once more at the returned head, and a second stale answer is surfaced.</summary>
+        private static async Task<T> SignAtChainPositionAsync<T>(Func<ulong, byte[]?, Task<T>> send)
+        {
+            try
+            {
+                return await send(1, null).ConfigureAwait(false);
+            }
+            catch (AvalonChainPositionStaleException stale)
+            {
+                if (stale.HeadSeq < 0 || stale.HeadSeq == long.MaxValue || (stale.HeadSeq == 0) != (stale.HeadHash == null))
+                {
+                    throw new AvalonProtocolException("the server returned an inconsistent chain head");
+                }
+                byte[]? prevHash;
+                try
+                {
+                    prevHash = stale.HeadHash == null ? null : LedgerEntry.ParseHash("head_hash", stale.HeadHash);
+                }
+                catch (LedgerEntryException)
+                {
+                    throw new AvalonProtocolException("the server returned a malformed chain head hash");
+                }
+                return await send((ulong)stale.HeadSeq + 1, prevHash).ConfigureAwait(false);
+            }
+        }
+
+        private static string? HexOrNull(byte[]? bytes) =>
+            bytes == null ? null : string.Concat(System.Linq.Enumerable.Select(bytes, b => b.ToString("x2", System.Globalization.CultureInfo.InvariantCulture)));
 
         /// <summary>Strictly decodes a standard-base64 32-byte Ed25519 public key.</summary>
         private static byte[] DecodePublicKey(string publicKeyB64)
@@ -133,23 +173,37 @@ namespace Avalon.Sdk
         public async Task<AccountDeviceGrant> GetDeviceGrantAsync(Guid grantId, CancellationToken ct = default) =>
             await GetAsync<AccountDeviceGrant>($"/me/devices/grants/{grantId}", ct).ConfigureAwait(false);
 
-        /// <summary><c>POST /me/devices/grants/{id}/approve</c>. Validates the requested key, then always
-        /// throws until v3 identity key event signing lands (avalon-sdks #99-#101): the server now requires
-        /// <c>seq</c> and <c>prev_hash</c>. No HTTP call is made.</summary>
+        /// <summary><c>POST /me/devices/grants/{id}/approve</c>. Signs the approval (grant, identity, this
+        /// session's key id, requested key) at the identity chain position it will occupy; on a stale position it
+        /// re-signs once at the head the server returns, and a second stale answer throws
+        /// <see cref="AvalonChainPositionStaleException"/>. The new key's id is the grant id.</summary>
         public async Task<AccountDevice> ApproveDeviceGrantAsync(Guid grantId, string requestedSigningPublicKeyB64, CancellationToken ct = default)
         {
             if (SigningKeyId == null)
             {
                 throw new InvalidOperationException("ApproveDeviceGrantAsync requires a local signing key — this AccountSession has none");
             }
+            var approver = SigningKeyId.Value;
             var requestedKey = DecodePublicKey(requestedSigningPublicKeyB64);
             if (!IdentitySigning.IsAcceptableKey(requestedKey))
             {
                 throw new ArgumentException("the requested key is not an acceptable Ed25519 key", nameof(requestedSigningPublicKeyB64));
             }
-            throw IdentityKeyEventUnsupported("ApproveDeviceGrantAsync");
+            return await SignAtChainPositionAsync((seq, prevHash) =>
+            {
+                var bytes = IdentitySigning.DeviceGrantApprovalSigningBytes(grantId, OwnIdentityId, approver, requestedKey, seq, prevHash);
+                return PostAsync<Avalon.Sdk.Generated.ApproveDeviceGrantRequest, AccountDevice>(
+                    $"/me/devices/grants/{grantId}/approve",
+                    new Avalon.Sdk.Generated.ApproveDeviceGrantRequest
+                    {
+                        ApproverSigningKeyId = approver,
+                        Seq = checked((long)seq),
+                        PrevHash = HexOrNull(prevHash),
+                        Signature = SignRaw(bytes),
+                    },
+                    ct);
+            }).ConfigureAwait(false);
         }
-#pragma warning restore CS1998
 
         /// <summary><c>POST /auth/device/approve</c> — approves a
         /// cross-device pairing request identified by <paramref name="userCode"/>, always

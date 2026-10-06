@@ -28,9 +28,6 @@ public class IdentityConformanceTests
 
     private static string ToHex(byte[] bytes) => string.Concat(bytes.Select(b => b.ToString("x2")));
 
-    private static bool Supported(JsonElement root) =>
-        root.GetProperty("supportedIn").EnumerateArray().Any(v => v.GetString() == "csharp");
-
     private static byte[] PublicKeyOfSeed(string seedHex) =>
         new Ed25519PrivateKeyParameters(Hex(seedHex), 0).GeneratePublicKey().GetEncoded();
 
@@ -54,7 +51,6 @@ public class IdentityConformanceTests
     public void IdentityId_MatchesSharedVector(string vectorName)
     {
         using var doc = ConformanceTests.LoadVector("identity-id.json");
-        Assert.True(Supported(doc.RootElement));
         var vector = doc.RootElement.GetProperty("vectors").EnumerateArray()
             .Single(v => v.GetProperty("name").GetString() == vectorName);
         var input = vector.GetProperty("input");
@@ -97,99 +93,95 @@ public class IdentityConformanceTests
         }
     }
 
-    private static byte[] CreatedBytes(JsonElement input, IdentityId id, byte[] publicKey) =>
-        IdentitySigning.IdentityCreatedSigningBytesV2(
-            input.GetProperty("networkId").GetString()!,
-            input.GetProperty("shardId").GetString()!,
-            Guid.Parse(input.GetProperty("ticketId").GetString()!),
-            id,
-            publicKey,
-            input.GetProperty("displayName").GetString()!);
+    private static string Str(JsonElement e, string name) => e.GetProperty(name).GetString()!;
 
-    [Fact(Skip = "pending v3 structured signing in the C# SDK (avalon-sdks #101); the vector is protocol-crate only until then")]
+    private static byte[]? PrevHash(JsonElement input) =>
+        input.GetProperty("prevHashHex").ValueKind == JsonValueKind.Null
+            ? null
+            : LedgerEntry.ParseHash("prevHashHex", Str(input, "prevHashHex"));
+
+    /// <summary>Runs one key-event file: every vector reproduces its bytes and signature, every replay
+    /// signature fails for its input, and the retired text layout's signature fails over the new bytes.
+    /// Returns the vector counts.</summary>
+    private static (int Vectors, int Replays, int Legacy) RunKeyEventFile(string file, Func<JsonElement, byte[]> bytesOf)
+    {
+        using var doc = ConformanceTests.LoadVector(file);
+        var root = doc.RootElement;
+        var seed = Str(root, "signingKeySeedHex");
+        var publicKey = PublicKeyOfSeed(seed);
+        Assert.Equal(Str(root, "signingPublicKeyHex"), ToHex(publicKey));
+
+        var vectors = root.GetProperty("vectors").EnumerateArray().ToList();
+        foreach (var vector in vectors)
+        {
+            var bytes = bytesOf(vector.GetProperty("input"));
+            var expected = vector.GetProperty("expected");
+            var name = Str(vector, "name");
+            Assert.True(Str(expected, "signingBytesHex") == ToHex(bytes), $"[{file}: {name}] bytes diverged");
+            Assert.True(Str(expected, "signatureHex") == Sign(seed, bytes), $"[{file}: {name}] signature diverged");
+            Assert.True(IdentitySigning.VerifyStrict(publicKey, bytes, Hex(Str(expected, "signatureHex"))), $"[{file}: {name}] does not verify");
+        }
+        var replays = root.GetProperty("replayVectors").EnumerateArray().ToList();
+        foreach (var vector in replays)
+        {
+            var bytes = bytesOf(vector.GetProperty("input"));
+            Assert.False(vector.GetProperty("expected").GetProperty("valid").GetBoolean());
+            Assert.False(
+                IdentitySigning.VerifyStrict(publicKey, bytes, Hex(Str(vector, "signatureHex"))),
+                $"[{file}: {Str(vector, "name")}] a replayed signature verified");
+        }
+        var legacy = root.GetProperty("legacyLayoutVectors").EnumerateArray().ToList();
+        foreach (var vector in legacy)
+        {
+            var signature = Hex(Str(vector, "signatureHex"));
+            Assert.False(vector.GetProperty("expected").GetProperty("valid").GetBoolean());
+            Assert.True(IdentitySigning.VerifyStrict(publicKey, Encoding.UTF8.GetBytes(Str(vector, "legacySigningBytesUtf8")), signature));
+            Assert.False(IdentitySigning.VerifyStrict(publicKey, bytesOf(vector.GetProperty("input")), signature));
+        }
+        return (vectors.Count, replays.Count, legacy.Count);
+    }
+
+    [Fact]
     public void IdentityCreatedSigning_MatchesSharedVectors()
     {
         using var doc = ConformanceTests.LoadVector("identity-created-signing.json");
-        var root = doc.RootElement;
-        Assert.True(Supported(root));
-        var seed = root.GetProperty("signingKeySeedHex").GetString()!;
-        var publicKey = PublicKeyOfSeed(seed);
-        Assert.Equal(root.GetProperty("signingPublicKeyHex").GetString(), ToHex(publicKey));
-        var id = IdentityId.Parse(root.GetProperty("identityId").GetString()!);
+        var id = IdentityId.Parse(Str(doc.RootElement, "identityId"));
+        var publicKey = Hex(Str(doc.RootElement, "signingPublicKeyHex"));
         Assert.True(id.MatchesKey(publicKey));
-
-        foreach (var vector in root.GetProperty("vectors").EnumerateArray())
-        {
-            var bytes = CreatedBytes(vector.GetProperty("input"), id, publicKey);
-            var expected = vector.GetProperty("expected");
-            Assert.Equal(expected.GetProperty("signingBytesHex").GetString(), ToHex(bytes));
-            Assert.Equal(expected.GetProperty("signingBytesUtf8").GetString(), Encoding.UTF8.GetString(bytes));
-            Assert.Equal(expected.GetProperty("signatureHex").GetString(), Sign(seed, bytes));
-            Assert.True(IdentitySigning.VerifyStrict(publicKey, bytes, Hex(expected.GetProperty("signatureHex").GetString()!)));
-        }
-        foreach (var vector in root.GetProperty("replayVectors").EnumerateArray())
-        {
-            var input = vector.GetProperty("input");
-            var bytes = CreatedBytes(input, id, publicKey);
-            Assert.Equal(
-                vector.GetProperty("expected").GetProperty("valid").GetBoolean(),
-                IdentitySigning.VerifyStrict(publicKey, bytes, Hex(input.GetProperty("signatureHex").GetString()!)));
-        }
-        foreach (var vector in root.GetProperty("domainSeparationVectors").EnumerateArray())
-        {
-            var input = vector.GetProperty("input");
-            var expected = vector.GetProperty("expected");
-            var v2 = CreatedBytes(input, IdentityId.Parse(input.GetProperty("identityId").GetString()!), publicKey);
-            Assert.Equal(expected.GetProperty("v2SigningBytesHex").GetString(), ToHex(v2));
-            Assert.NotEqual(expected.GetProperty("v1SigningBytesUtf8").GetString(), Encoding.UTF8.GetString(v2));
-            Assert.False(expected.GetProperty("equal").GetBoolean());
-        }
+        var counts = RunKeyEventFile("identity-created-signing.json", input =>
+            IdentitySigning.IdentityCreatedSigningBytes(
+                Str(input, "networkId"), Str(input, "shardId"), Guid.Parse(Str(input, "ticketId")), id, publicKey, Str(input, "displayName")));
+        Assert.Equal((6, 6, 1), counts);
     }
 
-    [Fact(Skip = "pending v3 structured signing in the C# SDK (avalon-sdks #101); the vector is protocol-crate only until then")]
+    [Fact]
     public void DeviceGrantApproval_MatchesSharedVectors()
     {
         using var doc = ConformanceTests.LoadVector("device-grant-approval.json");
-        var root = doc.RootElement;
-        Assert.True(Supported(root));
-        var seed = root.GetProperty("signingKeySeedHex").GetString()!;
-        Assert.Equal(root.GetProperty("signingPublicKeyHex").GetString(), ToHex(PublicKeyOfSeed(seed)));
         Assert.Equal(
-            root.GetProperty("requestedPublicKeyHex").GetString(),
-            ToHex(PublicKeyOfSeed(root.GetProperty("requestedKeySeedHex").GetString()!)));
-        foreach (var vector in root.GetProperty("vectors").EnumerateArray())
-        {
-            var input = vector.GetProperty("input");
-            var bytes = IdentitySigning.DeviceGrantApprovalSigningBytesV2(
-                Guid.Parse(input.GetProperty("grantId").GetString()!),
-                IdentityId.Parse(input.GetProperty("identityId").GetString()!),
-                Hex(input.GetProperty("requestedPublicKeyHex").GetString()!));
-            var expected = vector.GetProperty("expected");
-            Assert.Equal(expected.GetProperty("signingBytesHex").GetString(), ToHex(bytes));
-            Assert.Equal(expected.GetProperty("signingBytesUtf8").GetString(), Encoding.UTF8.GetString(bytes));
-            Assert.Equal(expected.GetProperty("signatureHex").GetString(), Sign(seed, bytes));
-        }
+            Str(doc.RootElement, "requestedPublicKeyHex"),
+            ToHex(PublicKeyOfSeed(Str(doc.RootElement, "requestedKeySeedHex"))));
+        var counts = RunKeyEventFile("device-grant-approval.json", input =>
+            IdentitySigning.DeviceGrantApprovalSigningBytes(
+                Guid.Parse(Str(input, "grantId")),
+                IdentityId.Parse(Str(input, "identityId")),
+                Guid.Parse(Str(input, "approverSigningKeyId")),
+                Hex(Str(input, "requestedPublicKeyHex")),
+                ulong.Parse(Str(input, "seq")),
+                PrevHash(input)));
+        Assert.Equal((4, 7, 1), counts);
     }
 
-    [Fact(Skip = "pending v3 structured signing in the C# SDK (avalon-sdks #101); the vector is protocol-crate only until then")]
+    [Fact]
     public void SigningKeyRevoked_MatchesSharedVectors()
     {
-        using var doc = ConformanceTests.LoadVector("signing-key-revoked.json");
-        var root = doc.RootElement;
-        Assert.True(Supported(root));
-        var seed = root.GetProperty("signingKeySeedHex").GetString()!;
-        Assert.Equal(root.GetProperty("signingPublicKeyHex").GetString(), ToHex(PublicKeyOfSeed(seed)));
-        foreach (var vector in root.GetProperty("vectors").EnumerateArray())
-        {
-            var input = vector.GetProperty("input");
-            var bytes = IdentitySigning.SigningKeyRevokedSigningBytesV2(
-                IdentityId.Parse(input.GetProperty("identityId").GetString()!),
-                Guid.Parse(input.GetProperty("signingKeyId").GetString()!),
-                Guid.Parse(input.GetProperty("revokedBySigningKeyId").GetString()!));
-            var expected = vector.GetProperty("expected");
-            Assert.Equal(expected.GetProperty("signingBytesHex").GetString(), ToHex(bytes));
-            Assert.Equal(expected.GetProperty("signingBytesUtf8").GetString(), Encoding.UTF8.GetString(bytes));
-            Assert.Equal(expected.GetProperty("signatureHex").GetString(), Sign(seed, bytes));
-        }
+        var counts = RunKeyEventFile("signing-key-revoked.json", input =>
+            IdentitySigning.SigningKeyRevokedSigningBytes(
+                IdentityId.Parse(Str(input, "identityId")),
+                Guid.Parse(Str(input, "signingKeyId")),
+                Guid.Parse(Str(input, "revokedBySigningKeyId")),
+                ulong.Parse(Str(input, "seq")),
+                PrevHash(input)));
+        Assert.Equal((6, 6, 1), counts);
     }
 }

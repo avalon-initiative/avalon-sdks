@@ -92,9 +92,12 @@ var profile = await session.IdentityProfileAsync(someIdentityId);
 ```
 
 Identity ids are `IdentityId` values (a readonly struct over the 64 lowercase hex characters derived from the
-identity's inception key), not `Guid`s: `IdentityId.Parse`, `IdentityId.Derive(publicKey)`, and the v2 signing bytes in
-`IdentitySigning` are public. `AccountSession.RevokeDeviceAsync` now signs the revocation and needs a local signing key. See
-the root README's "Identity ids and registration".
+identity's inception key), not `Guid`s: `IdentityId.Parse`, `IdentityId.Derive(publicKey)`, and the structured signing bytes of
+the identity key events in `IdentitySigning` are public. `AccountSession.ApproveDeviceGrantAsync` and `RevokeDeviceAsync`
+sign at the identity chain position the event will occupy (needs a local signing key); on a stale position they re-sign once at
+the head the server returns, and a second stale answer throws `AvalonChainPositionStaleException`. The structured signing-bytes
+primitive (`SigningBytesBuilder`/`SigningBytesReader`, `DomainTags`), the restricted RFC 8785 `CanonicalPayload` and the
+`LedgerEntry` hash are public too; shared vectors are in `conformance/vectors/`. See the root README's "Identity ids and registration".
 
 ## Known scoping gap, not an oversight
 

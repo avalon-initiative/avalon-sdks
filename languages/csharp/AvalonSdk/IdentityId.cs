@@ -89,6 +89,18 @@ namespace Avalon.Sdk
             return (Derive(key), key);
         }
 
+        /// <summary>The id as its 32 raw bytes, the form signing bytes carry.</summary>
+        public byte[] ToBytes()
+        {
+            var text = Value;
+            var bytes = new byte[32];
+            for (var i = 0; i < 32; i++)
+            {
+                bytes[i] = Convert.ToByte(text.Substring(i * 2, 2), 16);
+            }
+            return bytes;
+        }
+
         /// <summary>Whether this id is the one derived from <paramref name="publicKey"/>.</summary>
         public bool MatchesKey(byte[] publicKey) => Equals(Derive(publicKey));
 
