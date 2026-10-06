@@ -37,7 +37,7 @@ import {
   type EntryHashInput,
 } from '../src/ledgerEntry.js'
 import { sha256 } from '@noble/hashes/sha2.js'
-import { deriveIdentityId, identityIdMatchesKey, isIdentityId, parseIdentityId } from '../src/identityId.js'
+import { UnknownIdSchemeError, deriveIdentityId, identityIdMatchesKey, isIdentityId, parseIdentityId } from '../src/identityId.js'
 import { isAcceptableShardKey, verifyStrict } from '../src/network/strictEd25519.js'
 import { signingMessage } from '../src/network/sthMessage.js'
 import type { CosignedTreeHead, KnownWitness, SignedTreeHeadResponse } from '../src/types.js'
@@ -451,6 +451,15 @@ describe('conformance: shard family head', () => {
   })
 })
 
+function catchError(run: () => unknown): unknown {
+  try {
+    run()
+  } catch (error) {
+    return error
+  }
+  return undefined
+}
+
 describe('conformance: identity ids', () => {
   const doc = loadVector('identity-id.json')
 
@@ -472,7 +481,18 @@ describe('conformance: identity ids', () => {
         }
         case 'parse':
           expect(isIdentityId(input.identityId)).toBe(expected.valid)
-          if (!expected.valid) expect(() => parseIdentityId(input.identityId)).toThrow(TypeError)
+          if (expected.result === 'valid') {
+            expect(parseIdentityId(input.identityId)).toBe(input.identityId)
+          } else if (expected.result === 'unknown_id_scheme') {
+            const thrown = catchError(() => parseIdentityId(input.identityId))
+            expect(thrown).toBeInstanceOf(UnknownIdSchemeError)
+            expect((thrown as UnknownIdSchemeError).length).toBe(expected.length)
+          } else {
+            expect(expected.result).toBe('invalid_id')
+            const thrown = catchError(() => parseIdentityId(input.identityId))
+            expect(thrown).toBeInstanceOf(TypeError)
+            expect(thrown).not.toBeInstanceOf(UnknownIdSchemeError)
+          }
           break
         case 'key_acceptability':
           expect(isAcceptableShardKey(hexToBytes(input.publicKeyHex))).toBe(expected.acceptable)

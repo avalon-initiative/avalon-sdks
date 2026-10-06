@@ -7225,7 +7225,7 @@ export interface operations {
                     "application/json": components["schemas"]["RegisterStartResponse"];
                 };
             };
-            /** @description INVALID_IDENTITY_ID, IDENTITY_ID_MISMATCH or INVALID_DISPLAY_NAME */
+            /** @description INVALID_IDENTITY_ID, UNKNOWN_ID_SCHEME, IDENTITY_ID_MISMATCH or INVALID_DISPLAY_NAME */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -9551,4 +9551,4 @@ export interface operations {
 }
 
 // Issue #735: the info.version this file's types were generated from.
-export const OPENAPI_SCHEMA_VERSION = "0.13.0" as const
+export const OPENAPI_SCHEMA_VERSION = "0.13.1" as const

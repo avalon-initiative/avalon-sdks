@@ -67,6 +67,23 @@ public class IdentityConformanceTests
             case "parse":
                 var text = input.GetProperty("identityId").GetString();
                 Assert.Equal(expected.GetProperty("valid").GetBoolean(), IdentityId.TryParse(text, out _));
+                switch (expected.GetProperty("result").GetString())
+                {
+                    case "valid":
+                        Assert.Equal(text, IdentityId.Parse(text).ToString());
+                        break;
+                    case "unknown_id_scheme":
+                        var unknown = Assert.Throws<UnknownIdSchemeException>(() => IdentityId.Parse(text));
+                        Assert.Equal(expected.GetProperty("length").GetInt32(), unknown.Length);
+                        break;
+                    case "invalid_id":
+                        var malformed = Assert.ThrowsAny<FormatException>(() => IdentityId.Parse(text));
+                        Assert.IsNotType<UnknownIdSchemeException>(malformed);
+                        break;
+                    default:
+                        Assert.Fail("unknown expected.result in vector " + vectorName);
+                        break;
+                }
                 break;
             case "key_acceptability":
                 Assert.Equal(

@@ -32,11 +32,20 @@ namespace Avalon.Sdk
         /// <summary>The canonical text of this id.</summary>
         public string Value => _value ?? throw new InvalidOperationException("default(IdentityId) is not a valid identity id");
 
-        /// <summary>Parses the canonical form; throws <see cref="FormatException"/> otherwise.</summary>
+        /// <summary>Parses the canonical form. Throws <see cref="UnknownIdSchemeException"/> for any
+        /// length other than 64 UTF-8 bytes, and <see cref="FormatException"/> otherwise.</summary>
         public static IdentityId Parse(string? text)
         {
             if (!TryParse(text, out var id))
             {
+                if (text != null)
+                {
+                    var byteLength = Encoding.UTF8.GetByteCount(text);
+                    if (byteLength != Length)
+                    {
+                        throw new UnknownIdSchemeException(byteLength);
+                    }
+                }
                 throw new FormatException("identity id must be exactly 64 lowercase hex characters [0-9a-f]");
             }
             return id;
@@ -118,6 +127,20 @@ namespace Avalon.Sdk
 
         /// <summary>The canonical text; throws for <c>default</c>.</summary>
         public override string ToString() => Value;
+    }
+
+    /// <summary>An identity id whose length is not 64 UTF-8 bytes: possibly an id from a newer scheme this
+    /// build cannot read, reported apart from a malformed 64-character id (<see cref="FormatException"/>).</summary>
+    public sealed class UnknownIdSchemeException : FormatException
+    {
+        public UnknownIdSchemeException(int length)
+            : base("unknown identity id scheme: " + length + " characters; this version only reads 64-character ids, a newer version may be required")
+        {
+            Length = length;
+        }
+
+        /// <summary>The UTF-8 byte length of the rejected text.</summary>
+        public int Length { get; }
     }
 
     internal sealed class IdentityIdJsonConverter : JsonConverter<IdentityId>

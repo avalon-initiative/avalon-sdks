@@ -51,7 +51,7 @@ use std::fs;
 use std::path::Path;
 
 use schemars::schema::Schema;
-use typify::{TypeSpace, TypeSpaceSettings};
+use typify::{TypeSpace, TypeSpaceImpl, TypeSpaceSettings};
 
 const SCHEMA_NAMES: &[&str] = &[
     "ProfileResponse",
@@ -254,6 +254,11 @@ fn main() {
     // Every schema in `SCHEMA_NAMES` is generated fresh from `docs/generated/openapi.json` (issue
     // #774), except these two open vocabularies, which tolerate a value this SDK does not know yet.
     let mut settings = TypeSpaceSettings::default();
+    settings.with_replacement(
+        "IdentityId",
+        "crate::types::ids::IdentityId",
+        [TypeSpaceImpl::Display, TypeSpaceImpl::FromStr].into_iter(),
+    );
     for name in ["Connectivity", "PathType"] {
         settings.with_replacement(name, format!("crate::tolerant::{name}"), std::iter::empty());
     }

@@ -126,6 +126,13 @@ normalises: uppercase, any other length, `id:` or `node:` prefixes, UUID text an
 rejected. Each SDK has a validated type that rejects anything else, and the generated wire types still carry plain
 strings that the hand-written layers parse with it.
 
+An id of any length other than 64 UTF-8 bytes is reported as an unknown id scheme (a newer version may be required), not as a
+malformed id; 64 characters that are not lowercase hex stay the generic invalid case. Rust returns
+`IdentityIdParseError::UnknownScheme { length }` (or `NotLowercaseHex`), TypeScript's `parseIdentityId` throws
+`UnknownIdSchemeError` (with `length`; `isIdentityId` stays a boolean), and C#'s `IdentityId.Parse` throws
+`UnknownIdSchemeException` (with `Length`; `TryParse` stays a boolean). The server's 400 `UNKNOWN_ID_SCHEME` maps to
+`UnknownIdSchemeRejectedError` (TypeScript) and `AvalonUnknownIdSchemeException` (C#).
+
 | | Type | Parse | Derive from an inception key |
 | --- | --- | --- | --- |
 | Rust | `types::ids::IdentityId` (no longer `Copy`; pass `&IdentityId`) | `"...".parse::<IdentityId>()` | `IdentityId::derive(&key_bytes)` |

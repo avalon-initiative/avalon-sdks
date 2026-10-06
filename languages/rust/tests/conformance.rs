@@ -35,7 +35,7 @@ use avalon_sdk::identity_signing::{
     signing_key_revoked_signing_bytes, verify_strict,
 };
 use avalon_sdk::sth::signing_message as sth_signing_message;
-use avalon_sdk::types::ids::IdentityId;
+use avalon_sdk::types::ids::{IdentityId, IdentityIdParseError};
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -730,11 +730,24 @@ fn identity_id_matches_shared_vectors() {
             }
             "parse" => {
                 let text = input["identityId"].as_str().unwrap();
+                let parsed = text.parse::<IdentityId>();
                 assert_eq!(
-                    text.parse::<IdentityId>().is_ok(),
+                    parsed.is_ok(),
                     expected["valid"].as_bool().unwrap(),
                     "[{name}]"
                 );
+                match (expected["result"].as_str().unwrap(), parsed) {
+                    ("valid", Ok(_)) => {}
+                    ("invalid_id", Err(IdentityIdParseError::NotLowercaseHex)) => {}
+                    ("unknown_id_scheme", Err(IdentityIdParseError::UnknownScheme { length })) => {
+                        assert_eq!(
+                            length as u64,
+                            expected["length"].as_u64().unwrap(),
+                            "[{name}]"
+                        );
+                    }
+                    (result, got) => panic!("[{name}] expected {result}, got {got:?}"),
+                }
             }
             "key_acceptability" => {
                 let bytes = key32(input["publicKeyHex"].as_str().unwrap());
