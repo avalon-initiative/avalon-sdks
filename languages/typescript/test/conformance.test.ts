@@ -63,8 +63,12 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const VECTORS_DIR = path.resolve(__dirname, '../../../conformance/vectors')
 
+// Files a runner loaded, so the accounted-for check cannot be satisfied by a stray mention.
+const LOADED_VECTOR_FILES = new Set<string>()
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function loadVector(name: string): any {
+  LOADED_VECTOR_FILES.add(name)
   return JSON.parse(readFileSync(path.join(VECTORS_DIR, name), 'utf-8'))
 }
 
@@ -848,14 +852,13 @@ const NO_RUNNER: Record<string, string> = {
 }
 
 describe('conformance: every vector file is accounted for', () => {
-  const source = readFileSync(fileURLToPath(import.meta.url), 'utf-8')
   for (const file of readdirSync(VECTORS_DIR).filter((f) => f.endsWith('.json'))) {
     const reason = NO_RUNNER[file]
     if (reason) {
       it.skip(`${file}: ${reason}`, () => {})
     } else {
       it(`${file} has a runner`, () => {
-        expect(source).toContain(`'${file}'`)
+        expect(LOADED_VECTOR_FILES.has(file)).toBe(true)
       })
     }
   }

@@ -35,6 +35,9 @@ function staleHead(error: unknown): StaleBody | undefined {
   if (!body || !Number.isSafeInteger(body.head_seq) || (body.head_seq as number) < 0) {
     throw new ProtocolError('IDENTITY_CHAIN_POSITION_STALE carried no valid head_seq')
   }
+  if (body.head_hash !== undefined && body.head_hash !== null && typeof body.head_hash !== 'string') {
+    throw new ProtocolError('IDENTITY_CHAIN_POSITION_STALE carried a malformed head_hash')
+  }
   return body as StaleBody
 }
 
@@ -48,10 +51,18 @@ async function submitChainedEvent<T>(send: (position: ChainPosition) => Promise<
     } catch (error) {
       const head = staleHead(error)
       if (!head) throw error
-      const prevHash = head.head_hash ? parseHash('head_hash', head.head_hash) : null
+      const prevHash = head.head_hash == null ? null : parseStaleHash(head.head_hash)
       if (attempt > 0) throw new IdentityChainPositionStaleError(head.head_seq, head.head_hash ?? null)
       position = { seq: head.head_seq + 1, prevHash }
     }
+  }
+}
+
+function parseStaleHash(text: string): Uint8Array {
+  try {
+    return parseHash('head_hash', text)
+  } catch {
+    throw new ProtocolError('IDENTITY_CHAIN_POSITION_STALE carried a malformed head_hash')
   }
 }
 

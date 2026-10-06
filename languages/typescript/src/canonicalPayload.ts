@@ -91,6 +91,11 @@ function writeString(s: string, out: string[]): void {
   out.push('"')
 }
 
+function isPlainObject(value: object): boolean {
+  const proto = Object.getPrototypeOf(value)
+  return proto === Object.prototype || proto === null
+}
+
 function writeValue(value: unknown, out: string[], depth: number): void {
   if (depth > MAX_DEPTH) {
     throw new CanonicalPayloadError('too_deep', `payload nests deeper than ${MAX_DEPTH} levels`)
@@ -107,12 +112,13 @@ function writeValue(value: unknown, out: string[], depth: number): void {
     writeString(value, out)
   } else if (Array.isArray(value)) {
     out.push('[')
-    value.forEach((item, i) => {
+    for (let i = 0; i < value.length; i += 1) {
+      if (!(i in value)) throw new TypeError('a sparse array has no JSON encoding')
       if (i > 0) out.push(',')
-      writeValue(item, out, depth + 1)
-    })
+      writeValue(value[i], out, depth + 1)
+    }
     out.push(']')
-  } else if (typeof value === 'object' && value !== undefined) {
+  } else if (typeof value === 'object' && isPlainObject(value)) {
     const entries = Object.keys(value).sort(compareUtf16)
     out.push('{')
     entries.forEach((key, i) => {

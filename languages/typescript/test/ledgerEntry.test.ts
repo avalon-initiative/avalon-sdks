@@ -60,6 +60,21 @@ describe('timestampMicrosFromRfc3339', () => {
     expect(timestampMicrosFromRfc3339('1969-12-31T19:00:00-05:00')).toBe(0n)
   })
 
+  it('range-checks the offset like the time crate', () => {
+    for (const bad of ['+99:99', '+24:00', '+00:60', '-24:00']) {
+      expect(() => timestampMicrosFromRfc3339(`2026-01-02T03:04:05${bad}`), bad).toThrow(EntryHashError)
+    }
+    expect(timestampMicrosFromRfc3339('1970-01-01T23:59:59+23:59')).toBe(59_000_000n)
+  })
+
+  it('treats a leap second as the last microsecond of a UTC month, else rejects it', () => {
+    expect(timestampMicrosFromRfc3339('2016-12-31T23:59:60Z')).toBe(timestampMicrosFromRfc3339('2016-12-31T23:59:59.999999Z'))
+    expect(timestampMicrosFromRfc3339('2017-01-01T01:59:60+02:00')).toBe(timestampMicrosFromRfc3339('2016-12-31T23:59:59.999999Z'))
+    for (const bad of ['2016-12-30T23:59:60Z', '2016-12-31T23:58:60Z', '2016-12-31T22:59:60Z']) {
+      expect(() => timestampMicrosFromRfc3339(bad), bad).toThrow(EntryHashError)
+    }
+  })
+
   it('rejects text that is not an instant', () => {
     for (const bad of ['', '2026-01-02', '2026-02-30T00:00:00Z', '2026-01-02T24:00:00Z', '2026-01-02T03:04:05']) {
       expect(() => timestampMicrosFromRfc3339(bad), bad).toThrow(EntryHashError)

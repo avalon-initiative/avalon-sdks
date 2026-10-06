@@ -51,19 +51,38 @@ export function timestampMicrosFromRfc3339(text: string): bigint {
   const m = RFC3339.exec(text)
   if (!m) throw new EntryHashError('out_of_range', 'timestamp is not an RFC 3339 instant')
   const [year, month, day, hour, minute, second] = m.slice(1, 7).map(Number)
+  const zone = m[8]
+  const zoneHour = zone.length === 6 ? Number(zone.slice(1, 3)) : 0
+  const zoneMinute = zone.length === 6 ? Number(zone.slice(4, 6)) : 0
+  // A leap second counts as 23:59:59.999999999 UTC on a month's last day, like Rust's time crate; else invalid.
+  const leap = second === 60
   const date = new Date(0)
   date.setUTCFullYear(year, month - 1, day)
-  date.setUTCHours(hour, minute, second, 0)
-  if (date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day || hour > 23 || minute > 59 || second > 59) {
+  date.setUTCHours(hour, minute, leap ? 59 : second, 0)
+  if (
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 60 ||
+    zoneHour > 23 ||
+    zoneMinute > 59
+  ) {
     throw new EntryHashError('out_of_range', 'timestamp is not a valid calendar instant')
   }
   let seconds = BigInt(date.getTime() / 1000)
-  const zone = m[8]
   if (zone !== 'Z' && zone !== 'z') {
-    const offset = (Number(zone.slice(1, 3)) * 60 + Number(zone.slice(4, 6))) * 60
+    const offset = (zoneHour * 60 + zoneMinute) * 60
     seconds -= BigInt(zone[0] === '-' ? -offset : offset)
   }
-  const micros = BigInt((m[7] ?? '').padEnd(6, '0').slice(0, 6))
+  if (leap) {
+    const utc = new Date(Number(seconds) * 1000)
+    const nextDay = new Date(utc.getTime() + 1000)
+    if (utc.getUTCHours() !== 23 || utc.getUTCMinutes() !== 59 || nextDay.getUTCDate() !== 1) {
+      throw new EntryHashError('out_of_range', 'a leap second is only valid at the end of a UTC month')
+    }
+  }
+  const micros = leap ? 999_999n : BigInt((m[7] ?? '').padEnd(6, '0').slice(0, 6))
   return checkI64(seconds * 1_000_000n + micros, 'timestamp')
 }
 

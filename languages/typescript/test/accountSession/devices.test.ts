@@ -162,7 +162,7 @@ describe('AccountSession.approveDeviceGrant key handling', () => {
     const session = testSession({
       secretKey,
       publicKey,
-      signingKeyId: 'approver-key-id',
+      signingKeyId: crypto.randomUUID(),
     })
     await expect(session.approveDeviceGrant(crypto.randomUUID(), 'AAAA')).rejects.toBeInstanceOf(TypeError)
   })
@@ -195,6 +195,18 @@ describe('AccountSession.revokeDevice', () => {
     expect(verify(publicKey, bytes, base64ToBytes(retry.signature as string))).toBe(true)
   })
 
+  it('rejects a stale 409 with a malformed head_hash as a protocol error', async () => {
+    for (const head_hash of [5, '', 'zz', 'AB'.repeat(32)]) {
+      const { secretKey, publicKey } = generateSigningKey()
+      const session = testSession({ secretKey, publicKey, signingKeyId: crypto.randomUUID() })
+      vi.stubGlobal(
+        'fetch',
+        mockResponses([{ status: 409, body: { error: 'x', code: 'IDENTITY_CHAIN_POSITION_STALE', head_seq: 1, head_hash } }]),
+      )
+      await expect(session.revokeDevice(crypto.randomUUID()), JSON.stringify(head_hash)).rejects.toBeInstanceOf(ProtocolError)
+    }
+  })
+
   it('rejects a stale 409 without a usable head as a protocol error', async () => {
     const { secretKey, publicKey } = generateSigningKey()
     const session = testSession({ secretKey, publicKey, signingKeyId: crypto.randomUUID() })
@@ -209,7 +221,7 @@ describe('device grant and revocation input validation', () => {
     const session = testSession({
       secretKey,
       publicKey,
-      signingKeyId: 'approver-key-id',
+      signingKeyId: crypto.randomUUID(),
     })
     const identityPoint = new Uint8Array(32)
     identityPoint[0] = 1

@@ -32,6 +32,15 @@ describe('canonicalize (values)', () => {
     expect(() => canonicalize('\ud800')).toThrow(TypeError)
   })
 
+  it('rejects non-plain objects and sparse arrays', () => {
+    expect(() => canonicalize(new Date())).toThrow(TypeError)
+    expect(() => canonicalize(new Map([['a', 1]]))).toThrow(TypeError)
+    expect(() => canonicalize(new Uint8Array(2))).toThrow(TypeError)
+    expect(() => canonicalize([, 1])).toThrow(TypeError) // eslint-disable-line no-sparse-arrays
+    expect(() => canonicalize({ a: new Date() })).toThrow(TypeError)
+    expect(canonicalize(Object.assign(Object.create(null), { a: 1 }))).toBe('{"a":1}')
+  })
+
   it('caps nesting depth', () => {
     let deep: unknown = 1
     for (let i = 0; i < MAX_DEPTH; i += 1) deep = [deep]
