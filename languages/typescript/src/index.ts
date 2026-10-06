@@ -325,6 +325,20 @@ export {
   deviceGrantApprovalSigningBytes,
   signingKeyRevokedSigningBytes,
 } from './crypto/signing.js'
+export { Builder, Reader, DomainTag, tags, ALL_TAGS, SigningBytesError, uuidToBytes } from './crypto/signingBytes.js'
+export type { SigningBytesErrorCode } from './crypto/signingBytes.js'
+export { canonicalize, canonicalizeStr, parseStrict, CanonicalPayloadError } from './canonicalPayload.js'
+export type { CanonicalPayloadErrorCode } from './canonicalPayload.js'
+export {
+  entryHash,
+  entryHashHex,
+  entrySigningBytes,
+  payloadHash,
+  parseHash,
+  timestampMicrosFromRfc3339,
+  EntryHashError,
+} from './ledgerEntry.js'
+export type { EntryHashInput, EntryHashErrorCode } from './ledgerEntry.js'
 export {
   deriveIdentityId,
   identityIdMatchesKey,

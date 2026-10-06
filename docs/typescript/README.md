@@ -23,8 +23,13 @@ are both implemented for real, not stubbed out.
 ## Shape of the API
 
 - Identity ids are branded `IdentityId` strings (64 lowercase hex characters derived from the inception key):
-  `parseIdentityId`, `deriveIdentityId`, and the v2 signing-bytes functions are exported. `register` generates the key
-  first and derives the id; see the root README's "Identity ids and registration".
+  `parseIdentityId`, `deriveIdentityId`, and the structured (v3) identity key event signing functions are exported. `register`
+  generates the key first and derives the id; see the root README's "Identity ids and registration".
+- The structured signing-bytes primitive (`Builder`, `Reader`, the `tags` registry), the restricted RFC 8785 canonical payload
+  encoder (`canonicalize`, strict `parseStrict`) and the ledger entry hash (`entryHash`, `payloadHash`) are exported and run
+  against the shared conformance vectors. `approveDeviceGrant` and `revokeDevice` sign the chain position the event will occupy
+  and, on a stale-position 409, re-sign once at the head the server returns (`IdentityChainPositionStaleError` if it moves
+  again).
 
 - `AvalonClient` — the entry point: `register(displayName)`,
   `login(credentials)`, `resumeAccountSession(token)`,

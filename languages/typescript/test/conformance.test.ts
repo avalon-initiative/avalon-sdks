@@ -18,10 +18,25 @@ import { deriveSigningKeyFromMnemonic, isValidMnemonic } from '../src/crypto/mne
 import { attestationSigningBytes, bulkAttestationSigningBytes } from '../src/integratorSession.js'
 import { revocationSigningBytes } from '../src/integratorAccount.js'
 import {
+  deviceGrantApprovalSigningBytes,
+  identityCreatedSigningBytes,
   publicKeyFromSecretKey,
   sign,
+  signingKeyRevokedSigningBytes,
   verify,
 } from '../src/crypto/signing.js'
+import { ALL_TAGS, Builder, Reader, SigningBytesError, tags, type DomainTag } from '../src/crypto/signingBytes.js'
+import { CanonicalPayloadError, canonicalize, canonicalizeStr, parseStrict } from '../src/canonicalPayload.js'
+import {
+  EntryHashError,
+  entryHashHex,
+  entrySigningBytes,
+  parseHash,
+  payloadHash,
+  timestampMicrosFromRfc3339,
+  type EntryHashInput,
+} from '../src/ledgerEntry.js'
+import { sha256 } from '@noble/hashes/sha2.js'
 import { deriveIdentityId, identityIdMatchesKey, isIdentityId, parseIdentityId } from '../src/identityId.js'
 import { isAcceptableShardKey, verifyStrict } from '../src/network/strictEd25519.js'
 import { signingMessage } from '../src/network/sthMessage.js'
@@ -485,21 +500,312 @@ describe('conformance: identity ids', () => {
   })
 })
 
-// Vectors whose supportedIn omits typescript are visible skips carrying the file's own reason.
-function skipUnlisted(file: string, pending: string): void {
-  const doc = loadVector(file)
-  if (doc.supportedIn.includes('typescript')) {
-    throw new Error(`${file} now lists typescript in supportedIn; add a runner and remove this skip`)
-  }
+// The runners below execute every vector in their file; they do not gate on supportedIn.
+function seqOf(input: { seq: string }): bigint {
+  return BigInt(input.seq)
+}
+
+function prevHashOf(input: { prevHashHex: string | null }): Uint8Array | null {
+  return input.prevHashHex === null ? null : hexToBytes(input.prevHashHex)
+}
+
+// Shared checks for the three identity key event files: exact bytes, exact signature, strict verify, and
+// replay/legacy signatures that must not verify for the rebuilt bytes.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function runIdentityKeyEventVectors(file: string, build: (doc: any, input: any) => Uint8Array): void {
   describe(`conformance: ${file}`, () => {
-    it.skip(`skipped: ${pending}; notSupported: ${JSON.stringify(doc.notSupported ?? null)}`, () => {})
+    const doc = loadVector(file)
+    const secretKey = hexToBytes(doc.signingKeySeedHex)
+    const publicKey = hexToBytes(doc.signingPublicKeyHex)
+
+    it('derives the shared public key from the seed', () => {
+      expect(bytesToHex(publicKeyFromSecretKey(secretKey))).toBe(doc.signingPublicKeyHex)
+    })
+
+    for (const v of doc.vectors) {
+      it(`signs the shared vector: ${v.name}`, () => {
+        const bytes = build(doc, v.input)
+        expect(bytesToHex(bytes)).toBe(v.expected.signingBytesHex)
+        const signature = sign(secretKey, bytes)
+        expect(bytesToHex(signature)).toBe(v.expected.signatureHex)
+        expect(verifyStrict(publicKey, bytes, signature)).toBe(true)
+      })
+    }
+
+    for (const group of ['replayVectors', 'legacyLayoutVectors']) {
+      expect(doc[group].length, `${file} ${group}`).toBeGreaterThan(0)
+      for (const r of doc[group]) {
+        it(`${group}: ${r.name}`, () => {
+          const bytes = build(doc, r.input)
+          if (r.legacySigningBytesUtf8 !== undefined) {
+            const legacy = new TextEncoder().encode(r.legacySigningBytesUtf8)
+            expect(bytes).not.toEqual(legacy)
+            expect(verifyStrict(publicKey, legacy, hexToBytes(r.signatureHex))).toBe(true)
+          }
+          expect(verifyStrict(publicKey, bytes, hexToBytes(r.signatureHex))).toBe(r.expected.valid)
+        })
+      }
+    }
   })
 }
 
-const PENDING_V3 = 'v3 structured signing is not in the TypeScript SDK yet (avalon-sdks #100)'
-skipUnlisted('identity-created-signing.json', PENDING_V3)
-skipUnlisted('device-grant-approval.json', PENDING_V3)
-skipUnlisted('signing-key-revoked.json', PENDING_V3)
+runIdentityKeyEventVectors('identity-created-signing.json', (doc, input) =>
+  identityCreatedSigningBytes(
+    input.networkId,
+    input.shardId,
+    input.ticketId,
+    doc.identityId,
+    hexToBytes(doc.signingPublicKeyHex),
+    input.displayName,
+  ),
+)
+
+runIdentityKeyEventVectors('device-grant-approval.json', (_doc, input) =>
+  deviceGrantApprovalSigningBytes(
+    input.grantId,
+    input.identityId,
+    input.approverSigningKeyId,
+    hexToBytes(input.requestedPublicKeyHex),
+    seqOf(input),
+    prevHashOf(input),
+  ),
+)
+
+runIdentityKeyEventVectors('signing-key-revoked.json', (_doc, input) =>
+  signingKeyRevokedSigningBytes(
+    input.identityId,
+    input.signingKeyId,
+    input.revokedBySigningKeyId,
+    seqOf(input),
+    prevHashOf(input),
+  ),
+)
+
+function tagByName(name: string): DomainTag {
+  const tag = ALL_TAGS.find((t) => t.name === name)
+  if (!tag) throw new Error(`tag ${name} is not in the registry`)
+  return tag
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function fieldBytes(field: any): Uint8Array {
+  const repeat = (unit: Uint8Array): Uint8Array => {
+    const out = new Uint8Array(unit.length * field.count)
+    for (let i = 0; i < field.count; i += 1) out.set(unit, i * unit.length)
+    return out
+  }
+  switch (field.type) {
+    case 'str':
+      return field.utf8 !== undefined
+        ? new TextEncoder().encode(field.utf8)
+        : repeat(new TextEncoder().encode(field.repeatUtf8))
+    case 'bytes':
+      return field.hex !== undefined ? hexToBytes(field.hex) : repeat(hexToBytes(field.repeatByteHex))
+    default:
+      return hexToBytes(field.hex)
+  }
+}
+
+describe('conformance: structured-signing-bytes.json', () => {
+  const doc = loadVector('structured-signing-bytes.json')
+
+  for (const v of doc.vectors) {
+    it(`builds and reads back: ${v.name}`, () => {
+      const tag = tagByName(v.input.tag)
+      const builder = new Builder(tag, v.input.version)
+      for (const f of v.input.fields) {
+        switch (f.type) {
+          case 'str':
+            builder.str(toUtf8(fieldBytes(f)))
+            break
+          case 'bytes':
+            builder.bytes(fieldBytes(f))
+            break
+          case 'key':
+            builder.key(fieldBytes(f))
+            break
+          case 'hash':
+            builder.hash(fieldBytes(f))
+            break
+          case 'fixed':
+            builder.fixed(fieldBytes(f), 4)
+            break
+          case 'uuid':
+            builder.uuid(f.value)
+            break
+          case 'u8':
+          case 'u16':
+          case 'u32':
+          case 'u64':
+          case 'i64':
+            builder[f.type as 'u8'](BigInt(f.value))
+            break
+          default:
+            throw new Error(`unknown field type ${f.type}`)
+        }
+      }
+      const message = builder.finish()
+
+      if (v.expected.signingBytesHex !== undefined) {
+        expect(bytesToHex(message)).toBe(v.expected.signingBytesHex)
+      } else {
+        expect(message.length).toBe(v.expected.signingBytesLength)
+        expect(bytesToHex(sha256(message))).toBe(v.expected.signingBytesSha256Hex)
+      }
+
+      const reader = new Reader(tag, message)
+      expect(reader.version).toBe(v.input.version)
+      for (const f of v.input.fields) {
+        switch (f.type) {
+          case 'str':
+            expect(reader.str()).toBe(toUtf8(fieldBytes(f)))
+            break
+          case 'bytes':
+            expect(reader.bytes()).toEqual(fieldBytes(f))
+            break
+          case 'key':
+            expect(reader.key()).toEqual(fieldBytes(f))
+            break
+          case 'hash':
+            expect(reader.hash()).toEqual(fieldBytes(f))
+            break
+          case 'fixed':
+            expect(reader.fixed(4)).toEqual(fieldBytes(f))
+            break
+          case 'uuid':
+            expect(reader.uuid()).toBe(f.value)
+            break
+          case 'u8':
+          case 'u16':
+          case 'u32':
+            expect(String(reader[f.type as 'u8']())).toBe(f.value)
+            break
+          case 'u64':
+          case 'i64':
+            expect(reader[f.type as 'u64']().toString()).toBe(f.value)
+            break
+          default:
+            throw new Error(`unknown field type ${f.type}`)
+        }
+      }
+      reader.finish()
+    })
+  }
+
+  expect(doc.rejectVectors.length).toBeGreaterThan(0)
+  for (const v of doc.rejectVectors) {
+    it(`rejects: ${v.name}`, () => {
+      const message = hexToBytes(v.input.messageHex)
+      const read = (): void => {
+        const reader = new Reader(tagByName(v.input.tag), message)
+        for (const ty of v.input.read) {
+          if (ty === 'str') reader.str()
+          else if (ty === 'bytes') reader.bytes()
+          else if (ty === 'u32') reader.u32()
+          else throw new Error(`unknown read type ${ty}`)
+        }
+        reader.finish()
+      }
+      let code: string | undefined
+      try {
+        read()
+      } catch (error) {
+        if (!(error instanceof SigningBytesError)) throw error
+        code = error.code
+      }
+      expect(code).toBe(v.expected.error)
+    })
+  }
+})
+
+describe('conformance: domain-tags.json', () => {
+  const doc = loadVector('domain-tags.json')
+
+  it('the registry matches the shared list, in order', () => {
+    const have = Object.entries(tags).map(([kind, tag]) => ({ kind: kind.toLowerCase(), tag: tag.name }))
+    expect(have).toEqual(doc.tags)
+    expect(ALL_TAGS.map((t) => t.name)).toEqual(doc.tags.map((t: { tag: string }) => t.tag))
+  })
+})
+
+describe('conformance: canonical-payload.json', () => {
+  const doc = loadVector('canonical-payload.json')
+
+  it('loads the full vector set', () => {
+    expect(doc.vectors.length).toBeGreaterThan(50)
+  })
+
+  for (const v of doc.vectors) {
+    it(`${v.expected.error ? 'rejects' : 'encodes'}: ${v.name}`, () => {
+      if (v.expected.error === undefined) {
+        expect(canonicalizeStr(v.input.jsonUtf8)).toBe(v.expected.canonicalUtf8)
+        return
+      }
+      let code: string | undefined
+      try {
+        canonicalizeStr(v.input.jsonUtf8)
+      } catch (error) {
+        if (!(error instanceof CanonicalPayloadError)) throw error
+        code = error.code
+      }
+      expect(code).toBe(v.expected.error)
+    })
+  }
+})
+
+describe('conformance: ledger-entry-hash.json', () => {
+  const doc = loadVector('ledger-entry-hash.json')
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function inputOf(input: any): EntryHashInput {
+    return {
+      networkId: input.networkId,
+      shardId: input.shardId,
+      seq: BigInt(input.seq),
+      prevHash: parseHash('prev_hash', input.prevHashHex),
+      eventId: input.eventId,
+      kind: input.kind,
+      issuer: input.issuer,
+      subject: input.subject,
+      payloadHash:
+        input.payloadHashHex !== undefined
+          ? parseHash('payload_hash', input.payloadHashHex)
+          : payloadHash(parseStrict(input.payloadJsonUtf8)),
+      timestampMicros: BigInt(input.timestampUnixMicros),
+      version: input.version,
+    }
+  }
+
+  for (const v of doc.vectors) {
+    it(`hashes: ${v.name}`, () => {
+      const { input, expected } = v
+      if (input.payloadJsonUtf8 !== undefined) {
+        const value = parseStrict(input.payloadJsonUtf8)
+        expect(canonicalize(value)).toBe(expected.payloadCanonicalUtf8)
+        expect(bytesToHex(payloadHash(value))).toBe(expected.payloadHashHex)
+      }
+      const bytes = entrySigningBytes(inputOf(input))
+      expect(bytesToHex(bytes)).toBe(expected.signingBytesHex)
+      expect(bytesToHex(sha256(bytes))).toBe(expected.entryHashHex)
+      expect(entryHashHex(inputOf(input))).toBe(expected.entryHashHex)
+      expect(timestampMicrosFromRfc3339(input.eventTimestampRfc3339).toString()).toBe(input.timestampUnixMicros)
+    })
+  }
+
+  expect(doc.rejectVectors.length).toBeGreaterThan(0)
+  for (const v of doc.rejectVectors) {
+    it(`rejects: ${v.name}`, () => {
+      let code: string | undefined
+      try {
+        entrySigningBytes(inputOf(v.input))
+      } catch (error) {
+        if (!(error instanceof EntryHashError)) throw error
+        code = error.code
+      }
+      expect(code).toBe(v.expected.error)
+    })
+  }
+})
 
 describe('conformance: shard sibling routing', () => {
   const doc = loadVector('shard-sibling-routing.json')
@@ -537,12 +843,8 @@ describe('conformance: shard sibling routing', () => {
 
 // Vector files with no runner in this SDK yet, each with the reason it is skipped.
 const NO_RUNNER: Record<string, string> = {
-  'canonical-payload.json': 'canonical payload encoder not in the SDK (#100)',
-  'domain-tags.json': 'domain tag registry not in the SDK (#100)',
   'identity-chain.json': 'identity chain resolution is protocol-side only',
-  'ledger-entry-hash.json': 'ledger entry hash not in the SDK (#100)',
   'node-request.json': 'node-to-node route, not in OpenAPI; supportedIn is empty',
-  'structured-signing-bytes.json': 'structured signing primitive not in the SDK (#100)',
 }
 
 describe('conformance: every vector file is accounted for', () => {
