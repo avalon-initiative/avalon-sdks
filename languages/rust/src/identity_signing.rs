@@ -1,12 +1,13 @@
-//! Self-certifying identity ids and the v2 signing bytes that carry them.
+//! Key acceptability, strict verification and the v3 identity key-event signing bytes.
 //!
-//! A public key is lowercase hex inside every signing-byte string here and standard base64 on the
-//! wire. Pinned by `conformance/vectors/identity-id.json`, `identity-created-signing.json`,
+//! Layouts are the structured form of [`crate::signing_bytes`] (keys and ids raw); a public key is
+//! standard base64 on the wire. Pinned by `conformance/vectors/identity-id.json`, `identity-created-signing.json`,
 //! `device-grant-approval.json` and `signing-key-revoked.json`.
 
 use ed25519_dalek::{Signature, VerifyingKey};
 use uuid::Uuid;
 
+use crate::signing_bytes::{tags, Builder};
 use crate::types::ids::IdentityId;
 
 /// Whether `key` is an acceptable id-committed key: canonical encoding and not of small order.
@@ -25,10 +26,9 @@ pub fn verify_strict(key: &VerifyingKey, message: &[u8], signature: &[u8; 64]) -
         .is_ok()
 }
 
-/// Bytes signed for `identity.created` v2:
-/// `avalon:identity.created:v2:{len(network_id)}:{network_id}:{len(shard_id)}:{shard_id}:{ticket_id}:{identity_id}:{public_key_hex}:{display_name}`
-/// with `len` the decimal UTF-8 byte length.
-pub fn identity_created_signing_bytes_v2(
+/// Bytes signed for `identity.created`: tag, version 1, then `network_id` str, `shard_id` str,
+/// `ticket_id` uuid, `identity_id` raw, inception key raw, `display_name` str.
+pub fn identity_created_signing_bytes(
     network_id: &str,
     shard_id: &str,
     ticket_id: Uuid,
@@ -36,38 +36,60 @@ pub fn identity_created_signing_bytes_v2(
     public_key: &[u8; 32],
     display_name: &str,
 ) -> Vec<u8> {
-    format!(
-        "avalon:identity.created:v2:{}:{network_id}:{}:{shard_id}:{ticket_id}:{identity_id}:{}:{display_name}",
-        network_id.len(),
-        shard_id.len(),
-        hex::encode(public_key)
-    )
-    .into_bytes()
+    Builder::new(tags::IDENTITY_CREATED, 1)
+        .str(network_id)
+        .str(shard_id)
+        .uuid(ticket_id)
+        .fixed(&identity_id.to_bytes())
+        .key(public_key)
+        .str(display_name)
+        .finish()
+        .expect("identity.created fields fit a u32 length")
 }
 
-/// Bytes the approving device signs for a grant:
-/// `avalon:device_grant.approved:v2:{grant_id}:{identity_id}:{requested_public_key_hex}`.
-pub fn device_grant_approval_signing_bytes_v2(
+/// The chain position a key event signs: `seq` u64, then `prev_hash` as a flag byte (0, or 1 and 32 raw bytes).
+fn with_position(builder: Builder, seq: u64, prev_hash: Option<&[u8; 32]>) -> Builder {
+    let builder = builder.u64(seq);
+    match prev_hash {
+        Some(hash) => builder.u8(1).hash(hash),
+        None => builder.u8(0),
+    }
+}
+
+/// Bytes the approving device signs for a grant: tag, version 1, then `grant_id` uuid, `identity_id`
+/// raw, `approver_signing_key_id` uuid, requested key raw, and the chain position.
+pub fn device_grant_approval_signing_bytes(
     grant_id: Uuid,
     identity_id: &IdentityId,
+    approver_signing_key_id: Uuid,
     requested_public_key: &[u8; 32],
+    seq: u64,
+    prev_hash: Option<&[u8; 32]>,
 ) -> Vec<u8> {
-    format!(
-        "avalon:device_grant.approved:v2:{grant_id}:{identity_id}:{}",
-        hex::encode(requested_public_key)
-    )
-    .into_bytes()
+    let builder = Builder::new(tags::DEVICE_GRANT_APPROVED, 1)
+        .uuid(grant_id)
+        .fixed(&identity_id.to_bytes())
+        .uuid(approver_signing_key_id)
+        .key(requested_public_key);
+    with_position(builder, seq, prev_hash)
+        .finish()
+        .expect("device grant fields fit a u32 length")
 }
 
-/// Bytes a signing-key revocation signs:
-/// `avalon:identity.signing_key_revoked:v2:{identity_id}:{signing_key_id}:{revoked_by_signing_key_id}`.
-pub fn signing_key_revoked_signing_bytes_v2(
+/// Bytes a signing-key revocation signs: tag, version 1, then `identity_id` raw, `signing_key_id`
+/// uuid, `revoked_by_signing_key_id` uuid, and the chain position.
+pub fn signing_key_revoked_signing_bytes(
     identity_id: &IdentityId,
     signing_key_id: Uuid,
     revoked_by_signing_key_id: Uuid,
+    seq: u64,
+    prev_hash: Option<&[u8; 32]>,
 ) -> Vec<u8> {
-    format!(
-        "avalon:identity.signing_key_revoked:v2:{identity_id}:{signing_key_id}:{revoked_by_signing_key_id}"
-    )
-    .into_bytes()
+    let builder = Builder::new(tags::IDENTITY_SIGNING_KEY_REVOKED, 1)
+        .fixed(&identity_id.to_bytes())
+        .uuid(signing_key_id)
+        .uuid(revoked_by_signing_key_id);
+    with_position(builder, seq, prev_hash)
+        .finish()
+        .expect("signing key revocation fields fit a u32 length")
 }

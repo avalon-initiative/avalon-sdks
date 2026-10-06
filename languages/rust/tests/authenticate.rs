@@ -12,7 +12,7 @@
 //! a WebAuthn passkey for login, a separate raw Ed25519 key for signing the
 //! `identity.created` event.
 
-use avalon_sdk::identity_signing::identity_created_signing_bytes_v2;
+use avalon_sdk::identity_signing::identity_created_signing_bytes;
 use avalon_sdk::types::ids::IdentityId;
 use avalon_sdk::{AvalonClient, AvalonConfig};
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -80,7 +80,7 @@ async fn register_and_login(http: &reqwest::Client, base: &str, display_name: &s
         .await
         .expect("WebAuthn registration ceremony failed");
 
-    let signing_bytes = identity_created_signing_bytes_v2(
+    let signing_bytes = identity_created_signing_bytes(
         start["network_id"].as_str().unwrap(),
         start["shard_id"].as_str().unwrap(),
         ticket_id.parse().unwrap(),

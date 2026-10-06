@@ -404,15 +404,8 @@ impl AccountSession {
         }
     }
 
-    /// Signs `message` directly with this session's local key — for the
-    /// one call site (`devices::approve_device_grant`) whose signed bytes
-    /// predate #698's generalized `avalon:<tag>:v1:...` shape enough that
-    /// it's clearer to build them explicitly rather than force-fit
-    /// [`AccountSession::sign`]'s `(action_tag, fields)` shape (even
-    /// though the bytes end up identical — see that call site). Panics if
-    /// this session holds no local signing key; callers must check
-    /// [`AccountSession::signing_key_id`] first.
-    #[allow(dead_code)] // v3 identity key event signing (#99) uses it again
+    /// Signs exact `message` bytes (the structured key-event layouts) with this session's local
+    /// key. Panics without one; callers check [`AccountSession::signing_key_id`] first.
     pub(crate) fn sign_raw(&self, message: &[u8]) -> String {
         let signing = self
             .signing
@@ -677,7 +670,7 @@ impl AvalonClient {
         let (webauthn_credential, stored_passkey) =
             webauthn::registration_ceremony(start.challenge).await?;
 
-        let signing_bytes = crate::identity_signing::identity_created_signing_bytes_v2(
+        let signing_bytes = crate::identity_signing::identity_created_signing_bytes(
             &start.network_id,
             &start.shard_id,
             start.ticket_id,
