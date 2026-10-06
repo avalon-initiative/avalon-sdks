@@ -1070,7 +1070,7 @@ fn domain_tag_registry_matches_shared_vectors() {
 
 #[test]
 fn canonical_payload_matches_shared_vectors() {
-    use avalon_sdk::canonical_payload::{canonicalize_str, CanonicalPayloadError};
+    use avalon_sdk::canonical_payload::canonicalize_str;
     let doc = load("canonical-payload.json");
     let vectors = doc["vectors"].as_array().expect("vectors array");
     assert!(vectors.len() > 50, "vectors file looks truncated");
@@ -1086,10 +1086,7 @@ fn canonical_payload_matches_shared_vectors() {
             Some(code) => {
                 let got_code = match got {
                     Ok(out) => panic!("{name}: expected {code}, got {out}"),
-                    Err(CanonicalPayloadError::InvalidNumber { .. }) => "invalid_number",
-                    Err(CanonicalPayloadError::DuplicateKey { .. }) => "duplicate_key",
-                    Err(CanonicalPayloadError::Malformed(_)) => "malformed",
-                    Err(CanonicalPayloadError::TooDeep) => "too_deep",
+                    Err(e) => e.code(),
                 };
                 assert_eq!(got_code, code, "{name}");
             }
