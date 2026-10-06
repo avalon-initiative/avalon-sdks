@@ -3178,10 +3178,18 @@ export interface components {
              *     revoked.
              */
             approver_signing_key_id: string;
+            /** @description Lowercase hex event hash of the chain head the event extends; absent for a new chain. */
+            prev_hash?: string | null;
             /**
-             * @description Base64-encoded Ed25519 signature over
-             *     `device_grant_approval_signing_bytes_v2(grant_id, identity_id, requested_signing_public_key)`,
-             *     produced by `approver_signing_key_id`'s key.
+             * Format: int64
+             * @description Chain position the signature covers: the identity chain's head `seq` plus one (1 for a
+             *     new chain). A stale position is refused with `IDENTITY_CHAIN_POSITION_STALE`.
+             */
+            seq: number;
+            /**
+             * @description Base64-encoded Ed25519 signature over `device_grant_approval_signing_bytes`
+             *     (grant, identity, approver key id, requested key, `seq`, `prev_hash`), produced by
+             *     `approver_signing_key_id`'s key. The new key's id is the grant id.
              */
             signature: string;
         };
@@ -3338,6 +3346,19 @@ export interface components {
         };
         CancelRecoveryRequest: {
             reason?: string | null;
+        };
+        /**
+         * @description Body of a 409 `IDENTITY_CHAIN_POSITION_STALE`: the head a signer re-signs against
+         *     (`head_seq` 0 and no `head_hash` for a chain with no events yet).
+         */
+        ChainPositionStaleBody: {
+            /** @description Always `IDENTITY_CHAIN_POSITION_STALE`. */
+            code: string;
+            error: string;
+            /** @description Lowercase hex event hash of the chain head; null when the chain is empty. */
+            head_hash?: string | null;
+            /** Format: int64 */
+            head_seq: number;
         };
         ChannelResponse: {
             announcement_only: boolean;
@@ -3630,7 +3651,7 @@ export interface components {
             requested_at: string;
             /**
              * @description Base64-encoded — the approving device needs this exact value to
-             *     reconstruct `device_grant_approval_signing_bytes_v2` and sign it; the
+             *     reconstruct `device_grant_approval_signing_bytes` and sign it; the
              *     server never trusts a client-supplied copy of its own request back,
              *     but the *approver* is a different device that only ever learns this
              *     key by reading it back off this response.
@@ -4674,8 +4695,9 @@ export interface components {
             device_label?: string | null;
             /**
              * @description Base64-encoded Ed25519 signature over
-             *     `avalon_protocol::identity_id::identity_created_signing_bytes_v2`, which covers this
-             *     ceremony's `ticket_id` and the `network_id` returned by `register/start`.
+             *     `avalon_protocol::identity_id::identity_created_signing_bytes`, which covers this
+             *     ceremony's `ticket_id` (also the id of the inception signing key) and the `network_id`
+             *     returned by `register/start`.
              */
             event_signature: string;
             /** Format: uuid */
@@ -4802,14 +4824,22 @@ export interface components {
             signature: string;
         };
         RevokeDeviceRequest: {
+            /** @description Lowercase hex event hash of the chain head the event extends; absent for a new chain. */
+            prev_hash?: string | null;
             /**
              * Format: uuid
              * @description The caller's own active signing key that signs the revocation (may be the key being revoked).
              */
             revoked_by_signing_key_id: string;
             /**
+             * Format: int64
+             * @description Chain position the signature covers: the identity chain's head `seq` plus one (1 for a
+             *     new chain). A stale position is refused with `IDENTITY_CHAIN_POSITION_STALE`.
+             */
+            seq: number;
+            /**
              * @description Base64 Ed25519 signature by `revoked_by_signing_key_id` over
-             *     `avalon_protocol::identity_id::signing_key_revoked_signing_bytes_v2`.
+             *     `avalon_protocol::identity_id::signing_key_revoked_signing_bytes`.
              */
             signature: string;
         };
@@ -8460,6 +8490,22 @@ export interface operations {
                     "application/json": components["schemas"]["DeviceResponse"];
                 };
             };
+            /** @description INVALID_CHAIN_POSITION: prev_hash is not 64 lowercase hex characters */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description IDENTITY_CHAIN_POSITION_STALE (typed body: head_seq and head_hash to sign against) or IDENTITY_CHAIN_FORKED (generic error body) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChainPositionStaleBody"];
+                };
+            };
         };
     };
     rename_device: {
@@ -8510,12 +8556,21 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description LAST_SIGNING_KEY: the last active signing key cannot be revoked */
-            409: {
+            /** @description INVALID_CHAIN_POSITION: prev_hash is not 64 lowercase hex characters */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description IDENTITY_CHAIN_POSITION_STALE (typed body: head_seq and head_hash to sign against), IDENTITY_CHAIN_FORKED or LAST_SIGNING_KEY (generic error body) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChainPositionStaleBody"];
+                };
             };
         };
     };
@@ -9496,4 +9551,4 @@ export interface operations {
 }
 
 // Issue #735: the info.version this file's types were generated from.
-export const OPENAPI_SCHEMA_VERSION = "0.12.0" as const
+export const OPENAPI_SCHEMA_VERSION = "0.13.0" as const

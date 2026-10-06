@@ -160,9 +160,22 @@ namespace Avalon.Sdk.Generated
         public System.Guid ApproverSigningKeyId { get; set; } = default!;
 
         /// <summary>
-        /// Base64-encoded Ed25519 signature over
-        /// <br/>`device_grant_approval_signing_bytes_v2(grant_id, identity_id, requested_signing_public_key)`,
-        /// <br/>produced by `approver_signing_key_id`'s key.
+        /// Lowercase hex event hash of the chain head the event extends; absent for a new chain.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("prev_hash")]
+        public string? PrevHash { get; set; } = default!;
+
+        /// <summary>
+        /// Chain position the signature covers: the identity chain's head `seq` plus one (1 for a
+        /// <br/>new chain). A stale position is refused with `IDENTITY_CHAIN_POSITION_STALE`.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("seq")]
+        public long Seq { get; set; } = default!;
+
+        /// <summary>
+        /// Base64-encoded Ed25519 signature over `device_grant_approval_signing_bytes`
+        /// <br/>(grant, identity, approver key id, requested key, `seq`, `prev_hash`), produced by
+        /// <br/>`approver_signing_key_id`'s key. The new key's id is the grant id.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("signature")]
         public string Signature { get; set; } = default!;
@@ -428,6 +441,34 @@ namespace Avalon.Sdk.Generated
 
         [System.Text.Json.Serialization.JsonPropertyName("reason")]
         public string? Reason { get; set; } = default!;
+
+    }
+
+    /// <summary>
+    /// Body of a 409 `IDENTITY_CHAIN_POSITION_STALE`: the head a signer re-signs against
+    /// <br/>(`head_seq` 0 and no `head_hash` for a chain with no events yet).
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class ChainPositionStaleBody
+    {
+
+        /// <summary>
+        /// Always `IDENTITY_CHAIN_POSITION_STALE`.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("code")]
+        public string Code { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("error")]
+        public string Error { get; set; } = default!;
+
+        /// <summary>
+        /// Lowercase hex event hash of the chain head; null when the chain is empty.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("head_hash")]
+        public string? HeadHash { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("head_seq")]
+        public long HeadSeq { get; set; } = default!;
 
     }
 
@@ -1006,7 +1047,7 @@ namespace Avalon.Sdk.Generated
 
         /// <summary>
         /// Base64-encoded — the approving device needs this exact value to
-        /// <br/>reconstruct `device_grant_approval_signing_bytes_v2` and sign it; the
+        /// <br/>reconstruct `device_grant_approval_signing_bytes` and sign it; the
         /// <br/>server never trusts a client-supplied copy of its own request back,
         /// <br/>but the *approver* is a different device that only ever learns this
         /// <br/>key by reading it back off this response.
@@ -3092,8 +3133,9 @@ namespace Avalon.Sdk.Generated
 
         /// <summary>
         /// Base64-encoded Ed25519 signature over
-        /// <br/>`avalon_protocol::identity_id::identity_created_signing_bytes_v2`, which covers this
-        /// <br/>ceremony's `ticket_id` and the `network_id` returned by `register/start`.
+        /// <br/>`avalon_protocol::identity_id::identity_created_signing_bytes`, which covers this
+        /// <br/>ceremony's `ticket_id` (also the id of the inception signing key) and the `network_id`
+        /// <br/>returned by `register/start`.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("event_signature")]
         public string EventSignature { get; set; } = default!;
@@ -3359,14 +3401,27 @@ namespace Avalon.Sdk.Generated
     {
 
         /// <summary>
+        /// Lowercase hex event hash of the chain head the event extends; absent for a new chain.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("prev_hash")]
+        public string? PrevHash { get; set; } = default!;
+
+        /// <summary>
         /// The caller's own active signing key that signs the revocation (may be the key being revoked).
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("revoked_by_signing_key_id")]
         public System.Guid RevokedBySigningKeyId { get; set; } = default!;
 
         /// <summary>
+        /// Chain position the signature covers: the identity chain's head `seq` plus one (1 for a
+        /// <br/>new chain). A stale position is refused with `IDENTITY_CHAIN_POSITION_STALE`.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("seq")]
+        public long Seq { get; set; } = default!;
+
+        /// <summary>
         /// Base64 Ed25519 signature by `revoked_by_signing_key_id` over
-        /// <br/>`avalon_protocol::identity_id::signing_key_revoked_signing_bytes_v2`.
+        /// <br/>`avalon_protocol::identity_id::signing_key_revoked_signing_bytes`.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("signature")]
         public string Signature { get; set; } = default!;
@@ -4668,6 +4723,6 @@ namespace Avalon.Sdk
         /// <summary>Issue #735/#725: the docs/generated/openapi.json `info.version`
         /// this file's generated types were produced from — generated straight from
         /// the same schema file, so it can't drift by construction.</summary>
-        public const string OpenApiSchemaVersion = "0.12.0";
+        public const string OpenApiSchemaVersion = "0.13.0";
     }
 }

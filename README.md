@@ -79,7 +79,7 @@ The npm and NuGet packages are installed from GitHub Packages (see "CI and relea
 ## Vendored files
 
 This repo has no live link back to `avalon-protocol` — two sets of files are
-checked-in copies, kept in sync by hand whenever the upstream schema changes:
+checked-in copies, synced with `make update-protocol` (`scripts/sync-protocol.sh update`) whenever the upstream schema changes:
 
 - `docs/generated/openapi.json` — `avalon-protocol`'s
   `docs/generated/openapi.json` (`make openapi` there;
@@ -97,7 +97,7 @@ checked-in copies, kept in sync by hand whenever the upstream schema changes:
   same files, so a real drift between the two repos fails a test on
   whichever side changed first, not silently. The directory is a byte-for-byte copy: runners load vectors by file name
   and gate on `supportedIn`, so protocol-only files (`identity-chain.json`, `node-request.json`) sit here unused.
-  `make check-vector-sync` (network; run by the vector-sync workflow, not by `make check`) fails on any difference.
+  `make sync-protocol` (network; run by the vector-sync workflow, not by `make check`) fails when the vectors or `openapi.json` differ from protocol main.
 
 Until real cross-repo tooling exists, resyncing any of these is a manual
 copy from the corresponding path in `avalon-protocol`, then this repo's
