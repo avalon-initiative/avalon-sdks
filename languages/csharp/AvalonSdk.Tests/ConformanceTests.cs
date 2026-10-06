@@ -330,4 +330,41 @@ public class ConformanceTests
             Assert.True(AvalonClient.VerifyTreeHeadHex(publicKeyHex, wire), $"[{name}] vector signature does not verify");
         }
     }
+
+    // Vector files with no runner in this SDK yet, each with the reason it is skipped.
+    private static readonly Dictionary<string, string> NoRunner = new()
+    {
+        ["canonical-payload.json"] = "canonical payload encoder not in the SDK (#101)",
+        ["domain-tags.json"] = "domain tag registry not in the SDK (#101)",
+        ["identity-chain.json"] = "identity chain resolution is protocol-side only",
+        ["ledger-entry-hash.json"] = "ledger entry hash not in the SDK (#101)",
+        ["node-request.json"] = "node-to-node route, not in OpenAPI; supportedIn is empty",
+        ["structured-signing-bytes.json"] = "structured signing primitive not in the SDK (#101)",
+    };
+
+    /// <summary>Every vector file is either referenced by a runner in this test project or listed in
+    /// <c>NoRunner</c>, so a new protocol vector cannot be synced in and silently go untested.</summary>
+    [Fact]
+    public void EveryVectorFile_HasARunnerOrIsListedAsPending()
+    {
+        var sources = Directory.GetFiles(
+            Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(VectorsDir())!)!, "languages", "csharp", "AvalonSdk.Tests"),
+            "*.cs");
+        // Quoted file names elsewhere in the test project count as a runner; this file's own list does not.
+        var text = string.Concat(sources.Where(f => Path.GetFileName(f) != "ConformanceTests.cs").Select(File.ReadAllText));
+        text += string.Join("\n", File.ReadAllLines(Path.Combine(Path.GetDirectoryName(sources[0])!, "ConformanceTests.cs"))
+            .Where(l => l.Contains("LoadVector(")));
+        foreach (var file in Directory.GetFiles(VectorsDir(), "*.json").Select(Path.GetFileName))
+        {
+            var name = file!;
+            if (NoRunner.ContainsKey(name))
+            {
+                Assert.DoesNotContain($"\"{name}\"", text);
+            }
+            else
+            {
+                Assert.True(text.Contains($"\"{name}\""), $"{name} has no runner and is not listed in NoRunner");
+            }
+        }
+    }
 }

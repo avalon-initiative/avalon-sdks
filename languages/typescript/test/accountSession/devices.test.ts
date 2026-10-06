@@ -4,8 +4,6 @@ import type { IdentityId } from '../../src/identityId.js'
 import { AccountSession } from '../../src/accountSession/core.js'
 import { bytesToBase64, generateSigningKey } from '../../src/crypto/signing.js'
 import { NoLocalSigningKeyError } from '../../src/errors.js'
-import { ed25519 } from '@noble/curves/ed25519.js'
-import { bytesToHex } from '@noble/hashes/utils.js'
 import '../../src/accountSession/devices.js'
 
 function testProfile(identityId: IdentityId) {
@@ -30,7 +28,10 @@ function testProfile(identityId: IdentityId) {
 }
 
 function testSession(signing?: { secretKey: Uint8Array; publicKey: Uint8Array; signingKeyId: string }): AccountSession {
-  const identity = { id: randomIdentityId(), createdAt: new Date().toISOString() }
+  const identity = {
+    id: randomIdentityId(),
+    createdAt: new Date().toISOString(),
+  }
   return new AccountSession({
     identity,
     profile: testProfile(identity.id),
@@ -47,48 +48,33 @@ afterEach(() => {
 describe('AccountSession.approveDeviceGrant', () => {
   it('throws NoLocalSigningKeyError when this session holds no local key', async () => {
     const session = testSession()
-    await expect(session.approveDeviceGrant('grant-1', 'requested-key')).rejects.toBeInstanceOf(
-      NoLocalSigningKeyError,
-    )
+    await expect(session.approveDeviceGrant('grant-1', 'requested-key')).rejects.toBeInstanceOf(NoLocalSigningKeyError)
   })
 
-  it('signs the exact grant being approved with the approving key', async () => {
+  it('fails loudly without sending a request until v3 signing lands', async () => {
     const { secretKey, publicKey } = generateSigningKey()
-    const requested = generateSigningKey()
-    const session = testSession({ secretKey, publicKey, signingKeyId: 'approver-key-id' })
-
-    let capturedBody: Record<string, unknown> | undefined
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
-        capturedBody = JSON.parse(init!.body as string)
-        return new Response(
-          JSON.stringify({ id: 'new-device', label: null, public_key: 'x', added_at: 'now' }),
-          { status: 200 },
-        )
-      }),
-    )
-
-    const grantId = crypto.randomUUID()
-    const requestedPublicKeyB64 = bytesToBase64(requested.publicKey)
-    await session.approveDeviceGrant(grantId, requestedPublicKeyB64)
-
-    expect(capturedBody!.approver_signing_key_id).toBe('approver-key-id')
-
-    // The signature must verify against the exact bytes
-    // crates/server/src/devices.rs independently reconstructs.
-    const signingBytes = new TextEncoder().encode(
-      `avalon:device_grant.approved:v2:${grantId}:${session.identity().id}:${bytesToHex(requested.publicKey)}`,
-    )
-    const signature = Uint8Array.from(atob(capturedBody!.signature as string), (c) => c.charCodeAt(0))
-    expect(ed25519.verify(signature, signingBytes, publicKey)).toBe(true)
+    const session = testSession({
+      secretKey,
+      publicKey,
+      signingKeyId: 'approver-key-id',
+    })
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(
+      session.approveDeviceGrant(crypto.randomUUID(), bytesToBase64(generateSigningKey().publicKey)),
+    ).rejects.toThrow(/not supported until v3/)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 
 describe('AccountSession.approveDeviceGrant key handling', () => {
   it('rejects a requested key that is not canonical base64 of 32 bytes', async () => {
     const { secretKey, publicKey } = generateSigningKey()
-    const session = testSession({ secretKey, publicKey, signingKeyId: 'approver-key-id' })
+    const session = testSession({
+      secretKey,
+      publicKey,
+      signingKeyId: 'approver-key-id',
+    })
     await expect(session.approveDeviceGrant(crypto.randomUUID(), 'AAAA')).rejects.toBeInstanceOf(TypeError)
   })
 })
@@ -98,51 +84,32 @@ describe('AccountSession.revokeDevice', () => {
     await expect(testSession().revokeDevice('key-1')).rejects.toBeInstanceOf(NoLocalSigningKeyError)
   })
 
-  it('signs the v2 revocation bytes with the session key', async () => {
+  it('fails loudly without sending a request until v3 signing lands', async () => {
     const { secretKey, publicKey } = generateSigningKey()
-    const revokerId = crypto.randomUUID()
-    const oldId = crypto.randomUUID()
-    const session = testSession({ secretKey, publicKey, signingKeyId: revokerId })
-    let captured: { url: string; body: Record<string, unknown> } | undefined
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
-        captured = { url, body: JSON.parse(init!.body as string) }
-        return new Response(null, { status: 200 })
-      }),
-    )
-
-    await session.revokeDevice(oldId)
-
-    expect(captured!.url).toContain(`/me/devices/${oldId}/revoke`)
-    expect(captured!.body.revoked_by_signing_key_id).toBe(revokerId)
-    const message = new TextEncoder().encode(
-      `avalon:identity.signing_key_revoked:v2:${session.identity().id}:${oldId}:${revokerId}`,
-    )
-    const signature = Uint8Array.from(atob(captured!.body.signature as string), (c) => c.charCodeAt(0))
-    expect(ed25519.verify(signature, message, publicKey)).toBe(true)
+    const session = testSession({
+      secretKey,
+      publicKey,
+      signingKeyId: crypto.randomUUID(),
+    })
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(session.revokeDevice(crypto.randomUUID())).rejects.toThrow(/not supported until v3/)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 
 describe('device grant and revocation input validation', () => {
   it('approveDeviceGrant rejects a small-order requested key', async () => {
     const { secretKey, publicKey } = generateSigningKey()
-    const session = testSession({ secretKey, publicKey, signingKeyId: 'approver-key-id' })
+    const session = testSession({
+      secretKey,
+      publicKey,
+      signingKeyId: 'approver-key-id',
+    })
     const identityPoint = new Uint8Array(32)
     identityPoint[0] = 1
-    await expect(
-      session.approveDeviceGrant(crypto.randomUUID(), bytesToBase64(identityPoint)),
-    ).rejects.toBeInstanceOf(TypeError)
-  })
-
-  it('approveDeviceGrant and revokeDevice reject ids that are not lowercase hyphenated UUIDs', async () => {
-    const { secretKey, publicKey } = generateSigningKey()
-    const session = testSession({ secretKey, publicKey, signingKeyId: crypto.randomUUID() })
-    const requested = bytesToBase64(generateSigningKey().publicKey)
-    await expect(session.approveDeviceGrant('not-a-uuid', requested)).rejects.toBeInstanceOf(TypeError)
-    await expect(session.approveDeviceGrant(crypto.randomUUID().toUpperCase(), requested)).rejects.toBeInstanceOf(
+    await expect(session.approveDeviceGrant(crypto.randomUUID(), bytesToBase64(identityPoint))).rejects.toBeInstanceOf(
       TypeError,
     )
-    await expect(session.revokeDevice('../x')).rejects.toBeInstanceOf(TypeError)
   })
 })

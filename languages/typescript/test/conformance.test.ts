@@ -7,7 +7,7 @@
 // See conformance/vectors/SCHEMA.md for the vector format and the
 // standing "add a vector when you add smart-client behavior" requirement.
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -15,17 +15,11 @@ import { signingBytes as crossNodeLoginSigningBytes } from '../src/crypto/crossN
 import { signingBytes as continuationSigningBytes } from '../src/crypto/continuation.js'
 import { signingBytes as interestClaimSigningBytes, type ClaimedScope } from '../src/crypto/interestClaim.js'
 import { deriveSigningKeyFromMnemonic, isValidMnemonic } from '../src/crypto/mnemonic.js'
-import {
-  attestationSigningBytes,
-  bulkAttestationSigningBytes,
-} from '../src/integratorSession.js'
+import { attestationSigningBytes, bulkAttestationSigningBytes } from '../src/integratorSession.js'
 import { revocationSigningBytes } from '../src/integratorAccount.js'
 import {
-  deviceGrantApprovalSigningBytes,
-  identityCreatedSigningBytes,
   publicKeyFromSecretKey,
   sign,
-  signingKeyRevokedSigningBytes,
   verify,
 } from '../src/crypto/signing.js'
 import { deriveIdentityId, identityIdMatchesKey, isIdentityId, parseIdentityId } from '../src/identityId.js'
@@ -162,7 +156,10 @@ describe('conformance: websocket interest-claim minting (#610/#712)', () => {
     it(`matches the shared vector: ${vector.name}`, () => {
       const secretKey = hexToBytes(doc.signingKeySeedHex)
       const { input, expected } = vector
-      const scope: ClaimedScope = { kind: 'channel', channelId: input.scope.channelId }
+      const scope: ClaimedScope = {
+        kind: 'channel',
+        channelId: input.scope.channelId,
+      }
 
       const bytes = interestClaimSigningBytes(
         input.identityId,
@@ -409,13 +406,19 @@ describe('conformance: shard family head', () => {
     it(`proof: ${v.name}`, () => {
       const { owner, rootHashHex, shardId, proof } = v.input
       const claimed = { ...head(v.input.head), shard_id: shardId }
-      const wire = { shard_id: shardId, leaf_index: proof.leafIndex, tree_size: proof.treeSize, path: proof.pathHex }
+      const wire = {
+        shard_id: shardId,
+        leaf_index: proof.leafIndex,
+        tree_size: proof.treeSize,
+        path: proof.pathHex,
+      }
       expect(verifyFamilyInclusion(owner, rootHashHex, wire, claimed)).toBe(v.expected.verified)
     })
   }
 
   it('maps shard ids to owners', () => {
-    for (const v of doc.familyOwnerVectors) expect([v.shardId, shardFamilyOwner(v.shardId)]).toEqual([v.shardId, v.expectedOwner])
+    for (const v of doc.familyOwnerVectors)
+      expect([v.shardId, shardFamilyOwner(v.shardId)]).toEqual([v.shardId, v.expectedOwner])
   })
 
   it('recognizes owner ids', () => {
@@ -482,95 +485,21 @@ describe('conformance: identity ids', () => {
   })
 })
 
-describe('conformance: identity.created v2 signing', () => {
-  const doc = loadVector('identity-created-signing.json')
-  const secretKey = hexToBytes(doc.signingKeySeedHex)
-  const publicKey = publicKeyFromSecretKey(secretKey)
-  const identityId = parseIdentityId(doc.identityId)
-
-  it('lists typescript as supported and derives the shared key and id', () => {
-    requireSupported(doc, 'typescript')
-    expect(bytesToHex(publicKey)).toBe(doc.signingPublicKeyHex)
-    expect(identityIdMatchesKey(identityId, publicKey)).toBe(true)
+// Vectors whose supportedIn omits typescript are visible skips carrying the file's own reason.
+function skipUnlisted(file: string, pending: string): void {
+  const doc = loadVector(file)
+  if (doc.supportedIn.includes('typescript')) {
+    throw new Error(`${file} now lists typescript in supportedIn; add a runner and remove this skip`)
+  }
+  describe(`conformance: ${file}`, () => {
+    it.skip(`skipped: ${pending}; notSupported: ${JSON.stringify(doc.notSupported ?? null)}`, () => {})
   })
+}
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const bytesFor = (input: any, id = identityId) =>
-    identityCreatedSigningBytes(input.networkId, input.shardId, input.ticketId, id, publicKey, input.displayName)
-
-  for (const vector of doc.vectors) {
-    it(`matches the shared vector: ${vector.name}`, () => {
-      const bytes = bytesFor(vector.input)
-      expect(bytesToHex(bytes)).toBe(vector.expected.signingBytesHex)
-      expect(toUtf8(bytes)).toBe(vector.expected.signingBytesUtf8)
-      expect(bytesToHex(sign(secretKey, bytes))).toBe(vector.expected.signatureHex)
-      expect(verifyStrict(publicKey, bytes, hexToBytes(vector.expected.signatureHex))).toBe(true)
-    })
-  }
-
-  for (const vector of doc.replayVectors) {
-    it(`replay: ${vector.name}`, () => {
-      const valid = verifyStrict(publicKey, bytesFor(vector.input), hexToBytes(vector.input.signatureHex))
-      expect(valid).toBe(vector.expected.valid)
-    })
-  }
-
-  for (const vector of doc.domainSeparationVectors) {
-    it(`domain separation: ${vector.name}`, () => {
-      const v2 = bytesFor(vector.input, parseIdentityId(vector.input.identityId))
-      expect(bytesToHex(v2)).toBe(vector.expected.v2SigningBytesHex)
-      expect(toUtf8(v2)).not.toBe(vector.expected.v1SigningBytesUtf8)
-      expect(vector.expected.equal).toBe(false)
-    })
-  }
-})
-
-describe('conformance: device grant approval v2 signing', () => {
-  const doc = loadVector('device-grant-approval.json')
-  const secretKey = hexToBytes(doc.signingKeySeedHex)
-
-  it('lists typescript as supported and derives the shared keys', () => {
-    requireSupported(doc, 'typescript')
-    expect(bytesToHex(publicKeyFromSecretKey(secretKey))).toBe(doc.signingPublicKeyHex)
-    expect(bytesToHex(publicKeyFromSecretKey(hexToBytes(doc.requestedKeySeedHex)))).toBe(doc.requestedPublicKeyHex)
-  })
-
-  for (const vector of doc.vectors) {
-    it(`matches the shared vector: ${vector.name}`, () => {
-      const bytes = deviceGrantApprovalSigningBytes(
-        vector.input.grantId,
-        parseIdentityId(vector.input.identityId),
-        hexToBytes(vector.input.requestedPublicKeyHex),
-      )
-      expect(bytesToHex(bytes)).toBe(vector.expected.signingBytesHex)
-      expect(toUtf8(bytes)).toBe(vector.expected.signingBytesUtf8)
-      expect(bytesToHex(sign(secretKey, bytes))).toBe(vector.expected.signatureHex)
-    })
-  }
-})
-
-describe('conformance: signing key revocation v2 signing', () => {
-  const doc = loadVector('signing-key-revoked.json')
-  const secretKey = hexToBytes(doc.signingKeySeedHex)
-
-  it('lists typescript as supported and derives the shared key', () => {
-    requireSupported(doc, 'typescript')
-    expect(bytesToHex(publicKeyFromSecretKey(secretKey))).toBe(doc.signingPublicKeyHex)
-  })
-
-  for (const vector of doc.vectors) {
-    it(`matches the shared vector: ${vector.name}`, () => {
-      const bytes = signingKeyRevokedSigningBytes(
-        parseIdentityId(vector.input.identityId),
-        vector.input.signingKeyId,
-        vector.input.revokedBySigningKeyId,
-      )
-      expect(bytesToHex(bytes)).toBe(vector.expected.signingBytesHex)
-      expect(toUtf8(bytes)).toBe(vector.expected.signingBytesUtf8)
-      expect(bytesToHex(sign(secretKey, bytes))).toBe(vector.expected.signatureHex)
-    })
-  }
-})
+const PENDING_V3 = 'v3 structured signing is not in the TypeScript SDK yet (avalon-sdks #100)'
+skipUnlisted('identity-created-signing.json', PENDING_V3)
+skipUnlisted('device-grant-approval.json', PENDING_V3)
+skipUnlisted('signing-key-revoked.json', PENDING_V3)
 
 describe('conformance: shard sibling routing', () => {
   const doc = loadVector('shard-sibling-routing.json')
@@ -603,5 +532,29 @@ describe('conformance: shard sibling routing', () => {
         if (a !== b) expect(!before.includes(a) || !after.includes(b)).toBe(true)
       })
     })
+  }
+})
+
+// Vector files with no runner in this SDK yet, each with the reason it is skipped.
+const NO_RUNNER: Record<string, string> = {
+  'canonical-payload.json': 'canonical payload encoder not in the SDK (#100)',
+  'domain-tags.json': 'domain tag registry not in the SDK (#100)',
+  'identity-chain.json': 'identity chain resolution is protocol-side only',
+  'ledger-entry-hash.json': 'ledger entry hash not in the SDK (#100)',
+  'node-request.json': 'node-to-node route, not in OpenAPI; supportedIn is empty',
+  'structured-signing-bytes.json': 'structured signing primitive not in the SDK (#100)',
+}
+
+describe('conformance: every vector file is accounted for', () => {
+  const source = readFileSync(fileURLToPath(import.meta.url), 'utf-8')
+  for (const file of readdirSync(VECTORS_DIR).filter((f) => f.endsWith('.json'))) {
+    const reason = NO_RUNNER[file]
+    if (reason) {
+      it.skip(`${file}: ${reason}`, () => {})
+    } else {
+      it(`${file} has a runner`, () => {
+        expect(source).toContain(`'${file}'`)
+      })
+    }
   }
 })

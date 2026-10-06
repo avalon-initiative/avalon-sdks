@@ -5,6 +5,8 @@ on:
     types: [opened, reopened, synchronize]
     paths:
       - 'conformance/**'
+      - 'docs/generated/openapi.json'
+      - 'scripts/sync-protocol.sh'
   schedule:
     - cron: '17 4 * * *'
   workflow_dispatch:
@@ -18,5 +20,5 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - name: Vendored vectors match avalon-protocol main
-        run: bash scripts/check-vector-sync.sh
+      - name: Vendored vectors and OpenAPI match avalon-protocol main
+        run: bash scripts/sync-protocol.sh check

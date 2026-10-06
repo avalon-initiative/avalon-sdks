@@ -779,6 +779,7 @@ fn identity_id_matches_shared_vectors() {
 }
 
 #[test]
+#[ignore = "pending v3 structured signing in the Rust SDK (avalon-sdks #99); the vector is protocol-crate only until then"]
 fn identity_created_signing_matches_shared_vectors() {
     let doc = load("identity-created-signing.json");
     assert!(supported_in(&doc, "rust"));
@@ -863,6 +864,7 @@ fn identity_created_signing_matches_shared_vectors() {
 }
 
 #[test]
+#[ignore = "pending v3 structured signing in the Rust SDK (avalon-sdks #99); the vector is protocol-crate only until then"]
 fn device_grant_approval_signing_matches_shared_vectors() {
     let doc = load("device-grant-approval.json");
     assert!(supported_in(&doc, "rust"));
@@ -905,6 +907,7 @@ fn device_grant_approval_signing_matches_shared_vectors() {
 }
 
 #[test]
+#[ignore = "pending v3 structured signing in the Rust SDK (avalon-sdks #99); the vector is protocol-crate only until then"]
 fn signing_key_revoked_signing_matches_shared_vectors() {
     let doc = load("signing-key-revoked.json");
     assert!(supported_in(&doc, "rust"));
@@ -998,6 +1001,60 @@ fn shard_sibling_routing_matches_shared_vectors() {
                     "[{name}] {key:?} moved between siblings present in both sets"
                 );
             }
+        }
+    }
+}
+
+/// Vector files with no runner in this SDK yet, each with the reason it is skipped.
+const NO_RUNNER: &[(&str, &str)] = &[
+    (
+        "canonical-payload.json",
+        "canonical payload encoder not in the SDK (#100)",
+    ),
+    (
+        "domain-tags.json",
+        "domain tag registry not in the SDK (#99)",
+    ),
+    (
+        "identity-chain.json",
+        "identity chain resolution is protocol-side only",
+    ),
+    (
+        "ledger-entry-hash.json",
+        "ledger entry hash not in the SDK (#101)",
+    ),
+    (
+        "node-request.json",
+        "node-to-node route, not in OpenAPI; supportedIn is empty",
+    ),
+    (
+        "structured-signing-bytes.json",
+        "structured signing primitive not in the SDK (#99)",
+    ),
+];
+
+/// Every vector file is either asserted above (by file name) or listed in `NO_RUNNER`, so a new
+/// protocol vector cannot be synced in and silently go untested.
+#[test]
+fn every_vector_file_is_accounted_for() {
+    let source =
+        std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/conformance.rs"))
+            .expect("read this runner");
+    for entry in std::fs::read_dir(vectors_dir()).expect("vectors dir") {
+        let name = entry.unwrap().file_name().into_string().unwrap();
+        if !name.ends_with(".json") {
+            continue;
+        }
+        let loaded = source.contains(&format!("load(\"{name}\")"));
+        match NO_RUNNER.iter().find(|(file, _)| *file == name) {
+            Some((_, reason)) => {
+                assert!(!loaded, "{name} has a runner now; drop it from NO_RUNNER");
+                println!("skipping {name}: {reason}");
+            }
+            None => assert!(
+                loaded,
+                "{name} has no runner and is not listed in NO_RUNNER"
+            ),
         }
     }
 }

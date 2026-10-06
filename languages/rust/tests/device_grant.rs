@@ -60,3 +60,18 @@ async fn approve_refuses_an_unacceptable_requested_key_before_any_request() {
         .unwrap_err();
     assert!(matches!(err, SdkError::Protocol(m) if m.contains("acceptable")));
 }
+
+#[tokio::test]
+async fn revoke_and_approve_fail_loudly_until_v3_signing_lands() {
+    let server = MockServer::start().await;
+    let key = SigningKey::from_bytes(&[7u8; 32]);
+    let s = session(&server, &key).await;
+    let err = s.revoke_device(Uuid::new_v4()).await.unwrap_err();
+    assert!(matches!(err, SdkError::Protocol(m) if m.contains("not supported until v3")));
+    let point = key.verifying_key().to_bytes();
+    let err = s
+        .approve_device_grant(Uuid::new_v4(), &BASE64.encode(point))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, SdkError::Protocol(m) if m.contains("not supported until v3")));
+}

@@ -79,22 +79,21 @@ namespace Avalon.Sdk
             await PatchAsync<Avalon.Sdk.Generated.RenameDeviceRequest, AccountDevice>(
                 $"/me/devices/{signingKeyId}", new Avalon.Sdk.Generated.RenameDeviceRequest { Label = label }, ct).ConfigureAwait(false);
 
-        /// <summary><c>POST /me/devices/{signing_key_id}/revoke</c> — signed by this
-        /// session's own local key (which may be the key being revoked); the server refuses to
-        /// revoke the last active key. Throws <see cref="InvalidOperationException"/>, without
-        /// making any HTTP call, if this session has no local signing key.</summary>
+        private static NotSupportedException IdentityKeyEventUnsupported(string call) =>
+            new NotSupportedException($"{call} is not supported until v3 identity key event signing lands (avalon-sdks #99, #100, #101)");
+
+        /// <summary><c>POST /me/devices/{signing_key_id}/revoke</c>. Always throws until v3 identity
+        /// key event signing lands (avalon-sdks #99-#101): the server now requires a chain position
+        /// (<c>seq</c>, <c>prev_hash</c>). Throws <see cref="InvalidOperationException"/> first, without
+        /// any HTTP call, if this session has no local signing key.</summary>
+#pragma warning disable CS1998 // async so the failure surfaces on the returned task like the other validation errors
         public async Task RevokeDeviceAsync(Guid signingKeyId, CancellationToken ct = default)
         {
             if (SigningKeyId == null)
             {
                 throw new InvalidOperationException("RevokeDeviceAsync requires a local signing key — this AccountSession has none");
             }
-            var revokedBy = SigningKeyId.Value;
-            var message = IdentitySigning.SigningKeyRevokedSigningBytesV2(OwnIdentityId, signingKeyId, revokedBy);
-            await PostNoResponseAsync(
-                $"/me/devices/{signingKeyId}/revoke",
-                new Avalon.Sdk.Generated.RevokeDeviceRequest { RevokedBySigningKeyId = revokedBy, Signature = SignRaw(message) },
-                ct).ConfigureAwait(false);
+            throw IdentityKeyEventUnsupported("RevokeDeviceAsync");
         }
 
         /// <summary>Strictly decodes a standard-base64 32-byte Ed25519 public key.</summary>
@@ -134,33 +133,23 @@ namespace Avalon.Sdk
         public async Task<AccountDeviceGrant> GetDeviceGrantAsync(Guid grantId, CancellationToken ct = default) =>
             await GetAsync<AccountDeviceGrant>($"/me/devices/grants/{grantId}", ct).ConfigureAwait(false);
 
-        /// <summary><c>POST /me/devices/grants/{id}/approve</c> — approves someone else's
-        /// (or this identity's own, from a different device's) pending grant, signed with
-        /// this session's own local key over
-        /// <c>device_grant_approval_signing_bytes(grant_id, identity_id,
-        /// requested_signing_public_key)</c> — proving the approval came from a device that
-        /// once passed a real WebAuthn ceremony. Throws <see cref="InvalidOperationException"/>,
-        /// without making any HTTP call, if this session has no local signing key at all
-        /// (see <see cref="AccountSession.SigningKeyId"/>).</summary>
+        /// <summary><c>POST /me/devices/grants/{id}/approve</c>. Validates the requested key, then always
+        /// throws until v3 identity key event signing lands (avalon-sdks #99-#101): the server now requires
+        /// <c>seq</c> and <c>prev_hash</c>. No HTTP call is made.</summary>
         public async Task<AccountDevice> ApproveDeviceGrantAsync(Guid grantId, string requestedSigningPublicKeyB64, CancellationToken ct = default)
         {
             if (SigningKeyId == null)
             {
                 throw new InvalidOperationException("ApproveDeviceGrantAsync requires a local signing key — this AccountSession has none");
             }
-            var signingKeyId = SigningKeyId.Value;
             var requestedKey = DecodePublicKey(requestedSigningPublicKeyB64);
             if (!IdentitySigning.IsAcceptableKey(requestedKey))
             {
                 throw new ArgumentException("the requested key is not an acceptable Ed25519 key", nameof(requestedSigningPublicKeyB64));
             }
-            var message = IdentitySigning.DeviceGrantApprovalSigningBytesV2(grantId, OwnIdentityId, requestedKey);
-            var signature = SignRaw(message);
-            return await PostAsync<Avalon.Sdk.Generated.ApproveDeviceGrantRequest, AccountDevice>(
-                $"/me/devices/grants/{grantId}/approve",
-                new Avalon.Sdk.Generated.ApproveDeviceGrantRequest { ApproverSigningKeyId = signingKeyId, Signature = signature },
-                ct).ConfigureAwait(false);
+            throw IdentityKeyEventUnsupported("ApproveDeviceGrantAsync");
         }
+#pragma warning restore CS1998
 
         /// <summary><c>POST /auth/device/approve</c> — approves a
         /// cross-device pairing request identified by <paramref name="userCode"/>, always
