@@ -49,4 +49,16 @@ public class DeviceGrantTests
             () => session.ApproveDeviceGrantAsync(Guid.NewGuid(), Base64(32, 0, 1)));
         Assert.Empty(handler.Requests);
     }
+
+    [Fact]
+    public async Task ApproveAndRevoke_FailLoudlyWithoutARequestUntilV3SigningLands()
+    {
+        var handler = new StubHttpMessageHandler();
+        var session = SessionWithKey(handler);
+
+        await Assert.ThrowsAsync<NotSupportedException>(() => session.RevokeDeviceAsync(Guid.NewGuid()));
+        await Assert.ThrowsAsync<NotSupportedException>(
+            () => session.ApproveDeviceGrantAsync(Guid.NewGuid(), Convert.ToBase64String(new Ed25519PrivateKeyParameters(new SecureRandom()).GeneratePublicKey().GetEncoded())));
+        Assert.Empty(handler.Requests);
+    }
 }

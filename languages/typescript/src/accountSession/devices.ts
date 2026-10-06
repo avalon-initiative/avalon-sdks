@@ -5,12 +5,8 @@
 // crates/server/src/devices.rs/device_pairing.rs.
 import { AccountSession } from './core.js'
 import { isAcceptableShardKey } from '../network/strictEd25519.js'
-import {
-  decodePublicKey,
-  deviceGrantApprovalSigningBytes,
-  signingKeyRevokedSigningBytes,
-} from '../crypto/signing.js'
-import { NoLocalSigningKeyError } from '../errors.js'
+import { decodePublicKey } from '../crypto/signing.js'
+import { AvalonSdkError, NoLocalSigningKeyError } from '../errors.js'
 import type { components } from '../generated.js'
 
 export interface Device {
@@ -19,6 +15,13 @@ export interface Device {
   publicKey: string
   addedAt: string
   revokedAt: string | null
+}
+
+/** Device approve/revoke now sign the v3 structured layout with a chain position (`seq`, `prev_hash`). */
+function identityKeyEventUnsupported(call: string): AvalonSdkError {
+  return new AvalonSdkError(
+    `${call} is not supported until v3 identity key event signing lands (avalon-sdks #99, #100, #101)`,
+  )
 }
 
 type DeviceWire = components['schemas']['DeviceResponse']
@@ -63,9 +66,8 @@ declare module './core.js' {
     /** `PATCH /me/devices/{signingKeyId}` — relabels a device. Not
      * signature-required. */
     renameDevice(signingKeyId: string, label: string): Promise<Device>
-    /** `POST /me/devices/{signingKeyId}/revoke` — signed by this session's own local key (which may be
-     * the key being revoked); the server refuses to revoke the last active key. Throws
-     * `NoLocalSigningKeyError` when the session holds no local key. */
+    /** `POST /me/devices/{signingKeyId}/revoke`. Always throws until v3 identity key event signing lands
+     * (avalon-sdks #99-#101): the server now requires a chain position (`seq`, `prev_hash`). */
     revokeDevice(signingKeyId: string): Promise<void>
     /** `POST /me/devices/grants` — requests a new device's signing key be
      * added, from the requesting device's own (as-yet unsigned) session. */
@@ -74,10 +76,8 @@ declare module './core.js' {
     listDeviceGrants(status?: string): Promise<DeviceGrant[]>
     /** `GET /me/devices/grants/{id}`. */
     getDeviceGrant(grantId: string): Promise<DeviceGrant>
-    /** `POST /me/devices/grants/{id}/approve` — approves a pending grant,
-     * signed over `device_grant.approved` bytes proving this device once
-     * passed a real WebAuthn ceremony. Throws `NoLocalSigningKeyError` if
-     * this session has no local signing key. */
+    /** `POST /me/devices/grants/{id}/approve`. Throws `NoLocalSigningKeyError` without a local key, then
+     * always throws until v3 identity key event signing lands (avalon-sdks #99-#101). */
     approveDeviceGrant(grantId: string, requestedSigningPublicKeyB64: string): Promise<Device>
     /** `POST /auth/device/approve` — approves a cross-device
      * pairing request by `userCode`, always signed
@@ -99,20 +99,17 @@ AccountSession.prototype.renameDevice = async function (
   signingKeyId: string,
   label: string,
 ): Promise<Device> {
-  const wire = await this.patch<DeviceWire>(`/me/devices/${signingKeyId}`, { label })
+  const wire = await this.patch<DeviceWire>(`/me/devices/${signingKeyId}`, {
+    label,
+  })
   return fromWire(wire)
 }
 
-AccountSession.prototype.revokeDevice = async function (this: AccountSession, signingKeyId: string): Promise<void> {
-  const revokedBy = this.signingKeyId()
-  if (!revokedBy) {
+AccountSession.prototype.revokeDevice = async function (this: AccountSession, _signingKeyId: string): Promise<void> {
+  if (!this.signingKeyId()) {
     throw new NoLocalSigningKeyError('revokeDevice')
   }
-  const message = signingKeyRevokedSigningBytes(this.identity().id, signingKeyId, revokedBy)
-  await this.postNoResponse(`/me/devices/${signingKeyId}/revoke`, {
-    revoked_by_signing_key_id: revokedBy,
-    signature: this.signRaw(message),
-  })
+  throw identityKeyEventUnsupported('revokeDevice')
 }
 
 AccountSession.prototype.requestDeviceGrant = async function (
@@ -137,10 +134,7 @@ AccountSession.prototype.listDeviceGrants = async function (
   return wire.map(grantFromWire)
 }
 
-AccountSession.prototype.getDeviceGrant = async function (
-  this: AccountSession,
-  grantId: string,
-): Promise<DeviceGrant> {
+AccountSession.prototype.getDeviceGrant = async function (this: AccountSession, grantId: string): Promise<DeviceGrant> {
   const wire = await this.get<DeviceGrantWire>(`/me/devices/grants/${grantId}`)
   return grantFromWire(wire)
 }
@@ -150,21 +144,14 @@ AccountSession.prototype.approveDeviceGrant = async function (
   grantId: string,
   requestedSigningPublicKeyB64: string,
 ): Promise<Device> {
-  const signingKeyId = this.signingKeyId()
-  if (!signingKeyId) {
+  if (!this.signingKeyId()) {
     throw new NoLocalSigningKeyError('approveDeviceGrant')
   }
   const requestedKey = decodePublicKey(requestedSigningPublicKeyB64)
   if (!isAcceptableShardKey(requestedKey)) {
     throw new TypeError('the requested key is not an acceptable Ed25519 key')
   }
-  const message = deviceGrantApprovalSigningBytes(grantId, this.identity().id, requestedKey)
-  const signature = this.signRaw(message)
-  const wire = await this.post<DeviceWire>(`/me/devices/grants/${grantId}/approve`, {
-    approver_signing_key_id: signingKeyId,
-    signature,
-  })
-  return fromWire(wire)
+  throw identityKeyEventUnsupported('approveDeviceGrant')
 }
 
 AccountSession.prototype.approveDevicePairing = async function (

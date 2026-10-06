@@ -412,6 +412,7 @@ impl AccountSession {
     /// though the bytes end up identical — see that call site). Panics if
     /// this session holds no local signing key; callers must check
     /// [`AccountSession::signing_key_id`] first.
+    #[allow(dead_code)] // v3 identity key event signing (#99) uses it again
     pub(crate) fn sign_raw(&self, message: &[u8]) -> String {
         let signing = self
             .signing

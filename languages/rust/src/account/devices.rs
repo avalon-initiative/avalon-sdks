@@ -11,6 +11,13 @@ use crate::SdkError;
 
 use super::AccountSession;
 
+/// Device approve/revoke now sign the v3 structured layout with a chain position (`seq`, `prev_hash`).
+fn identity_key_event_unsupported(call: &str) -> SdkError {
+    SdkError::Protocol(format!(
+        "{call} is not supported until v3 identity key event signing lands (avalon-sdks #99, #100, #101)"
+    ))
+}
+
 /// One of this identity's registered signing-key devices.
 #[derive(Debug, Clone)]
 pub struct Device {
@@ -126,31 +133,16 @@ impl AccountSession {
         raw.try_into()
     }
 
-    /// `POST /me/devices/{signing_key_id}/revoke` — signed by this session's own local key
-    /// (which may be the key being revoked); the server refuses to revoke the last active key.
-    pub async fn revoke_device(&self, signing_key_id: Uuid) -> Result<(), SdkError> {
-        let revoker = self.signing_key_id().ok_or_else(|| {
+    /// `POST /me/devices/{signing_key_id}/revoke`. Always fails until v3 identity key event signing
+    /// lands (avalon-sdks #99-#101): the server now requires a chain position (`seq`, `prev_hash`).
+    pub async fn revoke_device(&self, _signing_key_id: Uuid) -> Result<(), SdkError> {
+        let _revoker = self.signing_key_id().ok_or_else(|| {
             SdkError::Protocol(
                 "revoke_device requires a local signing key — this AccountSession has none"
                     .to_string(),
             )
         })?;
-        let message = crate::identity_signing::signing_key_revoked_signing_bytes_v2(
-            &self.identity().id,
-            signing_key_id,
-            revoker,
-        );
-        self.post_no_response(
-            &super::path(
-                crate::generated::paths::devices::REVOKE_DEVICE,
-                &[("id", &signing_key_id.to_string())],
-            ),
-            &crate::generated::RevokeDeviceRequest {
-                revoked_by_signing_key_id: revoker,
-                signature: self.sign_raw(&message),
-            },
-        )
-        .await
+        Err(identity_key_event_unsupported("revoke_device"))
     }
 
     /// `POST /me/devices/grants` — requests a new device's signing key be
@@ -207,21 +199,15 @@ impl AccountSession {
         raw.try_into()
     }
 
-    /// `POST /me/devices/grants/{id}/approve` — approves someone else's (or
-    /// this identity's own, from a different device's) pending grant,
-    /// signed with this session's own local key over
-    /// `device_grant_approval_signing_bytes(grant_id, identity_id,
-    /// requested_signing_public_key)` — proving the approval came from a
-    /// device that once passed a real WebAuthn ceremony. Returns
-    /// [`SdkError::MissingIssuerCredentials`]-shaped failure via
-    /// [`SdkError::Rejected`] server-side if this session has no local
-    /// signing key at all (see [`AccountSession::signing_key_id`]).
+    /// `POST /me/devices/grants/{id}/approve`. Validates the requested key, then always fails until
+    /// v3 identity key event signing lands (avalon-sdks #99-#101): the server now requires `seq` and
+    /// `prev_hash`.
     pub async fn approve_device_grant(
         &self,
-        grant_id: Uuid,
+        _grant_id: Uuid,
         requested_signing_public_key_b64: &str,
     ) -> Result<Device, SdkError> {
-        let signing = self.signing_key_id().ok_or_else(|| {
+        let _signing = self.signing_key_id().ok_or_else(|| {
             SdkError::Protocol(
                 "approve_device_grant requires a local signing key — this AccountSession has none"
                     .to_string(),
@@ -236,25 +222,7 @@ impl AccountSession {
                 "the requested key is not an acceptable Ed25519 key".to_string(),
             ));
         }
-        let message = crate::identity_signing::device_grant_approval_signing_bytes_v2(
-            grant_id,
-            &self.identity().id,
-            &requested_key,
-        );
-        let signature = self.sign_raw(&message);
-        let raw: crate::generated::DeviceResponse = self
-            .post(
-                &super::path(
-                    crate::generated::paths::devices::APPROVE_DEVICE_GRANT,
-                    &[("id", &grant_id.to_string())],
-                ),
-                &crate::generated::ApproveDeviceGrantRequest {
-                    approver_signing_key_id: signing,
-                    signature,
-                },
-            )
-            .await?;
-        raw.try_into()
+        Err(identity_key_event_unsupported("approve_device_grant"))
     }
 
     /// `POST /auth/device/approve` (issue #307/#704) — approves a
