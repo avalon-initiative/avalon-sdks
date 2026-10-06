@@ -5,8 +5,10 @@
 // crates/server/src/devices.rs/device_pairing.rs.
 import { AccountSession } from './core.js'
 import { isAcceptableShardKey } from '../network/strictEd25519.js'
-import { decodePublicKey } from '../crypto/signing.js'
-import { AvalonSdkError, NoLocalSigningKeyError } from '../errors.js'
+import { decodePublicKey, deviceGrantApprovalSigningBytes, signingKeyRevokedSigningBytes } from '../crypto/signing.js'
+import { parseHash } from '../ledgerEntry.js'
+import { bytesToHex } from '@noble/hashes/utils.js'
+import { ConflictError, IdentityChainPositionStaleError, NoLocalSigningKeyError, ProtocolError } from '../errors.js'
 import type { components } from '../generated.js'
 
 export interface Device {
@@ -17,11 +19,55 @@ export interface Device {
   revokedAt: string | null
 }
 
-/** Device approve/revoke now sign the v3 structured layout with a chain position (`seq`, `prev_hash`). */
-function identityKeyEventUnsupported(call: string): AvalonSdkError {
-  return new AvalonSdkError(
-    `${call} is not supported until v3 identity key event signing lands (avalon-sdks #99, #100, #101)`,
-  )
+type StaleBody = components['schemas']['ChainPositionStaleBody']
+
+interface ChainPosition {
+  seq: number
+  prevHash: Uint8Array | null
+}
+
+// No route reports the chain head, so the first attempt assumes an empty chain and a 409 carries the real head.
+const EMPTY_CHAIN: ChainPosition = { seq: 1, prevHash: null }
+
+function staleHead(error: unknown): StaleBody | undefined {
+  if (!(error instanceof ConflictError) || error.code !== 'IDENTITY_CHAIN_POSITION_STALE') return undefined
+  const body = error.body as Partial<StaleBody> | undefined
+  if (!body || !Number.isSafeInteger(body.head_seq) || (body.head_seq as number) < 0) {
+    throw new ProtocolError('IDENTITY_CHAIN_POSITION_STALE carried no valid head_seq')
+  }
+  if (body.head_hash !== undefined && body.head_hash !== null && typeof body.head_hash !== 'string') {
+    throw new ProtocolError('IDENTITY_CHAIN_POSITION_STALE carried a malformed head_hash')
+  }
+  return body as StaleBody
+}
+
+/** Runs `send` (which signs and posts the event) at `EMPTY_CHAIN`; on a stale-position 409 re-signs once at the returned
+ * head and retries, then throws `IdentityChainPositionStaleError` if the chain moved again. */
+async function submitChainedEvent<T>(send: (position: ChainPosition) => Promise<T>): Promise<T> {
+  let position = EMPTY_CHAIN
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await send(position)
+    } catch (error) {
+      const head = staleHead(error)
+      if (!head) throw error
+      const prevHash = head.head_hash == null ? null : parseStaleHash(head.head_hash)
+      if (attempt > 0) throw new IdentityChainPositionStaleError(head.head_seq, head.head_hash ?? null)
+      position = { seq: head.head_seq + 1, prevHash }
+    }
+  }
+}
+
+function parseStaleHash(text: string): Uint8Array {
+  try {
+    return parseHash('head_hash', text)
+  } catch {
+    throw new ProtocolError('IDENTITY_CHAIN_POSITION_STALE carried a malformed head_hash')
+  }
+}
+
+function prevHashWire(prevHash: Uint8Array | null): string | null {
+  return prevHash === null ? null : bytesToHex(prevHash)
 }
 
 type DeviceWire = components['schemas']['DeviceResponse']
@@ -66,8 +112,9 @@ declare module './core.js' {
     /** `PATCH /me/devices/{signingKeyId}` — relabels a device. Not
      * signature-required. */
     renameDevice(signingKeyId: string, label: string): Promise<Device>
-    /** `POST /me/devices/{signingKeyId}/revoke`. Always throws until v3 identity key event signing lands
-     * (avalon-sdks #99-#101): the server now requires a chain position (`seq`, `prev_hash`). */
+    /** `POST /me/devices/{signingKeyId}/revoke`, signed by this session's own key at the identity chain
+     * position the event will occupy; on a stale position it re-signs once at the head the server returns.
+     * Throws `IdentityChainPositionStaleError` if the chain moves again. */
     revokeDevice(signingKeyId: string): Promise<void>
     /** `POST /me/devices/grants` — requests a new device's signing key be
      * added, from the requesting device's own (as-yet unsigned) session. */
@@ -76,8 +123,9 @@ declare module './core.js' {
     listDeviceGrants(status?: string): Promise<DeviceGrant[]>
     /** `GET /me/devices/grants/{id}`. */
     getDeviceGrant(grantId: string): Promise<DeviceGrant>
-    /** `POST /me/devices/grants/{id}/approve`. Throws `NoLocalSigningKeyError` without a local key, then
-     * always throws until v3 identity key event signing lands (avalon-sdks #99-#101). */
+    /** `POST /me/devices/grants/{id}/approve`, signed by this session's own key at the identity chain
+     * position the event will occupy (re-signed once on a stale position, as for `revokeDevice`).
+     * Throws `NoLocalSigningKeyError` without a local key. */
     approveDeviceGrant(grantId: string, requestedSigningPublicKeyB64: string): Promise<Device>
     /** `POST /auth/device/approve` — approves a cross-device
      * pairing request by `userCode`, always signed
@@ -105,11 +153,20 @@ AccountSession.prototype.renameDevice = async function (
   return fromWire(wire)
 }
 
-AccountSession.prototype.revokeDevice = async function (this: AccountSession, _signingKeyId: string): Promise<void> {
-  if (!this.signingKeyId()) {
+AccountSession.prototype.revokeDevice = async function (this: AccountSession, signingKeyId: string): Promise<void> {
+  const revokerKeyId = this.signingKeyId()
+  if (!revokerKeyId) {
     throw new NoLocalSigningKeyError('revokeDevice')
   }
-  throw identityKeyEventUnsupported('revokeDevice')
+  const identityId = this.identity().id
+  await submitChainedEvent(({ seq, prevHash }) =>
+    this.postNoResponse(`/me/devices/${signingKeyId}/revoke`, {
+      revoked_by_signing_key_id: revokerKeyId,
+      seq,
+      prev_hash: prevHashWire(prevHash),
+      signature: this.signRaw(signingKeyRevokedSigningBytes(identityId, signingKeyId, revokerKeyId, seq, prevHash)),
+    }),
+  )
 }
 
 AccountSession.prototype.requestDeviceGrant = async function (
@@ -144,14 +201,26 @@ AccountSession.prototype.approveDeviceGrant = async function (
   grantId: string,
   requestedSigningPublicKeyB64: string,
 ): Promise<Device> {
-  if (!this.signingKeyId()) {
+  const approverKeyId = this.signingKeyId()
+  if (!approverKeyId) {
     throw new NoLocalSigningKeyError('approveDeviceGrant')
   }
   const requestedKey = decodePublicKey(requestedSigningPublicKeyB64)
   if (!isAcceptableShardKey(requestedKey)) {
     throw new TypeError('the requested key is not an acceptable Ed25519 key')
   }
-  throw identityKeyEventUnsupported('approveDeviceGrant')
+  const identityId = this.identity().id
+  const wire = await submitChainedEvent(({ seq, prevHash }) =>
+    this.post<DeviceWire>(`/me/devices/grants/${grantId}/approve`, {
+      approver_signing_key_id: approverKeyId,
+      seq,
+      prev_hash: prevHashWire(prevHash),
+      signature: this.signRaw(
+        deviceGrantApprovalSigningBytes(grantId, identityId, approverKeyId, requestedKey, seq, prevHash),
+      ),
+    }),
+  )
+  return fromWire(wire)
 }
 
 AccountSession.prototype.approveDevicePairing = async function (

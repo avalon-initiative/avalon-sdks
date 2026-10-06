@@ -13,6 +13,9 @@ export class AvalonSdkError extends Error {
   /** Server-requested delay in seconds from a numeric `Retry-After` header
    * (set on 429 responses); absent for the HTTP-date form or no header. */
   retryAfterSeconds?: number
+  /** The parsed JSON error body, when the failing response carried one (for example the typed
+   * `head_seq`/`head_hash` of a 409 `IDENTITY_CHAIN_POSITION_STALE`). */
+  body?: unknown
 }
 
 /** The session token itself was rejected (expired, unknown, malformed). */
@@ -46,6 +49,20 @@ export class ConflictError extends AvalonSdkError {
   constructor(message: string) {
     super(`conflict: ${message}`)
     this.name = 'ConflictError'
+  }
+}
+
+/** A chained identity key event (device approval or revocation) was refused as stale twice: the
+ * identity chain advanced between signing and submission, even after re-signing at the returned head. */
+export class IdentityChainPositionStaleError extends ConflictError {
+  constructor(
+    public readonly headSeq: number,
+    public readonly headHash: string | null,
+  ) {
+    super('IDENTITY_CHAIN_POSITION_STALE: the identity chain advanced again after re-signing; retry the call')
+    this.name = 'IdentityChainPositionStaleError'
+    this.code = 'IDENTITY_CHAIN_POSITION_STALE'
+    this.status = 409
   }
 }
 
@@ -172,8 +189,10 @@ export function parseRetryAfter(value: string | null | undefined): number | unde
 export async function mapErrorResponse(response: Response): Promise<AvalonSdkError> {
   let serverMessage: string | undefined
   let code: string | undefined
+  let parsedBody: unknown
   try {
     const body = (await response.json()) as { error?: string; code?: string }
+    parsedBody = body
     serverMessage = body.error
     code = body.code
   } catch {
@@ -189,6 +208,9 @@ export async function mapErrorResponse(response: Response): Promise<AvalonSdkErr
   }
   if (code !== undefined) {
     error.code = code
+  }
+  if (parsedBody !== undefined) {
+    error.body = parsedBody
   }
   return error
 }

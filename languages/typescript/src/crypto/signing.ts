@@ -3,8 +3,9 @@
 // this SDK's hard invariant is zero dependency on that package. Same library
 // (@noble/curves), same wire shapes.
 import { ed25519 } from '@noble/curves/ed25519.js'
-import { bytesToHex } from '@noble/hashes/utils.js'
+import { hexToBytes } from '@noble/hashes/utils.js'
 import { parseIdentityId, type IdentityId } from '../identityId.js'
+import { Builder, tags } from './signingBytes.js'
 
 export interface SigningKeyPair {
   secretKey: Uint8Array
@@ -65,28 +66,20 @@ export interface SignatureFields {
   signature: string | null
 }
 
-const encoder = new TextEncoder()
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
-
-function requireUuid(value: string, name: string): string {
-  if (typeof value !== 'string' || !UUID_PATTERN.test(value)) {
-    throw new TypeError(`${name} must be a lowercase hyphenated UUID`)
-  }
-  return value
+function identityIdBytes(identityId: IdentityId): Uint8Array {
+  return hexToBytes(parseIdentityId(identityId))
 }
 
-function requireKey(key: Uint8Array): string {
-  if (key.length !== 32) {
-    throw new TypeError('an Ed25519 public key is exactly 32 bytes')
-  }
-  return bytesToHex(key)
+/** Appends the identity-chain position a key event claims: `seq` u64, then `prev_hash` as a flag byte
+ * (0, or 1 followed by 32 raw bytes). `prevHash` is null for the first chained event. */
+function withPosition(builder: Builder, seq: bigint | number, prevHash: Uint8Array | null): Builder {
+  builder.u64(seq)
+  return prevHash === null ? builder.u8(0) : builder.u8(1).hash(prevHash)
 }
 
-/** Bytes signed for `identity.created` v2:
- * `avalon:identity.created:v2:{len(networkId)}:{networkId}:{len(shardId)}:{shardId}:{ticketId}:{identityId}:{publicKeyHex}:{displayName}`
- * with `len` the decimal UTF-8 byte length (not the UTF-16 length). The public key is lowercase hex here and
- * base64 on the wire. */
+/** Bytes signed for `identity.created` (tag `avalon.identity.created`, version 1): network id and shard id
+ * as `str`, the ticket id as uuid (also the inception key's id), the identity id and inception public key
+ * as 32 raw bytes each, then the display name as `str`. */
 export function identityCreatedSigningBytes(
   networkId: string,
   shardId: string,
@@ -95,35 +88,49 @@ export function identityCreatedSigningBytes(
   publicKey: Uint8Array,
   displayName: string,
 ): Uint8Array {
-  const networkLen = encoder.encode(networkId).length
-  const shardLen = encoder.encode(shardId).length
-  return encoder.encode(
-    `avalon:identity.created:v2:${networkLen}:${networkId}:${shardLen}:${shardId}:${requireUuid(ticketId, 'ticketId')}:${parseIdentityId(identityId)}:${requireKey(publicKey)}:${displayName}`,
-  )
+  return new Builder(tags.IDENTITY_CREATED, 1)
+    .str(networkId)
+    .str(shardId)
+    .uuid(ticketId)
+    .fixed(identityIdBytes(identityId), 32)
+    .key(publicKey)
+    .str(displayName)
+    .finish()
 }
 
-/** Bytes the approving device signs for a grant:
- * `avalon:device_grant.approved:v2:{grantId}:{identityId}:{requestedPublicKeyHex}`. */
+/** Bytes the approving device signs for a grant (tag `avalon.device_grant.approved`, version 1): grant id
+ * uuid (also the new key's id), identity id (32 raw), approver key id uuid, the requested public key (32 raw),
+ * then the chain position the approval will occupy. */
 export function deviceGrantApprovalSigningBytes(
   grantId: string,
   identityId: IdentityId,
+  approverSigningKeyId: string,
   requestedPublicKey: Uint8Array,
+  seq: bigint | number,
+  prevHash: Uint8Array | null,
 ): Uint8Array {
-  return encoder.encode(
-    `avalon:device_grant.approved:v2:${requireUuid(grantId, 'grantId')}:${parseIdentityId(identityId)}:${requireKey(requestedPublicKey)}`,
-  )
+  const builder = new Builder(tags.DEVICE_GRANT_APPROVED, 1)
+    .uuid(grantId)
+    .fixed(identityIdBytes(identityId), 32)
+    .uuid(approverSigningKeyId)
+    .key(requestedPublicKey)
+  return withPosition(builder, seq, prevHash).finish()
 }
 
-/** Bytes a signing-key revocation signs:
- * `avalon:identity.signing_key_revoked:v2:{identityId}:{signingKeyId}:{revokedBySigningKeyId}`. */
+/** Bytes a signing-key revocation signs (tag `avalon.identity.signing_key_revoked`, version 1): identity id
+ * (32 raw), the revoked key id uuid, the revoking key id uuid, then the chain position. */
 export function signingKeyRevokedSigningBytes(
   identityId: IdentityId,
   signingKeyId: string,
   revokedBySigningKeyId: string,
+  seq: bigint | number,
+  prevHash: Uint8Array | null,
 ): Uint8Array {
-  return encoder.encode(
-    `avalon:identity.signing_key_revoked:v2:${parseIdentityId(identityId)}:${requireUuid(signingKeyId, 'signingKeyId')}:${requireUuid(revokedBySigningKeyId, 'revokedBySigningKeyId')}`,
-  )
+  const builder = new Builder(tags.IDENTITY_SIGNING_KEY_REVOKED, 1)
+    .fixed(identityIdBytes(identityId), 32)
+    .uuid(signingKeyId)
+    .uuid(revokedBySigningKeyId)
+  return withPosition(builder, seq, prevHash).finish()
 }
 
 /** Strictly decodes a standard-base64 32-byte Ed25519 public key; throws otherwise. */

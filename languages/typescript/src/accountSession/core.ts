@@ -175,10 +175,9 @@ export class AccountSession {
     return { signing_key_id: this._signing.signingKeyId, signature: bytesToBase64(signature) }
   }
 
-  /** Signs `message` directly with this session's local key — for call
-   * sites (device-grant approval) whose signed bytes predate the
-   * generalized `avalon:<tag>:v1:...` shape. Throws if this session holds
-   * no local signing key. */
+  /** Signs `message` directly with this session's local key — for the
+   * structured identity key events (device approval, revocation). Throws if
+   * this session holds no local signing key. */
   signRaw(message: Uint8Array): string {
     if (!this._signing) {
       throw new NoLocalSigningKeyError('signRaw')
