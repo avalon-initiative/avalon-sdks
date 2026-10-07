@@ -29,7 +29,7 @@ hex = "0.4"
 sha2 = "0.11"
 ed25519-dalek = { version = "3.0.0", features = ["rand_core", "serde"] }
 url = { version = "2", features = ["serde"] }
-passkey-types = "0.5"
+passkey-types = "0.6"
 passkey-client = "0.5"
 passkey-authenticator = { version = "0.5", features = ["testable"] }
 wiremock = "0.6"
