@@ -763,7 +763,6 @@ function buildMessage(input: any): Uint8Array {
         throw new Error(`unknown field type ${f.type}`)
     }
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const e of input.extensions ?? []) builder.extension(e.type, e.critical, hexToBytes(e.valueHex))
   return builder.finish()
 }
