@@ -18,8 +18,10 @@ namespace Avalon.Sdk
             string serverUrl,
             string integratorCredentialKeyId,
             string? integratorSlug = null,
-            byte[]? signingKey = null)
+            byte[]? signingKey = null,
+            string? networkId = null)
         {
+            NetworkId = networkId;
             ServerUrl = serverUrl;
             IntegratorCredentialKeyId = integratorCredentialKeyId;
             IntegratorSlug = integratorSlug;
@@ -51,6 +53,15 @@ namespace Avalon.Sdk
         /// <c>AvalonConfig::signing_key</c>.
         /// </summary>
         public byte[]? SigningKey { get; }
+
+        /// <summary>
+        /// The network id signed actions bind, when the caller declares it; it wins over verification. When
+        /// <c>null</c>, a session resolves it once by verifying the server's network
+        /// (<see cref="AvalonClient.VerifyNetworkAsync"/>) and throws <see cref="NetworkNotVerifiedException"/>
+        /// unless that is <see cref="NetworkTrustStatusKind.Verified"/>. <see cref="AvalonClient.ConnectAsync"/> sets it
+        /// from the verified entry.
+        /// </summary>
+        public string? NetworkId { get; }
     }
 
     internal sealed class MyGrantsResponse
@@ -92,7 +103,10 @@ namespace Avalon.Sdk
         {
             _config = config;
             _http = httpClient ?? AvalonTraceHandler.NewDefaultClient();
+            _networkIds = new NetworkIdSource(config.NetworkId, ct => VerifyNetworkAsync(ct: ct));
         }
+
+        private readonly NetworkIdSource _networkIds;
 
         /// <summary>
         /// Exchanges an identity's existing Avalon session token (obtained via the Hub or a
@@ -141,7 +155,8 @@ namespace Avalon.Sdk
                 identityToken,
                 _config.IntegratorCredentialKeyId,
                 _config.IntegratorSlug,
-                _config.SigningKey);
+                _config.SigningKey,
+                _networkIds);
         }
 
         private async Task<IReadOnlyList<string>> FetchGrantedAsync(string identityToken, CancellationToken ct)

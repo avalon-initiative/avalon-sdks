@@ -27,7 +27,8 @@ async fn session(
         integrator_slug: None,
         signing_key: None,
         retry: Default::default(),
-    });
+    })
+    .with_network_id(NETWORK_ID);
     Mock::given(method("GET"))
         .and(path("/me"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -50,18 +51,6 @@ async fn session(
                 "added_at": "2023-01-01T00:00:00Z",
             }])),
         )
-        .mount(server)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/ledger/sth/latest"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "tree_size": 1,
-            "root_hash": "ab".repeat(32),
-            "network_id": NETWORK_ID,
-            "signing_key_id": "k",
-            "signature": "00",
-            "created_at": "2023-01-01T00:00:00Z",
-        })))
         .mount(server)
         .await;
     let session = client
@@ -287,4 +276,38 @@ async fn a_conflict_that_is_not_a_stale_position_is_not_retried() {
         "{err:?}"
     );
     assert_eq!(posts_to(&server, "/revoke").await.len(), 1);
+}
+
+#[tokio::test]
+async fn an_unverified_network_stops_approval_before_any_request_is_sent() {
+    let server = MockServer::start().await;
+    let key = SigningKey::from_bytes(&[7u8; 32]);
+    let (s, ..) = session(&server, &key).await;
+    // A session from a client with no declared network id and a node that is not a known network.
+    let client = AvalonClient::new(AvalonConfig {
+        server_url: server.uri(),
+        integrator_credential_key_id: "test".to_string(),
+        integrator_slug: None,
+        signing_key: None,
+        retry: Default::default(),
+    })
+    .with_witness_policy(avalon_sdk::known_list::WitnessPolicy::None);
+    let undeclared = client
+        .resume_account_session_with_signing_key("tok", key.to_bytes())
+        .await
+        .expect("resume");
+    drop(s);
+    let requested = SigningKey::from_bytes(&[9u8; 32]);
+    let err = undeclared
+        .approve_device_grant(
+            Uuid::new_v4(),
+            &BASE64.encode(requested.verifying_key().to_bytes()),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, SdkError::NetworkNotVerified { .. }),
+        "{err:?}"
+    );
+    assert!(posts_to(&server, "/approve").await.is_empty());
 }

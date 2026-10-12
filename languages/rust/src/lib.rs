@@ -180,6 +180,14 @@ pub enum SdkError {
     /// on.
     #[error("unexpected response from avalon-server: {0}")]
     Protocol(String),
+    /// The network id a signature must bind could not be established: none was declared
+    /// ([`AvalonClient::with_network_id`]) and the server did not verify against a pinned trust
+    /// anchor. Returned before anything is signed or any signed request is sent.
+    #[error("network not verified: {detail}")]
+    NetworkNotVerified {
+        /// What the verification reported (mismatch, unknown network or unreachable).
+        detail: String,
+    },
     /// `Session::subscribe_presence` (#136): the websocket handshake or
     /// connection itself failed — carries the underlying error's message.
     #[error("presence websocket connection failed: {0}")]
@@ -280,6 +288,7 @@ pub struct AvalonClient {
     http: reqwest::Client,
     witness_policy: crate::known_list::WitnessPolicy,
     auto_known_list: crate::known_list::KnownListCache,
+    declared_network_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -310,7 +319,17 @@ impl AvalonClient {
             http: reqwest::Client::new(),
             witness_policy: crate::known_list::WitnessPolicy::default(),
             auto_known_list: crate::known_list::KnownListCache::default(),
+            declared_network_id: None,
         }
+    }
+
+    /// Declares the network id every signature this client's sessions make binds (attestations,
+    /// device grants, revocations). Without it each session resolves the id once from
+    /// [`AvalonClient::verify_network`] and fails with [`SdkError::NetworkNotVerified`] unless the
+    /// server verifies; the node's own claim is never taken as the id.
+    pub fn with_network_id(mut self, network_id: impl Into<String>) -> Self {
+        self.declared_network_id = Some(network_id.into());
+        self
     }
 
     /// Sets the witness policy [`AvalonClient::verify_network`] applies (default
@@ -380,6 +399,7 @@ impl AvalonClient {
             integrator_slug: self.config.integrator_slug.clone(),
             signing_key: self.config.signing_key,
             retry: self.config.retry.clone(),
+            network: self.network_source(),
         })
     }
 
@@ -440,6 +460,8 @@ pub struct Session {
     signing_key: Option<[u8; 32]>,
     /// See `AvalonConfig::retry`.
     retry: RetryConfig,
+    /// Where the network id its signatures bind comes from.
+    network: crate::network::NetworkIdSource,
 }
 
 impl Session {

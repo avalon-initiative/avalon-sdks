@@ -362,6 +362,7 @@ mod tests {
     fn test_session(granted: Vec<&str>) -> Session {
         let self_id = IdentityId::random_for_tests();
         Session {
+            network: crate::network::NetworkIdSource::declared("test-net"),
             identity: Identity {
                 id: self_id.clone(),
                 created_at: OffsetDateTime::now_utc(),

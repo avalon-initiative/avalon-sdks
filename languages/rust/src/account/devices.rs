@@ -155,7 +155,7 @@ fn conflict_message(body: &[u8]) -> String {
 impl AccountSession {
     /// The network id the node serves, which every chained key event signature binds.
     async fn network_id(&self) -> Result<String, SdkError> {
-        crate::network::fetch_network_id(&self.http, &self.retry, &self.server_url).await
+        self.network.get().await
     }
 
     /// Posts a key event signed at a chain position. Starts at a new chain; on a stale-position 409

@@ -17,7 +17,7 @@ import { hexToBytes } from '@noble/hashes/utils.js'
 import { sign as ed25519Sign, bytesToBase64, base64ToBytes } from './crypto/signing.js'
 import { Builder, tags, type DomainTag } from './crypto/signingBytes.js'
 import { parseIdentityId, type IdentityId } from './identityId.js'
-import { getNodeStatus } from './nodeStatus.js'
+import { resolveVerifiedNetworkId } from './network/verifiedNetworkId.js'
 import type { components } from './generated.js'
 
 export type Capability =
@@ -49,6 +49,8 @@ export interface IntegratorSessionInit {
   integratorKeyId: string
   integratorSlug?: string
   signingKey?: Uint8Array
+  /** The network id to sign into attestations; when omitted it is verified against the trust anchors on first use. */
+  networkId?: string
 }
 
 export interface Friend {
@@ -225,6 +227,7 @@ export class IntegratorSession {
     this.integratorKeyId = init.integratorKeyId
     this.integratorSlug = init.integratorSlug
     this.signingKey = init.signingKey
+    this.networkIdValue = init.networkId
   }
 
   /** This session's own identity — no network call, populated once by
@@ -246,9 +249,10 @@ export class IntegratorSession {
     return this.granted.has(capability)
   }
 
-  /** The network id of the node, signed into every attestation; read once from `GET /nodes/status`. */
+  /** The network id signed into every attestation: the declared one, else verified once against the trust anchors.
+   * Throws `NetworkNotVerifiedError` when it cannot be verified. */
   private async networkId(): Promise<string> {
-    this.networkIdValue ??= (await getNodeStatus(this.serverUrl)).network_id
+    this.networkIdValue ??= await resolveVerifiedNetworkId(this.serverUrl)
     return this.networkIdValue
   }
 
@@ -399,6 +403,7 @@ export class IntegratorSession {
       throw new MissingIssuerCredentialsError()
     }
     const slug = this.integratorSlug
+    const networkId = await this.networkId()
 
     const challenge = await request<ChallengeResponseWire>(this.serverUrl, `/integrations/${slug}/challenge`, {
       method: 'POST',
@@ -413,7 +418,7 @@ export class IntegratorSession {
     const signature = ed25519Sign(
       this.signingKey,
       attestationSigningBytes(
-        await this.networkId(),
+        networkId,
         claimKind,
         issuerRef,
         this.integratorKeyId,
@@ -485,6 +490,7 @@ export class IntegratorSession {
       throw new MissingIssuerCredentialsError()
     }
     const slug = this.integratorSlug
+    const networkId = await this.networkId()
 
     const challenge = await request<ChallengeResponseWire>(this.serverUrl, `/integrations/${slug}/challenge`, {
       method: 'POST',
@@ -499,7 +505,7 @@ export class IntegratorSession {
     const signature = ed25519Sign(
       this.signingKey,
       bulkAttestationSigningBytes(
-        await this.networkId(),
+        networkId,
         claimKind,
         issuerRef,
         this.integratorKeyId,
@@ -542,6 +548,7 @@ export class IntegratorSession {
       throw new MissingIssuerCredentialsError()
     }
     const slug = this.integratorSlug
+    const networkId = await this.networkId()
 
     const challenge = await request<ChallengeResponseWire>(this.serverUrl, `/integrations/${slug}/challenge`, {
       method: 'POST',
@@ -581,6 +588,7 @@ export interface AuthenticateOptions {
   integratorCredentialKeyId: string
   integratorSlug?: string
   signingKey?: Uint8Array
+  networkId?: string
 }
 
 /** Exchanges an identity's existing session token for an `IntegratorSession`
@@ -612,5 +620,6 @@ export async function authenticate(options: AuthenticateOptions): Promise<Integr
     integratorKeyId: options.integratorCredentialKeyId,
     integratorSlug: options.integratorSlug,
     signingKey: options.signingKey,
+    networkId: options.networkId,
   })
 }

@@ -126,25 +126,79 @@ impl From<SignedTreeHeadWire> for crate::sth::SignedTreeHead {
     }
 }
 
-/// The network id a node serves, read from `GET /ledger/sth/latest`; what a signature that binds
-/// the network (attestations, key events) must be made for.
-pub(crate) async fn fetch_network_id(
-    http: &reqwest::Client,
-    retry: &crate::RetryConfig,
-    server_url: &str,
-) -> Result<String, SdkError> {
-    let response = crate::http::send(http, retry, true, |c| {
-        c.get(format!("{server_url}/ledger/sth/latest"))
-    })
-    .await?;
-    if !response.status().is_success() {
-        return Err(crate::http::map_error_response(response).await);
+/// Where the network id a signature binds comes from: the caller's declaration, else the id of
+/// the pinned trust anchor the server verifies against, resolved once. Never the node's claim alone.
+#[derive(Clone)]
+pub(crate) struct NetworkIdSource {
+    declared: Option<String>,
+    verifier: Option<std::sync::Arc<AvalonClient>>,
+    anchors_url: String,
+    resolved: std::sync::Arc<tokio::sync::OnceCell<String>>,
+}
+
+impl NetworkIdSource {
+    /// A source that always answers `network_id` without any verification.
+    pub(crate) fn declared(network_id: impl Into<String>) -> Self {
+        Self {
+            declared: Some(network_id.into()),
+            verifier: None,
+            anchors_url: TRUST_ANCHORS_URL.to_string(),
+            resolved: Default::default(),
+        }
     }
-    let head: SignedTreeHeadWire = response
-        .json()
-        .await
-        .map_err(|e| SdkError::Protocol(e.to_string()))?;
-    Ok(head.network_id)
+
+    /// The network id, or [`SdkError::NetworkNotVerified`] when the server does not verify.
+    pub(crate) async fn get(&self) -> Result<String, SdkError> {
+        if let Some(id) = &self.declared {
+            return Ok(id.clone());
+        }
+        let verifier = self
+            .verifier
+            .as_ref()
+            .ok_or_else(|| SdkError::NetworkNotVerified {
+                detail: "no network id declared and no server to verify".to_string(),
+            })?;
+        self.resolved
+            .get_or_try_init(|| async {
+                match verifier
+                    .verify_with_policy_at(&self.anchors_url, &verifier.witness_policy, None)
+                    .await
+                {
+                    NetworkTrustStatus::Verified { entry } => Ok(entry.network_id),
+                    other => Err(SdkError::NetworkNotVerified {
+                        detail: format!("{other:?}"),
+                    }),
+                }
+            })
+            .await
+            .cloned()
+    }
+}
+
+impl AvalonClient {
+    /// The network id source for sessions built from this client.
+    pub(crate) fn network_source(&self) -> NetworkIdSource {
+        if let Some(id) = &self.declared_network_id {
+            return NetworkIdSource::declared(id.clone());
+        }
+        let verifier = AvalonClient::new(AvalonConfig {
+            server_url: self.config.server_url.clone(),
+            integrator_credential_key_id: String::new(),
+            integrator_slug: None,
+            signing_key: None,
+            retry: self.config.retry.clone(),
+        })
+        .with_witness_policy(self.witness_policy.clone());
+        NetworkIdSource {
+            declared: None,
+            verifier: Some(std::sync::Arc::new(AvalonClient {
+                auto_known_list: self.auto_known_list.clone(),
+                ..verifier
+            })),
+            anchors_url: TRUST_ANCHORS_URL.to_string(),
+            resolved: Default::default(),
+        }
+    }
 }
 
 /// The invariant this module exists for: `network_id` alone is never
@@ -970,6 +1024,9 @@ impl AvalonClient {
         })
         .with_witness_policy(config.witness_policy);
         client.auto_known_list = cache;
+        if let TargetNetwork::NetworkId(id) = &target {
+            client.declared_network_id = Some(id.clone());
+        }
         Ok(client)
     }
 }
@@ -1961,6 +2018,116 @@ mod tests {
             .await
             .unwrap_or_else(|e| panic!("{advertised}: {e:?}"));
             assert_eq!(found.server_url, world.node.uri());
+        }
+    }
+    /// A node serving `network_id`'s head signed by `head_key`, and an anchors list pinning
+    /// `anchor_key` for `anchored_id`; `sth_status` lets a test make the head unreachable.
+    async fn source_world(
+        head_key: &SigningKey,
+        anchor_key: &SigningKey,
+        anchored_id: &str,
+        sth_status: u16,
+    ) -> (MockServer, NetworkIdSource) {
+        let server = MockServer::start().await;
+        let sth = crate::sth::sign_tree_head(
+            head_key,
+            "k",
+            1,
+            &"ab".repeat(32),
+            "avalon-test",
+            OffsetDateTime::UNIX_EPOCH,
+        )
+        .unwrap();
+        Mock::given(method("GET"))
+            .and(path("/ledger/sth/latest"))
+            .respond_with(
+                ResponseTemplate::new(sth_status).set_body_json(serde_json::json!({
+                    "tree_size": 1, "root_hash": sth.root_hash, "network_id": "avalon-test",
+                    "signing_key_id": "k", "signature": sth.signature,
+                    "created_at": "1970-01-01T00:00:00Z",
+                })),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/trusted-networks.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "networks": [{
+                    "label": "t", "network_id": anchored_id,
+                    "verify_key": hex::encode(anchor_key.verifying_key().as_bytes()),
+                    "signing_key_id": "k", "environment": "dev",
+                }]
+            })))
+            .mount(&server)
+            .await;
+        let mut source = client_for(server.uri())
+            .with_witness_policy(WitnessPolicy::None)
+            .network_source();
+        source.anchors_url = format!("{}/trusted-networks.json", server.uri());
+        (server, source)
+    }
+
+    async fn request_count(server: &MockServer, request_path: &str) -> usize {
+        server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|r| r.url.path() == request_path)
+            .count()
+    }
+
+    #[tokio::test]
+    async fn a_declared_network_id_is_used_without_any_verification() {
+        let server = MockServer::start().await;
+        let source = client_for(server.uri())
+            .with_network_id("declared-net")
+            .network_source();
+        assert_eq!(source.get().await.unwrap(), "declared-net");
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_verified_network_id_is_resolved_once_and_cached() {
+        let key = SigningKey::from_bytes(&[5; 32]);
+        let (server, source) = source_world(&key, &key, "avalon-test", 200).await;
+        assert_eq!(source.get().await.unwrap(), "avalon-test");
+        assert_eq!(source.get().await.unwrap(), "avalon-test");
+        assert_eq!(request_count(&server, "/ledger/sth/latest").await, 1);
+        assert_eq!(request_count(&server, "/trusted-networks.json").await, 1);
+    }
+
+    #[tokio::test]
+    async fn an_unverified_network_fails_closed_and_sends_no_signed_request() {
+        let key = SigningKey::from_bytes(&[5; 32]);
+        let other = SigningKey::from_bytes(&[6; 32]);
+        let cases = [
+            (
+                "Mismatch",
+                source_world(&key, &other, "avalon-test", 200).await,
+            ),
+            (
+                "UnknownNetwork",
+                source_world(&key, &key, "other-net", 200).await,
+            ),
+            (
+                "Unreachable",
+                source_world(&key, &key, "avalon-test", 500).await,
+            ),
+        ];
+        for (kind, (server, source)) in cases {
+            match source.get().await {
+                Err(SdkError::NetworkNotVerified { detail }) => {
+                    assert!(detail.contains(kind), "{kind}: {detail}")
+                }
+                other => panic!("{kind}: {other:?}"),
+            }
+            assert!(server
+                .received_requests()
+                .await
+                .unwrap()
+                .iter()
+                .all(|r| r.method.as_str() == "GET"));
         }
     }
 }

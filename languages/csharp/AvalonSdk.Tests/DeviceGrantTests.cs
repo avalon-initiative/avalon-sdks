@@ -107,26 +107,6 @@ public class DeviceGrantTests
     }
 
     [Fact]
-    public async Task ApproveDeviceGrantAsync_SignsTheServingNodesNetworkIdAndFetchesItOnce()
-    {
-        var handler = new StubHttpMessageHandler();
-        var key = new Ed25519PrivateKeyParameters(new SecureRandom());
-        var identity = IdentityId.RandomForTests();
-        var session = AccountSession.ForTesting(
-            handler.ToHttpClient(), identityId: identity, signing: new AccountSession.SigningKeyMaterial(key, Guid.NewGuid()));
-        var grant = Guid.NewGuid();
-        var requested = NewDeviceKey();
-        handler.Enqueue("{\"network_id\":\"avalon-fetched\"}").Enqueue(DeviceJson(grant, Convert.ToBase64String(requested)));
-
-        await session.ApproveDeviceGrantAsync(grant, Convert.ToBase64String(requested));
-
-        Assert.EndsWith("/nodes/status", handler.Requests[0].Url);
-        var signature = Convert.FromBase64String(JsonDocument.Parse(handler.Requests[1].Body!).RootElement.GetProperty("signature").GetString()!);
-        var bytes = IdentitySigning.DeviceGrantApprovalSigningBytes("avalon-fetched", grant, identity, session.SigningKeyId!.Value, requested, 1, null);
-        Assert.True(IdentitySigning.VerifyStrict(key.GeneratePublicKey().GetEncoded(), bytes, signature));
-    }
-
-    [Fact]
     public async Task ApproveDeviceGrantAsync_ResignsOnceAtTheHeadTheServerReturns()
     {
         var h = new Harness();
