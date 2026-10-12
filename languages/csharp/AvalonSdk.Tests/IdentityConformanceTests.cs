@@ -167,8 +167,8 @@ public class IdentityConformanceTests
         Assert.True(id.MatchesKey(publicKey));
         var counts = RunKeyEventFile("identity-created-signing.json", input =>
             IdentitySigning.IdentityCreatedSigningBytes(
-                Str(input, "networkId"), Str(input, "shardId"), Guid.Parse(Str(input, "ticketId")), id, publicKey, Str(input, "displayName")));
-        Assert.Equal((6, 6, 1), counts);
+                Str(input, "networkId"), Guid.Parse(Str(input, "ticketId")), id, publicKey, Str(input, "displayName")));
+        Assert.Equal((6, 4, 1), counts);
     }
 
     [Fact]
@@ -180,13 +180,14 @@ public class IdentityConformanceTests
             ToHex(PublicKeyOfSeed(Str(doc.RootElement, "requestedKeySeedHex"))));
         var counts = RunKeyEventFile("device-grant-approval.json", input =>
             IdentitySigning.DeviceGrantApprovalSigningBytes(
+                Str(input, "networkId"),
                 Guid.Parse(Str(input, "grantId")),
                 IdentityId.Parse(Str(input, "identityId")),
                 Guid.Parse(Str(input, "approverSigningKeyId")),
                 Hex(Str(input, "requestedPublicKeyHex")),
                 ulong.Parse(Str(input, "seq")),
                 PrevHash(input)));
-        Assert.Equal((4, 7, 1), counts);
+        Assert.Equal((4, 8, 1), counts);
     }
 
     [Fact]
@@ -194,11 +195,12 @@ public class IdentityConformanceTests
     {
         var counts = RunKeyEventFile("signing-key-revoked.json", input =>
             IdentitySigning.SigningKeyRevokedSigningBytes(
+                Str(input, "networkId"),
                 IdentityId.Parse(Str(input, "identityId")),
                 Guid.Parse(Str(input, "signingKeyId")),
                 Guid.Parse(Str(input, "revokedBySigningKeyId")),
                 ulong.Parse(Str(input, "seq")),
                 PrevHash(input)));
-        Assert.Equal((6, 6, 1), counts);
+        Assert.Equal((6, 7, 1), counts);
     }
 }
