@@ -12,7 +12,7 @@ const base = (): EntryHashInput => ({
   subject: 's',
   payloadHash: new Uint8Array(32).fill(1),
   timestampMicros: 1,
-  version: 1,
+  eventVersion: 1,
 })
 
 describe('entryHash', () => {
@@ -30,13 +30,13 @@ describe('entryHash', () => {
       { subject: 's2' },
       { payloadHash: new Uint8Array(32).fill(9) },
       { timestampMicros: 2 },
-      { version: 2 },
+      { eventVersion: 2 },
     ]
     for (const v of variants) expect(h(v)).not.toBe(want)
   })
 
   it('rejects out-of-range fields with out_of_range', () => {
-    for (const patch of [{ seq: -1 }, { seq: 2n ** 64n }, { version: 65536 }, { version: -1 }, { timestampMicros: 2n ** 63n }]) {
+    for (const patch of [{ seq: -1 }, { seq: 2n ** 64n }, { eventVersion: 2 ** 32 }, { eventVersion: -1 }, { timestampMicros: 2n ** 63n }]) {
       expect(() => entryHash({ ...base(), ...patch })).toThrow(EntryHashError)
     }
   })

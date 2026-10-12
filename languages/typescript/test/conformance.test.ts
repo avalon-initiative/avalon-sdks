@@ -961,7 +961,14 @@ describe('conformance: ledger-entry-hash.json', () => {
           ? parseHash('payload_hash', input.payloadHashHex)
           : payloadHash(parseStrict(input.payloadJsonUtf8)),
       timestampMicros: BigInt(input.timestampUnixMicros),
-      version: input.version,
+      eventVersion: input.eventVersion,
+      envelope: {
+        layoutVersion: input.layoutVersion,
+        rulesVersion: input.rulesVersion,
+        hashAlgo: input.hashAlgo,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        extensions: input.extensions.map((e: any) => ({ type: e.type, critical: e.critical, value: hexToBytes(e.valueHex) })),
+      },
     }
   }
 
@@ -984,14 +991,12 @@ describe('conformance: ledger-entry-hash.json', () => {
   expect(doc.rejectVectors.length).toBeGreaterThan(0)
   for (const v of doc.rejectVectors) {
     it(`rejects: ${v.name}`, () => {
-      let code: string | undefined
-      try {
-        entrySigningBytes(inputOf(v.input))
-      } catch (error) {
-        if (!(error instanceof EntryHashError)) throw error
-        code = error.code
-      }
-      expect(code).toBe(v.expected.error)
+      const error = catchError(() => entrySigningBytes(inputOf(v.input)))
+      if (!(error instanceof EntryHashError) && !(error instanceof SigningBytesError)) throw error
+      expect(error.code).toBe(v.expected.error)
+      if (v.expected.what !== undefined) expect((error as SigningBytesError).what).toBe(v.expected.what)
+      const detail = v.expected.required ?? v.expected.value
+      if (detail !== undefined) expect((error as SigningBytesError).value).toBe(detail)
     })
   }
 })
