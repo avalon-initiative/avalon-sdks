@@ -1,7 +1,6 @@
-// The ledger entry hash: SHA-256 of the structured layout tag avalon.ledger.entry, the entry version in the u16
-// version slot, then network id, shard id, seq, previous hash, event id, kind, issuer, subject, payload hash and
-// event time in unix microseconds. Mirrors crates/protocol/src/ledger_entry.rs;
-// conformance/vectors/ledger-entry-hash.json is the shared arbiter.
+// The ledger entry hash: the digest of the structured layout tag avalon.ledger.entry (envelope header, network id,
+// shard id, seq, event id, kind, issuer, subject, event version, event time in unix microseconds, hash algo, hashes).
+// Mirrors crates/protocol/src/ledger_entry.rs; conformance/vectors/ledger-entry-hash.json is the shared arbiter.
 
 using System;
 using System.Security.Cryptography;
@@ -55,8 +54,11 @@ namespace Avalon.Sdk
         /// <summary>Unix microseconds (see <see cref="LedgerEntry.TimestampMicros"/>).</summary>
         public long TimestampMicros { get; set; }
 
-        /// <summary>The event's own version, carried in the layout's u16 version slot.</summary>
-        public ushort Version { get; set; }
+        /// <summary>The payload schema version of <see cref="Kind"/>, not the layout version.</summary>
+        public uint EventVersion { get; set; }
+
+        /// <summary>Layout version, rules version, hash algorithm and extensions as stored with the entry.</summary>
+        public Envelope Envelope { get; set; } = Avalon.Sdk.Envelope.Current(DomainTags.LedgerEntry);
     }
 
     public static class LedgerEntry
@@ -84,14 +86,14 @@ namespace Avalon.Sdk
         public static DateTimeOffset FloorToMicros(DateTimeOffset time) =>
             new DateTimeOffset(UnixEpochTicks + TimestampMicros(time) * 10, TimeSpan.Zero);
 
-        /// <summary>The layout's u16 version slot for an event version; anything outside 0..65535 is out of range.</summary>
-        public static ushort LayoutVersion(long version)
+        /// <summary>An event version as the layout's u32; anything outside 0..2^32-1 is out of range.</summary>
+        public static uint EventVersion(long version)
         {
-            if (version < 0 || version > ushort.MaxValue)
+            if (version < 0 || version > uint.MaxValue)
             {
-                throw new LedgerEntryException(LedgerEntryError.OutOfRange, "version");
+                throw new LedgerEntryException(LedgerEntryError.OutOfRange, "event_version");
             }
-            return (ushort)version;
+            return (uint)version;
         }
 
         /// <summary>Parses exactly 64 lowercase hex characters into 32 bytes.</summary>
@@ -130,28 +132,25 @@ namespace Avalon.Sdk
         private static int HexValue(char c) =>
             c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1;
 
-        /// <summary>The exact bytes the entry hash is the SHA-256 of.</summary>
+        /// <summary>The exact bytes the entry hash is the digest of.</summary>
         public static byte[] SigningBytes(LedgerEntryHashInput input) =>
-            new SigningBytesBuilder(DomainTags.LedgerEntry, input.Version)
+            SigningBytesBuilder.WithEnvelope(DomainTags.LedgerEntry, input.Envelope)
                 .Str(input.NetworkId)
                 .Str(input.ShardId)
                 .U64(input.Seq)
-                .Hash(input.PrevHash)
                 .Uuid(input.EventId)
                 .Str(input.Kind)
                 .Str(input.Issuer)
                 .Str(input.Subject)
-                .Hash(input.PayloadHash)
+                .U32(input.EventVersion)
                 .I64(input.TimestampMicros)
+                .HashAlgo(input.Envelope.HashAlgo)
+                .Hash(input.PrevHash)
+                .Hash(input.PayloadHash)
                 .Finish();
 
-        /// <summary>The entry hash: SHA-256 of <see cref="SigningBytes"/>.</summary>
-        public static byte[] Hash(LedgerEntryHashInput input)
-        {
-            using (var sha = SHA256.Create())
-            {
-                return sha.ComputeHash(SigningBytes(input));
-            }
-        }
+        /// <summary>The entry hash: the envelope's hash algorithm over <see cref="SigningBytes"/>.</summary>
+        public static byte[] Hash(LedgerEntryHashInput input) =>
+            Avalon.Sdk.SigningBytes.Digest(input.Envelope.HashAlgo, SigningBytes(input));
     }
 }

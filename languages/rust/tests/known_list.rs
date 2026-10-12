@@ -33,7 +33,7 @@ fn key_id(k: &SigningKey) -> String {
 fn peer(k: &SigningKey, base_url: &str, network: &str, at: OffsetDateTime) -> serde_json::Value {
     let id = key_id(k);
     let proof = hex::encode(
-        k.sign(&witness_announce_message(base_url, &id, at))
+        k.sign(&witness_announce_message(base_url, &id, at).unwrap())
             .to_bytes(),
     );
     serde_json::json!({"base_url": base_url, "network_id": network,
@@ -232,10 +232,10 @@ fn cosigned(
     signers: &[&SigningKey],
     now: OffsetDateTime,
 ) -> CosignedTreeHead {
-    let sth = sign_tree_head(author, "k", 7, root, NET, now);
+    let sth = sign_tree_head(author, "k", 7, root, NET, now).unwrap();
     let cosignatures = signers
         .iter()
-        .map(|k| sign_witness_cosignature(k, &sth, now))
+        .map(|k| sign_witness_cosignature(k, &sth, now).unwrap())
         .collect();
     CosignedTreeHead { sth, cosignatures }
 }

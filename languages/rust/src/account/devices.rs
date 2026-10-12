@@ -153,6 +153,11 @@ fn conflict_message(body: &[u8]) -> String {
 }
 
 impl AccountSession {
+    /// The network id the node serves, which every chained key event signature binds.
+    async fn network_id(&self) -> Result<String, SdkError> {
+        self.network.get().await
+    }
+
     /// Posts a key event signed at a chain position. Starts at a new chain; on a stale-position 409
     /// re-signs once at the returned head, then fails if the head moved again.
     async fn post_chain_event<B: serde::Serialize>(
@@ -230,6 +235,7 @@ impl AccountSession {
             )
         })?;
         let identity_id = self.identity().id.clone();
+        let network_id = self.network_id().await?;
         self.post_chain_event(
             &super::path(
                 crate::generated::paths::devices::REVOKE_DEVICE,
@@ -241,6 +247,7 @@ impl AccountSession {
                 prev_hash: position.prev_hash_hex(),
                 signature: self.sign_raw(
                     &crate::identity_signing::signing_key_revoked_signing_bytes(
+                        &network_id,
                         &identity_id,
                         signing_key_id,
                         revoker,
@@ -331,6 +338,7 @@ impl AccountSession {
             ));
         }
         let identity_id = self.identity().id.clone();
+        let network_id = self.network_id().await?;
         let response = self
             .post_chain_event(
                 &super::path(
@@ -343,6 +351,7 @@ impl AccountSession {
                     prev_hash: position.prev_hash_hex(),
                     signature: self.sign_raw(
                         &crate::identity_signing::device_grant_approval_signing_bytes(
+                            &network_id,
                             grant_id,
                             &identity_id,
                             approver,

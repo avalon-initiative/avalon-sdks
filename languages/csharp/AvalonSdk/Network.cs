@@ -121,7 +121,7 @@ namespace Avalon.Sdk
     }
 
     /// <summary>GET /ledger/sth/latest's wire shape.</summary>
-    public class SignedTreeHeadWire
+    public class SignedTreeHeadWire : EnvelopeWire
     {
         [JsonPropertyName("tree_size")]
         public long TreeSize { get; set; }
@@ -212,6 +212,50 @@ namespace Avalon.Sdk
 
         public static NetworkTrustStatus Unreachable(string detail) =>
             new NetworkTrustStatus(NetworkTrustStatusKind.Unreachable, null, null, detail);
+    }
+
+    /// <summary>Thrown before anything is signed or sent when a signed action needs a network id and none was declared
+    /// or verified: <see cref="Status"/> is the verification outcome (never <see cref="NetworkTrustStatusKind.Verified"/>).</summary>
+    public sealed class NetworkNotVerifiedException : Exception
+    {
+        public NetworkNotVerifiedException(NetworkTrustStatus status)
+            : base($"the server's network could not be verified ({status.Kind}); declare AvalonConfig.NetworkId or fix verification")
+        {
+            Status = status;
+        }
+
+        public NetworkTrustStatus Status { get; }
+    }
+
+    /// <summary>Where a session gets the network id its signatures bind: the caller-declared one, else the id of the
+    /// pinned trust-anchor entry the server's tree head verified against, resolved once and cached. Never the node's own claim.</summary>
+    internal sealed class NetworkIdSource
+    {
+        private readonly Func<CancellationToken, Task<NetworkTrustStatus>>? _verify;
+        private string? _id;
+
+        public NetworkIdSource(string? declared, Func<CancellationToken, Task<NetworkTrustStatus>>? verify)
+        {
+            _id = declared;
+            _verify = verify;
+        }
+
+        public async Task<string> ResolveAsync(CancellationToken ct)
+        {
+            if (_id != null)
+            {
+                return _id;
+            }
+            var status = _verify == null
+                ? NetworkTrustStatus.Unreachable("no network id declared and no verification available")
+                : await _verify(ct).ConfigureAwait(false);
+            if (status.Kind != NetworkTrustStatusKind.Verified)
+            {
+                throw new NetworkNotVerifiedException(status);
+            }
+            _id = status.Entry!.NetworkId;
+            return _id;
+        }
     }
 
     /// <summary>One of the three real deployment tiers a caller can declare intent for without
@@ -617,7 +661,7 @@ namespace Avalon.Sdk
             var cache = new KnownListCache();
             var found = await DiscoverRankedCoreAsync(target, http, null, ct, witnessPolicy, cache).ConfigureAwait(false);
             var client = new AvalonClient(
-                new AvalonConfig(found.ServerUrl, config.IntegratorCredentialKeyId, config.IntegratorSlug, config.SigningKey),
+                new AvalonConfig(found.ServerUrl, config.IntegratorCredentialKeyId, config.IntegratorSlug, config.SigningKey, found.Entry.NetworkId),
                 http);
             client._knownLists = cache;
             return client;
@@ -833,7 +877,7 @@ namespace Avalon.Sdk
 
             try
             {
-                var message = SthSigningMessage(wire.TreeSize, wire.RootHash, wire.NetworkId, wire.CreatedAt);
+                var message = SthSigningMessage(wire);
                 return StrictEd25519.Verify(keyBytes, message, signatureBytes);
             }
             catch (Exception)
@@ -842,42 +886,36 @@ namespace Avalon.Sdk
             }
         }
 
-        /// <summary>The exact bytes an STH's signature covers: a fixed domain tag, tree_size and
-        /// the unix timestamp as fixed-width big-endian integers, and root_hash explicitly
-        /// length-prefixed ahead of its bytes, followed by the raw network_id bytes. Must stay
-        /// byte-for-byte identical to the server's and the Rust SDK's own construction —
-        /// conformance/vectors/signed-tree-head.json is what proves it still is.</summary>
-        internal static byte[] SthSigningMessage(long treeSize, string rootHashHex, string networkId, DateTimeOffset createdAt)
+        /// <summary>The exact bytes an STH's signature covers: the structured layout with tag
+        /// <c>avalon.settlement.sth</c>. Throws <see cref="ArgumentException"/> unless the root hash is 64 lowercase hex
+        /// characters, and <see cref="SigningBytesException"/> for an envelope this SDK cannot read.
+        /// conformance/vectors/signed-tree-head.json proves it matches the node byte for byte.</summary>
+        internal static byte[] SthSigningMessage(
+            long treeSize, string rootHashHex, string networkId, string signingKeyId, DateTimeOffset createdAt, Envelope? envelope = null)
         {
-            var message = new List<byte>();
-            message.AddRange(Encoding.UTF8.GetBytes("avalon-settlement-sth-v1"));
-            message.AddRange(BigEndian(treeSize));
-            var rootHashBytes = Encoding.UTF8.GetBytes(rootHashHex);
-            message.AddRange(BigEndian((uint)rootHashBytes.Length));
-            message.AddRange(rootHashBytes);
-            message.AddRange(Encoding.UTF8.GetBytes(networkId));
-            message.AddRange(BigEndian(createdAt.ToUnixTimeSeconds()));
-            return message.ToArray();
+            byte[] root;
+            try
+            {
+                root = LedgerEntry.ParseHash("root_hash", rootHashHex);
+            }
+            catch (LedgerEntryException)
+            {
+                throw new ArgumentException("root_hash is not 64 lowercase hex characters", nameof(rootHashHex));
+            }
+            var env = envelope ?? Envelope.Current(DomainTags.SettlementSth);
+            return SigningBytesBuilder.WithEnvelope(DomainTags.SettlementSth, env)
+                .I64(treeSize)
+                .Str(networkId)
+                .Str(signingKeyId)
+                .I64(createdAt.ToUnixTimeSeconds())
+                .HashAlgo(env.HashAlgo)
+                .Hash(root)
+                .Finish();
         }
 
-        private static byte[] BigEndian(long value)
-        {
-            var bytes = BitConverter.GetBytes(value);
-            if (BitConverter.IsLittleEndian)
-            {
-                Array.Reverse(bytes);
-            }
-            return bytes;
-        }
-
-        private static byte[] BigEndian(uint value)
-        {
-            var bytes = BitConverter.GetBytes(value);
-            if (BitConverter.IsLittleEndian)
-            {
-                Array.Reverse(bytes);
-            }
-            return bytes;
-        }
+        /// <summary>The signing bytes of <paramref name="wire"/> under the envelope it was served with.</summary>
+        internal static byte[] SthSigningMessage(SignedTreeHeadWire wire) =>
+            SthSigningMessage(
+                wire.TreeSize, wire.RootHash, wire.NetworkId, wire.SigningKeyId, wire.CreatedAt, wire.ToEnvelope(DomainTags.SettlementSth));
     }
 }

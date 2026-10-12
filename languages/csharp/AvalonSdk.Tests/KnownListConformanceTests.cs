@@ -86,5 +86,11 @@ public class KnownListConformanceTests
                     == KnownListRules.VerifyWitnessAnnounce(baseUrl, keyId, announcedAt, input.GetProperty("proofHex").GetString()!, now),
                 name);
         }
+        var rejects = doc.RootElement.GetProperty("readRejectVectors").EnumerateArray().ToList();
+        Assert.Equal(4, rejects.Count);
+        foreach (var vector in rejects)
+        {
+            StructuredConformanceTests.AssertReadRejects(vector);
+        }
     }
 }

@@ -407,6 +407,13 @@ namespace Avalon.Sdk.Generated
         public System.Collections.Generic.ICollection<BulkClaimRequest> Claims { get; set; } = new System.Collections.ObjectModel.Collection<BulkClaimRequest>();
 
         /// <summary>
+        /// The `issued_at` the issuer signed for every claim, as unix microseconds; same window as
+        /// <br/>a single issuance.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("issued_at_micros")]
+        public long IssuedAtMicros { get; set; } = default!;
+
+        /// <summary>
         /// Which of the issuer's own keys signed the whole ordered list.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("key_id")]
@@ -2068,6 +2075,13 @@ namespace Avalon.Sdk.Generated
         public object? Evidence { get; set; } = default!;
 
         /// <summary>
+        /// The `issued_at` the issuer signed, as unix microseconds; it must be within
+        /// <br/>`ISSUED_AT_MAX_SKEW_SECS` of this node's clock and becomes the attestation's `issued_at`.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("issued_at_micros")]
+        public long IssuedAtMicros { get; set; } = default!;
+
+        /// <summary>
         /// Which of the issuer's own keys signed this attestation — resolved
         /// <br/>against that issuer's full key history at the moment of issuance
         /// <br/>(#84's `resolve_valid_signing_key`), not assumed to be the key that
@@ -3214,13 +3228,13 @@ namespace Avalon.Sdk.Generated
         public object Challenge { get; set; } = new object();
 
         /// <summary>
-        /// The ledger network id; the client signs it, with the shard id and ticket, into `identity.created`.
+        /// The ledger network id; the client signs it, with the ticket, into `identity.created`.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("network_id")]
         public string NetworkId { get; set; } = default!;
 
         /// <summary>
-        /// The shard this node authors; part of the signed bytes.
+        /// The shard this node authors; informational, not part of the signed bytes.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("shard_id")]
         public string ShardId { get; set; } = default!;
@@ -4723,6 +4737,6 @@ namespace Avalon.Sdk
         /// <summary>Issue #735/#725: the docs/generated/openapi.json `info.version`
         /// this file's generated types were produced from — generated straight from
         /// the same schema file, so it can't drift by construction.</summary>
-        public const string OpenApiSchemaVersion = "0.13.1";
+        public const string OpenApiSchemaVersion = "0.13.3";
     }
 }

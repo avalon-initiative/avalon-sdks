@@ -4,6 +4,7 @@
 
 import type { components } from './generated'
 import { parseIdentityId, type IdentityId } from './identityId.js'
+import type { EnvelopeWire } from './crypto/signingBytes.js'
 
 export type Genre = components['schemas']['Genre']
 
@@ -79,7 +80,7 @@ export interface DeviceRowWire {
  * `./network/sthMessage.js` for reconstructing the signing message this
  * type's signature covers, and `./network/verifyNetwork.js`/
  * `AvalonClient.verifyNetwork` for verifying it. */
-export interface SignedTreeHeadResponse {
+export interface SignedTreeHeadResponse extends EnvelopeWire {
   tree_size: number
   // Lowercase hex-encoded RFC 6962 Merkle Tree Hash.
   root_hash: string
@@ -97,7 +98,7 @@ export interface SignedTreeHeadResponse {
 
 /** One witness cosignature as served by `?witnesses=1`: it is over the head
  * it is attached to, so the head's own fields are not repeated. */
-export interface WitnessCosignatureWire {
+export interface WitnessCosignatureWire extends EnvelopeWire {
   // Lowercase hex Ed25519 public key of the witness.
   witness_key_id: string
   // RFC 3339.
@@ -112,12 +113,15 @@ export interface CosignedTreeHeadResponse extends SignedTreeHeadResponse {
 }
 
 /** A cosignature bound to the exact head fields it covers. */
-export interface WitnessCosignature {
+export interface WitnessCosignature extends EnvelopeWire {
   tree_size: number
   root_hash: string
   network_id: string
   // RFC 3339; the author's own head timestamp.
   author_created_at: string
+  // The author head's `signing_key_id` and signature (lowercase hex), both covered by the cosignature.
+  author_key_id: string
+  author_signature: string
   // Lowercase hex Ed25519 public key of the witness.
   witness_key_id: string
   // RFC 3339.

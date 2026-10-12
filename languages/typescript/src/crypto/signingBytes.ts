@@ -1,19 +1,77 @@
 // Structured signing bytes: one fixed binary layout for every signed or hashed message, matching
-// avalon_protocol::signing_bytes. Layout: tag (ASCII, no length) | version u16 BE | fields in order.
-// conformance/vectors/structured-signing-bytes.json and domain-tags.json are the shared arbiters.
+// avalon_protocol::signing_bytes. Layout: tag | layout u16 | rules u32 | fields | extensions region.
+// conformance/vectors/{structured-signing-bytes,envelope,domain-tags}.json are the shared arbiters.
 import { concatBytes } from '@noble/hashes/utils.js'
 
-export type SigningBytesErrorCode = 'field_too_long' | 'tag_mismatch' | 'truncated' | 'invalid_utf8' | 'trailing_bytes'
+export type SigningBytesErrorCode =
+  | 'field_too_long'
+  | 'tag_mismatch'
+  | 'truncated'
+  | 'invalid_utf8'
+  | 'trailing_bytes'
+  | 'needs_newer_version'
+  | 'unsupported_version'
+  | 'extensions_unsorted'
+  | 'extension_duplicate'
+  | 'extension_reserved_flags'
+  | 'extensions_too_large'
+
+/** Which part of a message needs a newer (or is below the supported) version. */
+export type VersionKind = 'layout' | 'rules' | 'hash_algo' | 'sig_algo' | 'critical_extension'
 
 /** Why building or reading structured signing bytes failed; `code` is the shared vector error code. */
 export class SigningBytesError extends Error {
   constructor(
     public readonly code: SigningBytesErrorCode,
     message: string,
+    /** For `needs_newer_version` and `unsupported_version`: the part concerned. */
+    public readonly what?: VersionKind,
+    /** The version, algorithm id or extension type that is required (newer) or was found (below range). */
+    public readonly value?: number,
   ) {
     super(message)
     this.name = 'SigningBytesError'
   }
+}
+
+/** The rules version this SDK authors under, and the range it verifies. */
+export const RULES_VERSION = 1
+export const RULES_VERSION_MIN = 1
+export const RULES_VERSION_MAX = 1
+/** `hash_algo` byte for SHA-256, the only hash algorithm defined. */
+export const HASH_ALGO_SHA256 = 1
+/** Algorithm byte written in front of every key and signature (Ed25519). */
+export const SIG_ALGO_ED25519 = 1
+
+const EXTENSION_ENTRY_HEADER = 7
+const CRITICAL_FLAG = 0x01
+/** `[first rules version, extension byte cap]` rows, ascending; a cap is only ever raised for newer rules. */
+const EXTENSION_CAPS: readonly (readonly [number, number])[] = [[1, 4096]]
+
+/** The size cap of a message's extension entries (7 header bytes plus the value each). */
+export function maxExtensionBytes(rulesVersion: number): number {
+  const row = [...EXTENSION_CAPS].reverse().find(([from]) => from <= rulesVersion) ?? EXTENSION_CAPS[0]
+  return row[1]
+}
+
+/** One extension entry. */
+export interface Extension {
+  type: number
+  critical: boolean
+  value: Uint8Array
+}
+
+function needsNewer(what: VersionKind, required: number): SigningBytesError {
+  return new SigningBytesError('needs_newer_version', `needs a newer version: ${what} ${required}`, what, required)
+}
+
+function checkHashAlgo(id: number): number {
+  if (id !== HASH_ALGO_SHA256) throw needsNewer('hash_algo', id)
+  return id
+}
+
+function checkSigAlgo(id: number): void {
+  if (id !== SIG_ALGO_ED25519) throw needsNewer('sig_algo', id)
 }
 
 const TAG_PATTERN = /^[a-z0-9._]{1,255}$/
@@ -47,12 +105,69 @@ export const tags = {
   INTEGRATOR_NONCE_CHALLENGE: new DomainTag('avalon.integrator.nonce_challenge'),
   LEDGER_ENTRY: new DomainTag('avalon.ledger.entry'),
   IDENTITY_CHAIN_EVENT: new DomainTag('avalon.identity.chain_event'),
+  IDENTITY_KEY_EVENT: new DomainTag('avalon.identity.key_event'),
+  SETTLEMENT_STH: new DomainTag('avalon.settlement.sth'),
+  WITNESS_COSIGN: new DomainTag('avalon.witness.cosign'),
+  WITNESS_ANNOUNCE: new DomainTag('avalon.witness.announce'),
   /** Reserved for conformance vectors; no key ever signs it in production. */
   CONFORMANCE: new DomainTag('avalon.conformance.vector'),
 } as const
 
 /** Every registered tag, in registry order. */
 export const ALL_TAGS: readonly DomainTag[] = Object.values(tags)
+
+/** Supported layout versions of a tag; the conformance tag spans 1..2 so an older layout can verify beside the newest. */
+export function layoutVersions(tag: DomainTag): { min: number; max: number } {
+  return tag === tags.CONFORMANCE ? { min: 1, max: 2 } : { min: 1, max: 1 }
+}
+
+function checkLayout(tag: DomainTag, version: number): void {
+  const { min, max } = layoutVersions(tag)
+  if (version > max) throw needsNewer('layout', version)
+  if (version < min) {
+    throw new SigningBytesError('unsupported_version', `unsupported layout ${version}`, 'layout', version)
+  }
+}
+
+function checkRules(version: number): void {
+  if (version > RULES_VERSION_MAX) throw needsNewer('rules', version)
+  if (version < RULES_VERSION_MIN) {
+    throw new SigningBytesError('unsupported_version', `unsupported rules ${version}`, 'rules', version)
+  }
+}
+
+/** Validates a region's entries in the shared order: size per entry, then order and duplicates. */
+function checkExtensions(entries: readonly Extension[], rulesVersion: number): void {
+  const max = maxExtensionBytes(rulesVersion)
+  let total = 0
+  for (const e of entries) {
+    total += EXTENSION_ENTRY_HEADER + e.value.length
+    if (total > max) throw new SigningBytesError('extensions_too_large', 'extensions exceed the size bound')
+  }
+  if (entries.length > 0xffff) throw new SigningBytesError('extensions_too_large', 'too many extensions')
+  for (let i = 1; i < entries.length; i += 1) {
+    if (entries[i - 1].type === entries[i].type) {
+      throw new SigningBytesError('extension_duplicate', `duplicate extension type ${entries[i].type}`)
+    }
+    if (entries[i - 1].type > entries[i].type) {
+      throw new SigningBytesError('extensions_unsorted', 'extensions are not in ascending ext_type order')
+    }
+  }
+}
+
+// No critical extension is defined for any tag yet.
+function requireUnderstood(entries: readonly Extension[]): void {
+  const unknown = entries.find((e) => e.critical)
+  if (unknown) throw needsNewer('critical_extension', unknown.type)
+}
+
+function encodeExtensions(entries: readonly Extension[]): Uint8Array {
+  const chunks: Uint8Array[] = [be(BigInt(entries.length), 2)]
+  for (const e of entries) {
+    chunks.push(be(BigInt(e.type), 2), Uint8Array.of(e.critical ? CRITICAL_FLAG : 0), be(BigInt(e.value.length), 4), e.value)
+  }
+  return concatBytes(...chunks)
+}
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const U32_MAX = 0xffff_ffff
@@ -126,16 +241,47 @@ function be(value: bigint, width: number): Uint8Array {
   return out
 }
 
-/** Writes fields after the tag and version, in call order. */
+/** Writes the header, then fields in call order, then the extensions region on `finish`. */
 export class Builder {
   private readonly chunks: Uint8Array[]
+  private readonly extensions: Extension[] = []
 
-  constructor(tag: DomainTag, version: number) {
-    this.chunks = [tag.bytes, be(checkRange(toBigInt(version, 'version'), 0n, 0xffffn, 'version'), 2)]
+  constructor(
+    tag: DomainTag,
+    layoutVersion: number,
+    private readonly rulesVersion: number = RULES_VERSION,
+  ) {
+    const layout = checkRange(toBigInt(layoutVersion, 'layout version'), 0n, 0xffffn, 'layout version')
+    const rules = checkRange(toBigInt(rulesVersion, 'rules version'), 0n, 0xffff_ffffn, 'rules version')
+    checkLayout(tag, Number(layout))
+    checkRules(Number(rules))
+    this.chunks = [tag.bytes, be(layout, 2), be(rules, 4)]
+  }
+
+  /** A builder under a stored or received envelope's header and extensions; write its `hash_algo` with `hashAlgo`. */
+  static withEnvelope(tag: DomainTag, envelope: Envelope): Builder {
+    const builder = new Builder(tag, envelope.layoutVersion, envelope.rulesVersion)
+    for (const e of envelope.extensions) builder.extension(e.type, e.critical, e.value)
+    return builder
   }
 
   private push(chunk: Uint8Array): this {
     this.chunks.push(chunk)
+    return this
+  }
+
+  /** The `hash_algo` byte; write it immediately before the first hash-valued field. */
+  hashAlgo(id: number = HASH_ALGO_SHA256): this {
+    return this.u8(checkHashAlgo(id))
+  }
+
+  /** Adds an extension; entries must be added in ascending type order. */
+  extension(type: number, critical: boolean, value: Uint8Array): this {
+    this.extensions.push({
+      type: Number(checkRange(toBigInt(type, 'extension type'), 0n, 0xffffn, 'extension type')),
+      critical,
+      value,
+    })
     return this
   }
 
@@ -159,9 +305,14 @@ export class Builder {
     return this.push(requireWidth(value, width, 'fixed field'))
   }
 
-  /** A 32-byte public key, raw. */
+  /** An Ed25519 public key: algorithm byte, then 32 raw bytes. */
   key(value: Uint8Array): this {
-    return this.push(requireWidth(value, 32, 'key'))
+    return this.u8(SIG_ALGO_ED25519).push(requireWidth(value, 32, 'key'))
+  }
+
+  /** An Ed25519 signature: algorithm byte, then 64 raw bytes. */
+  signature(value: Uint8Array): this {
+    return this.u8(SIG_ALGO_ED25519).push(requireWidth(value, 64, 'signature'))
   }
 
   /** A 32-byte hash, raw. */
@@ -194,26 +345,31 @@ export class Builder {
     return this.push(be(checkRange(toBigInt(value, 'i64'), I64_MIN, I64_MAX, 'i64'), 8))
   }
 
+  /** Appends the extensions region and returns the bytes; throws on an invalid or not understood extension. */
   finish(): Uint8Array {
-    return concatBytes(...this.chunks)
+    checkExtensions(this.extensions, this.rulesVersion)
+    requireUnderstood(this.extensions)
+    return concatBytes(...this.chunks, encodeExtensions(this.extensions))
   }
 }
 
 /** Reads fields in the order the layout defines. Checks a declared length against the remaining bytes first. */
 export class Reader {
   private rest: Uint8Array
-  /** The reader accepts any version; the caller must check it before reading fields. */
-  readonly version: number
+  readonly layoutVersion: number
+  readonly rulesVersion: number
 
-  /** Checks the tag and reads the version. */
+  /** Checks the tag, then the layout and rules versions against the supported ranges. */
   constructor(tag: DomainTag, message: Uint8Array) {
     const tagBytes = tag.bytes
     if (message.length < tagBytes.length || !tagBytes.every((b, i) => message[i] === b)) {
       throw new SigningBytesError('tag_mismatch', 'message does not start with the expected domain tag')
     }
     this.rest = message.subarray(tagBytes.length)
-    const v = this.take(2)
-    this.version = (v[0] << 8) | v[1]
+    this.layoutVersion = Number(this.takeUint(2))
+    checkLayout(tag, this.layoutVersion)
+    this.rulesVersion = Number(this.takeUint(4))
+    checkRules(this.rulesVersion)
   }
 
   private take(len: number): Uint8Array {
@@ -248,12 +404,25 @@ export class Reader {
     return this.take(width)
   }
 
+  /** A public key; an unknown algorithm byte is `needs_newer_version`. */
   key(): Uint8Array {
+    checkSigAlgo(this.u8())
     return this.take(32)
+  }
+
+  /** A signature; an unknown algorithm byte is `needs_newer_version`. */
+  signature(): Uint8Array {
+    checkSigAlgo(this.u8())
+    return this.take(64)
   }
 
   hash(): Uint8Array {
     return this.take(32)
+  }
+
+  /** The `hash_algo` byte; an unknown value is `needs_newer_version`. */
+  hashAlgo(): number {
+    return checkHashAlgo(this.u8())
   }
 
   uuid(): string {
@@ -280,10 +449,85 @@ export class Reader {
     return BigInt.asIntN(64, this.takeUint(8))
   }
 
-  /** Errors when any bytes remain, so a message cannot carry hidden trailing data. */
-  finish(): void {
+  /** Reads the extensions region, which must be all that remains, and returns its entries (unknown non-critical kept). */
+  finish(): Extension[] {
+    const entries = parseExtensions((len) => this.take(len), this.rulesVersion)
     if (this.rest.length !== 0) {
       throw new SigningBytesError('trailing_bytes', 'bytes remain after the last field')
     }
+    requireUnderstood(entries)
+    return entries
   }
+}
+
+// Reads a whole region through `take`: per entry the reserved flags and running size, then order and duplicates.
+function parseExtensions(take: (len: number) => Uint8Array, rulesVersion: number): Extension[] {
+  const uint = (width: number): number => Number(take(width).reduce((acc, b) => (acc << 8n) | BigInt(b), 0n))
+  const max = maxExtensionBytes(rulesVersion)
+  const count = uint(2)
+  const entries: Extension[] = []
+  let total = 0
+  for (let i = 0; i < count; i += 1) {
+    const type = uint(2)
+    const flags = uint(1)
+    if ((flags & ~CRITICAL_FLAG) !== 0) {
+      throw new SigningBytesError('extension_reserved_flags', `extension flags ${flags} set a reserved bit`)
+    }
+    const len = uint(4)
+    total += EXTENSION_ENTRY_HEADER + len
+    if (total > max) throw new SigningBytesError('extensions_too_large', 'extensions exceed the size bound')
+    entries.push({ type, critical: (flags & CRITICAL_FLAG) !== 0, value: take(len).slice() })
+  }
+  checkExtensions(entries, rulesVersion)
+  return entries
+}
+
+/** The header values of a stored or received message: what a signature covers besides its fields. */
+export interface Envelope {
+  layoutVersion: number
+  rulesVersion: number
+  hashAlgo: number
+  extensions: Extension[]
+}
+
+/** What this SDK authors for `tag`: its newest layout, the current rules version, SHA-256, no extensions. */
+export function currentEnvelope(tag: DomainTag): Envelope {
+  return { layoutVersion: layoutVersions(tag).max, rulesVersion: RULES_VERSION, hashAlgo: HASH_ALGO_SHA256, extensions: [] }
+}
+
+/** An envelope as it travels in JSON: plain integers and the extensions region as lowercase hex. */
+export interface EnvelopeWire {
+  layout_version?: number
+  rules_version?: number
+  hash_algo?: number
+  /** Hex of the extensions region; absent or `0000` when there are none. */
+  extensions?: string
+}
+
+/** Rebuilds an envelope from wire values (absent ones default to `tag`'s current envelope), checking every
+ * part against this SDK's ranges; throws `SigningBytesError` (`needs_newer_version` for anything above). */
+export function envelopeFromWire(tag: DomainTag, wire: EnvelopeWire): Envelope {
+  const base = currentEnvelope(tag)
+  const layoutVersion = wire.layout_version ?? base.layoutVersion
+  const rulesVersion = wire.rules_version ?? base.rulesVersion
+  checkLayout(tag, layoutVersion)
+  checkRules(rulesVersion)
+  const region = wire.extensions === undefined ? new Uint8Array(2) : decodeLowerHex(wire.extensions)
+  let rest = region
+  const extensions = parseExtensions((len) => {
+    if (rest.length < len) throw new SigningBytesError('truncated', 'message ends before the field does')
+    const head = rest.subarray(0, len)
+    rest = rest.subarray(len)
+    return head
+  }, rulesVersion)
+  if (rest.length !== 0) throw new SigningBytesError('trailing_bytes', 'bytes remain after the extensions')
+  requireUnderstood(extensions)
+  return { layoutVersion, rulesVersion, hashAlgo: checkHashAlgo(wire.hash_algo ?? base.hashAlgo), extensions }
+}
+
+function decodeLowerHex(text: string): Uint8Array {
+  if (typeof text !== 'string' || text.length % 2 !== 0 || !/^[0-9a-f]*$/.test(text)) {
+    throw new TypeError('not lowercase hex')
+  }
+  return Uint8Array.from(text.match(/../g) ?? [], (h) => parseInt(h, 16))
 }

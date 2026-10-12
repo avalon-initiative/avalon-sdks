@@ -15,7 +15,7 @@ namespace Avalon.Sdk.Tests;
 
 public class NetworkTests
 {
-    private static Ed25519PrivateKeyParameters GenerateKey()
+    internal static Ed25519PrivateKeyParameters GenerateKey()
     {
         var generator = new Ed25519KeyPairGenerator();
         generator.Init(new Ed25519KeyGenerationParameters(new SecureRandom()));
@@ -24,7 +24,7 @@ public class NetworkTests
 
     private static string HexEncode(byte[] bytes) => string.Concat(bytes.Select(b => b.ToString("x2")));
 
-    private static string PublicKeyHex(Ed25519PrivateKeyParameters privateKey) =>
+    internal static string PublicKeyHex(Ed25519PrivateKeyParameters privateKey) =>
         HexEncode(privateKey.GeneratePublicKey().GetEncoded());
 
     private static TrustAnchorEntry Anchor(
@@ -45,15 +45,13 @@ public class NetworkTests
         };
 
     /// <summary>Signs a Signed Tree Head with <paramref name="signingKey"/>, using the exact
-    /// byte layout <see cref="AvalonClient.SthSigningMessage"/> verifies against — a domain
-    /// tag, big-endian tree_size, length-prefixed root_hash, raw network_id bytes, and a
-    /// big-endian unix timestamp.</summary>
-    private static SignedTreeHeadWire SignedSth(
+    /// structured layout <see cref="AvalonClient.SthSigningMessage"/> verifies against.</summary>
+    internal static SignedTreeHeadWire SignedSth(
         Ed25519PrivateKeyParameters signingKey, string networkId, long treeSize = 42, string? rootHash = null)
     {
         rootHash ??= string.Concat(Enumerable.Repeat("ab", 32));
         var createdAt = DateTimeOffset.FromUnixTimeSeconds(0);
-        var message = AvalonClient.SthSigningMessage(treeSize, rootHash, networkId, createdAt);
+        var message = AvalonClient.SthSigningMessage(treeSize, rootHash, networkId, "test-key", createdAt);
 
         var signer = new Ed25519Signer();
         signer.Init(true, signingKey);
@@ -71,7 +69,7 @@ public class NetworkTests
         };
     }
 
-    private static string SthJson(SignedTreeHeadWire wire) => JsonSerializer.Serialize(wire);
+    internal static string SthJson(SignedTreeHeadWire wire) => JsonSerializer.Serialize(wire);
 
     private sealed class StubHandler : HttpMessageHandler
     {

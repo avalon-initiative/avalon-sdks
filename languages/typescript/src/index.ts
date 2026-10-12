@@ -123,6 +123,7 @@ export {
 } from './shardFamily.js'
 export type { FamilyHead, FamilyMember, FamilyProof, ShardFamilyResponse } from './shardFamily.js'
 export { getNodeStatus } from './nodeStatus.js'
+export { NetworkNotVerifiedError } from './network/verifiedNetworkId.js'
 export { getTopology, probeNode, traceRoute } from './nodeTopology.js'
 export { withTrace } from './opTrace.js'
 export type {
@@ -325,8 +326,22 @@ export {
   deviceGrantApprovalSigningBytes,
   signingKeyRevokedSigningBytes,
 } from './crypto/signing.js'
-export { Builder, Reader, DomainTag, tags, ALL_TAGS, SigningBytesError, uuidToBytes } from './crypto/signingBytes.js'
-export type { SigningBytesErrorCode } from './crypto/signingBytes.js'
+export {
+  Builder,
+  Reader,
+  DomainTag,
+  tags,
+  ALL_TAGS,
+  SigningBytesError,
+  uuidToBytes,
+  currentEnvelope,
+  envelopeFromWire,
+  layoutVersions,
+  maxExtensionBytes,
+  RULES_VERSION,
+  HASH_ALGO_SHA256,
+} from './crypto/signingBytes.js'
+export type { Envelope, EnvelopeWire, Extension, SigningBytesErrorCode, VersionKind } from './crypto/signingBytes.js'
 export { canonicalize, canonicalizeStr, parseStrict, CanonicalPayloadError } from './canonicalPayload.js'
 export type { CanonicalPayloadErrorCode } from './canonicalPayload.js'
 export {

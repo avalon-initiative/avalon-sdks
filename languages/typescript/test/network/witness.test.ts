@@ -38,10 +38,12 @@ function cosign(w: number, sth: SignedTreeHeadResponse, observed = '2026-09-27T1
     root_hash: sth.root_hash,
     network_id: sth.network_id,
     author_created_at: sth.created_at,
+    author_key_id: sth.signing_key_id,
+    author_signature: sth.signature,
     witness_key_id: hexKey(w),
     observed_at: observed,
   }
-  return { ...base, signature: bytesToHex(ed25519.sign(witnessSigningMessage(base), seed(w))) }
+  return { ...base, signature: bytesToHex(ed25519.sign(witnessSigningMessage(base, hexKey(w)), seed(w))) }
 }
 
 const list = (...ws: number[]): KnownWitness[] => ws.map((w) => ({ witnessKeyId: hexKey(w), key: hexKey(w) }))

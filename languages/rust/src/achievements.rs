@@ -60,9 +60,11 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use ed25519_dalek::{Signer, SigningKey};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+use crate::signing_bytes::{tags, Builder, DomainTag, HashAlgo};
 use crate::types::ids::IdentityId;
 use crate::types::integrators::IntegratorCategory;
 
@@ -156,6 +158,7 @@ struct ChallengeResponse {
 struct IssueRequest {
     key_id: Uuid,
     signature: String,
+    issued_at_micros: i64,
 }
 
 #[derive(Deserialize)]
@@ -163,51 +166,73 @@ struct IssueResponse {
     id: Uuid,
 }
 
-/// The exact bytes this integrator's key signs to authorize an
-/// attestation. `claim_kind` is `"achievement"` or `"milestone"`
-/// ([`IntegratorCategory::claim_kind`]) — folded into the signed bytes so a
-/// signature produced for one claim vocabulary can never be replayed as if
-/// it were the other, even though the wire mechanics are identical.
-///
-/// This crate builds these bytes itself rather than calling the server's
-/// own construction (`avalon_protocol::achievements::attestation_signing_bytes`)
-/// — the same posture the C# and TypeScript SDKs already take. The two
-/// implementations agreeing is a documented contract checked by
-/// `conformance/vectors/attestation-signing.json`, not something the
-/// compiler enforces; public here so an integrator can verify what it is
-/// about to sign.
-pub fn attestation_signing_bytes(
-    claim_kind: &str,
-    issuer_ref: &str,
-    subject: &IdentityId,
-    achievement: &str,
-) -> Vec<u8> {
-    format!("avalon:{claim_kind}.issued:v1:{issuer_ref}:{subject}:{achievement}").into_bytes()
+/// The fields every attestation layout signs first: the network the signature is valid on, the
+/// claim vocabulary, the issuer and the issuer key that signs.
+#[derive(Debug, Clone, Copy)]
+pub struct AttestationSigner<'a> {
+    /// The node's network id; a signature for one network never verifies on another.
+    pub network_id: &'a str,
+    /// `"achievement"` or `"milestone"` ([`IntegratorCategory::claim_kind`]).
+    pub claim_kind: &'a str,
+    /// The issuer, `"<namespace>:<slug>"`.
+    pub issuer_ref: &'a str,
+    /// The issuer key that signs.
+    pub signing_key_id: Uuid,
 }
 
-/// The exact bytes this integrator's key signs to authorize a *bulk*
-/// issuance (issue #495): one signature over the whole ordered
-/// `achievements` list for one `subject`, each entry length-prefixed
-/// big-endian so two different orderings of the same keys — or a key
-/// containing bytes that could otherwise be mistaken for a delimiter —
-/// can never produce identical signed bytes.
-///
-/// Same independently-implemented-and-vector-checked posture as
-/// [`attestation_signing_bytes`] above.
+impl AttestationSigner<'_> {
+    fn builder(&self, tag: DomainTag) -> Builder {
+        Builder::new(tag, 1)
+            .str(self.network_id)
+            .str(self.claim_kind)
+            .str(self.issuer_ref)
+            .uuid(self.signing_key_id)
+    }
+}
+
+/// An instant as signed in `issued_at`: unix microseconds.
+pub fn issued_at_micros(issued_at: OffsetDateTime) -> Result<i64, SdkError> {
+    crate::ledger_entry::timestamp_micros(issued_at).map_err(|e| SdkError::Protocol(e.to_string()))
+}
+
+/// The exact bytes this integrator's key signs to authorize an attestation: tag
+/// `avalon.attestation.issue`, the signer fields, `subject` (32 raw), `achievement` (the claim's
+/// full global id) and `issued_at_micros`. The verifying node accepts `issued_at` within 300 s of
+/// its clock. Pinned by `conformance/vectors/attestation-signing.json`.
+pub fn attestation_signing_bytes(
+    signer: &AttestationSigner<'_>,
+    subject: &IdentityId,
+    achievement: &str,
+    issued_at_micros: i64,
+) -> Vec<u8> {
+    signer
+        .builder(tags::ATTESTATION_ISSUE)
+        .fixed(&subject.to_bytes())
+        .str(achievement)
+        .i64(issued_at_micros)
+        .finish()
+        .expect("attestation fields fit a u32 length")
+}
+
+/// The exact bytes this integrator's key signs for a bulk issuance (#495): tag
+/// `avalon.attestation.bulk_issue`, the signer fields, `subject`, one `issued_at_micros` for every
+/// claim, then the claim count and each ordered `achievement`.
 pub fn bulk_attestation_signing_bytes(
-    claim_kind: &str,
-    issuer_ref: &str,
+    signer: &AttestationSigner<'_>,
     subject: &IdentityId,
     achievements: &[String],
+    issued_at_micros: i64,
 ) -> Vec<u8> {
-    let mut message =
-        format!("avalon:{claim_kind}.issued.bulk:v1:{issuer_ref}:{subject}:").into_bytes();
-    message.extend_from_slice(&(achievements.len() as u32).to_be_bytes());
-    for achievement in achievements {
-        message.extend_from_slice(&(achievement.len() as u32).to_be_bytes());
-        message.extend_from_slice(achievement.as_bytes());
-    }
-    message
+    let builder = signer
+        .builder(tags::ATTESTATION_BULK_ISSUE)
+        .fixed(&subject.to_bytes())
+        .i64(issued_at_micros)
+        .u32(u32::try_from(achievements.len()).expect("claim count fits a u32"));
+    achievements
+        .iter()
+        .fold(builder, |b, achievement| b.str(achievement))
+        .finish()
+        .expect("attestation fields fit a u32 length")
 }
 
 #[derive(Serialize)]
@@ -219,6 +244,7 @@ struct BulkClaimRequestWire {
 struct BulkIssueRequest {
     key_id: Uuid,
     signature: String,
+    issued_at_micros: i64,
     claims: Vec<BulkClaimRequestWire>,
 }
 
@@ -275,22 +301,25 @@ struct BulkIssueResponseWire {
     results: Vec<BulkClaimOutcome>,
 }
 
-/// The exact bytes this integrator's key signs to authorize a revocation
-/// (issue #85, wrapped here by #498). `attestation_id` folded in means a
-/// revocation signature can never be replayed against a different
-/// attestation; `reason_code` folded in means it can't be replayed with a
-/// different claimed reason either.
-///
-/// Same independently-implemented-and-vector-checked posture as
-/// [`attestation_signing_bytes`] above.
+/// The exact bytes this integrator's key signs to authorize a revocation (#85, wrapped by #498):
+/// tag `avalon.attestation.revoke`, the signer fields, `attestation_id`, `reason_code`, then the
+/// hash algorithm byte and the SHA-256 of the UTF-8 `reason`, so the text can be redacted while the
+/// signature stays valid.
 pub fn revocation_signing_bytes(
-    claim_kind: &str,
-    issuer_ref: &str,
+    signer: &AttestationSigner<'_>,
     attestation_id: Uuid,
     reason_code: &str,
+    reason: &str,
 ) -> Vec<u8> {
-    format!("avalon:{claim_kind}.revoked:v1:{issuer_ref}:{attestation_id}:{reason_code}")
-        .into_bytes()
+    let reason_hash: [u8; 32] = Sha256::digest(reason.as_bytes()).into();
+    signer
+        .builder(tags::ATTESTATION_REVOKE)
+        .uuid(attestation_id)
+        .str(reason_code)
+        .hash_algo(HashAlgo::Sha256)
+        .hash(&reason_hash)
+        .finish()
+        .expect("revocation fields fit a u32 length")
 }
 
 #[derive(Serialize)]
@@ -317,6 +346,11 @@ struct ListMyAchievementsResponse {
 }
 
 impl Session {
+    /// The network id the node serves, the value every attestation signature binds.
+    async fn node_network_id(&self) -> Result<String, SdkError> {
+        self.network.get().await
+    }
+
     pub(crate) async fn fetch_achievements(&self) -> Result<Vec<VerifiedAttestation>, SdkError> {
         // `limit=200` (the server's own max page size,
         // `attestations::MAX_ACHIEVEMENTS_PAGE_SIZE`) rather than the
@@ -380,6 +414,8 @@ impl Session {
         // retried by `http::send` itself — a failed attempt here means
         // `retry_write` redoes this whole function, fetching a fresh
         // challenge along with it.
+        let network_id = self.node_network_id().await?;
+
         let challenge_response = crate::http::send(&self.http, &self.retry, false, |c| {
             c.post(format!(
                 "{}/integrations/{}/challenge",
@@ -406,8 +442,14 @@ impl Session {
         let claim_kind = IntegratorCategory::Game.claim_kind();
         let issuer_ref = format!("game:{slug}");
         let achievement = format!("game:{slug}:achievement:{key}");
-        let signing_bytes =
-            attestation_signing_bytes(claim_kind, &issuer_ref, &subject, &achievement);
+        let signer = AttestationSigner {
+            network_id: &network_id,
+            claim_kind,
+            issuer_ref: &issuer_ref,
+            signing_key_id: key_id,
+        };
+        let issued_at = issued_at_micros(OffsetDateTime::now_utc())?;
+        let signing_bytes = attestation_signing_bytes(&signer, &subject, &achievement, issued_at);
         let signature = signing_key.sign(&signing_bytes);
 
         let response = crate::http::send(&self.http, &self.retry, false, |c| {
@@ -429,6 +471,7 @@ impl Session {
             .json(&IssueRequest {
                 key_id,
                 signature: BASE64.encode(signature.to_bytes()),
+                issued_at_micros: issued_at,
             })
         })
         .await?;
@@ -478,6 +521,8 @@ impl Session {
             .parse()
             .map_err(|_| SdkError::MissingIssuerCredentials)?;
 
+        let network_id = self.node_network_id().await?;
+
         let challenge_response = crate::http::send(&self.http, &self.retry, false, |c| {
             c.post(format!(
                 "{}/integrations/{}/challenge",
@@ -504,8 +549,15 @@ impl Session {
             .iter()
             .map(|key| format!("game:{slug}:achievement:{key}"))
             .collect();
+        let signer = AttestationSigner {
+            network_id: &network_id,
+            claim_kind,
+            issuer_ref: &issuer_ref,
+            signing_key_id: key_id,
+        };
+        let issued_at = issued_at_micros(OffsetDateTime::now_utc())?;
         let signing_bytes =
-            bulk_attestation_signing_bytes(claim_kind, &issuer_ref, &subject, &achievements);
+            bulk_attestation_signing_bytes(&signer, &subject, &achievements, issued_at);
         let signature = signing_key.sign(&signing_bytes);
 
         let response = crate::http::send(&self.http, &self.retry, false, |c| {
@@ -527,6 +579,7 @@ impl Session {
             .json(&BulkIssueRequest {
                 key_id,
                 signature: BASE64.encode(signature.to_bytes()),
+                issued_at_micros: issued_at,
                 claims: keys
                     .iter()
                     .map(|key| BulkClaimRequestWire {
@@ -578,6 +631,8 @@ impl Session {
             .parse()
             .map_err(|_| SdkError::MissingIssuerCredentials)?;
 
+        let network_id = self.node_network_id().await?;
+
         let challenge_response = crate::http::send(&self.http, &self.retry, false, |c| {
             c.post(format!(
                 "{}/integrations/{}/challenge",
@@ -599,8 +654,13 @@ impl Session {
 
         let claim_kind = IntegratorCategory::Game.claim_kind();
         let issuer_ref = format!("game:{slug}");
-        let signing_bytes =
-            revocation_signing_bytes(claim_kind, &issuer_ref, attestation_id, reason_code);
+        let signer = AttestationSigner {
+            network_id: &network_id,
+            claim_kind,
+            issuer_ref: &issuer_ref,
+            signing_key_id: key_id,
+        };
+        let signing_bytes = revocation_signing_bytes(&signer, attestation_id, reason_code, reason);
         let signature = signing_key.sign(&signing_bytes);
 
         let response = crate::http::send(&self.http, &self.retry, false, |c| {
@@ -881,6 +941,8 @@ impl Session {
             .parse()
             .map_err(|_| SdkError::MissingIssuerCredentials)?;
 
+        let network_id = self.node_network_id().await?;
+
         let challenge_response = crate::http::send(&self.http, &self.retry, false, |c| {
             c.post(format!(
                 "{}/integrations/{}/challenge",
@@ -904,8 +966,14 @@ impl Session {
         let claim_kind = category.claim_kind();
         let issuer_ref = format!("{}:{slug}", category.as_str());
         let achievement = format!("{}:{slug}:milestone:{key}", category.as_str());
-        let signing_bytes =
-            attestation_signing_bytes(claim_kind, &issuer_ref, &subject, &achievement);
+        let signer = AttestationSigner {
+            network_id: &network_id,
+            claim_kind,
+            issuer_ref: &issuer_ref,
+            signing_key_id: key_id,
+        };
+        let issued_at = issued_at_micros(OffsetDateTime::now_utc())?;
+        let signing_bytes = attestation_signing_bytes(&signer, &subject, &achievement, issued_at);
         let signature = signing_key.sign(&signing_bytes);
 
         let response = crate::http::send(&self.http, &self.retry, false, |c| {
@@ -927,6 +995,7 @@ impl Session {
             .json(&IssueRequest {
                 key_id,
                 signature: BASE64.encode(signature.to_bytes()),
+                issued_at_micros: issued_at,
             })
         })
         .await?;
@@ -975,6 +1044,8 @@ impl Session {
             .parse()
             .map_err(|_| SdkError::MissingIssuerCredentials)?;
 
+        let network_id = self.node_network_id().await?;
+
         let challenge_response = crate::http::send(&self.http, &self.retry, false, |c| {
             c.post(format!(
                 "{}/integrations/{}/challenge",
@@ -1001,8 +1072,15 @@ impl Session {
             .iter()
             .map(|key| format!("{}:{slug}:milestone:{key}", category.as_str()))
             .collect();
+        let signer = AttestationSigner {
+            network_id: &network_id,
+            claim_kind,
+            issuer_ref: &issuer_ref,
+            signing_key_id: key_id,
+        };
+        let issued_at = issued_at_micros(OffsetDateTime::now_utc())?;
         let signing_bytes =
-            bulk_attestation_signing_bytes(claim_kind, &issuer_ref, &subject, &achievements);
+            bulk_attestation_signing_bytes(&signer, &subject, &achievements, issued_at);
         let signature = signing_key.sign(&signing_bytes);
 
         let response = crate::http::send(&self.http, &self.retry, false, |c| {
@@ -1024,6 +1102,7 @@ impl Session {
             .json(&BulkIssueRequest {
                 key_id,
                 signature: BASE64.encode(signature.to_bytes()),
+                issued_at_micros: issued_at,
                 claims: keys
                     .iter()
                     .map(|key| BulkClaimRequestWire {

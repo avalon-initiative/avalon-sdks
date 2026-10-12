@@ -64,6 +64,22 @@
       "tag": "avalon.identity.chain_event"
     },
     {
+      "kind": "identity_key_event",
+      "tag": "avalon.identity.key_event"
+    },
+    {
+      "kind": "settlement_sth",
+      "tag": "avalon.settlement.sth"
+    },
+    {
+      "kind": "witness_cosign",
+      "tag": "avalon.witness.cosign"
+    },
+    {
+      "kind": "witness_announce",
+      "tag": "avalon.witness.announce"
+    },
+    {
       "kind": "conformance",
       "tag": "avalon.conformance.vector"
     }

@@ -115,15 +115,24 @@ namespace Avalon.Sdk
         /// <summary>How far an advert's timestamp may differ from the verifier's clock.</summary>
         public static readonly TimeSpan AnnounceMaxSkew = TimeSpan.FromHours(1);
 
-        /// <summary>The exact bytes a witness announce proof covers.</summary>
+        /// <summary>The exact bytes a witness announce proof covers (tag <c>avalon.witness.announce</c>): the base url
+        /// and the witness key. Throws <see cref="ArgumentException"/> unless <paramref name="witnessKeyId"/> is 64 lowercase hex characters.</summary>
         public static byte[] WitnessAnnounceMessage(string baseUrl, string witnessKeyId, DateTimeOffset announcedAt)
         {
-            var message = new List<byte>();
-            message.AddRange(Encoding.UTF8.GetBytes("avalon-witness-announce-v1"));
-            WitnessCosigning.AddLengthPrefixed(message, baseUrl);
-            WitnessCosigning.AddLengthPrefixed(message, witnessKeyId);
-            message.AddRange(WitnessCosigning.BigEndian(announcedAt.ToUnixTimeSeconds()));
-            return message.ToArray();
+            byte[] key;
+            try
+            {
+                key = LedgerEntry.ParseHash("witness_key_id", witnessKeyId);
+            }
+            catch (LedgerEntryException)
+            {
+                throw new ArgumentException("witness_key_id is not 64 lowercase hex characters", nameof(witnessKeyId));
+            }
+            return new SigningBytesBuilder(DomainTags.WitnessAnnounce, 1)
+                .Str(baseUrl)
+                .Key(key)
+                .I64(announcedAt.ToUnixTimeSeconds())
+                .Finish();
         }
 
         /// <summary>Verifies an advert proof; false for any malformed or stale input, never throws.</summary>

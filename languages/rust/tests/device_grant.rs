@@ -12,6 +12,8 @@ use uuid::Uuid;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+const NETWORK_ID: &str = "avalon-test-net";
+
 /// A session with `key` as its local signing key; also its identity id and the key's row id.
 async fn session(
     server: &MockServer,
@@ -25,7 +27,8 @@ async fn session(
         integrator_slug: None,
         signing_key: None,
         retry: Default::default(),
-    });
+    })
+    .with_network_id(NETWORK_ID);
     Mock::given(method("GET"))
         .and(path("/me"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -137,6 +140,7 @@ async fn approve_signs_at_a_new_chain_and_sends_the_position() {
     assert!(sent[0].get("prev_hash").is_none());
     assert_eq!(sent[0]["approver_signing_key_id"], key_id.to_string());
     let bytes = device_grant_approval_signing_bytes(
+        NETWORK_ID,
         grant,
         &identity_id,
         key_id,
@@ -178,6 +182,7 @@ async fn approve_re_signs_once_at_the_head_a_stale_409_returns() {
     assert_eq!(sent[1]["seq"], 5);
     assert_eq!(sent[1]["prev_hash"], HEAD_HASH);
     let bytes = device_grant_approval_signing_bytes(
+        NETWORK_ID,
         grant,
         &identity_id,
         key_id,
@@ -238,6 +243,7 @@ async fn revoke_signs_the_position_and_retries_once_on_stale() {
     assert_eq!(sent[1]["prev_hash"], HEAD_HASH);
     assert_eq!(sent[1]["revoked_by_signing_key_id"], key_id.to_string());
     let bytes = signing_key_revoked_signing_bytes(
+        NETWORK_ID,
         &identity_id,
         target,
         key_id,
@@ -245,7 +251,8 @@ async fn revoke_signs_the_position_and_retries_once_on_stale() {
         Some(&hash32(HEAD_HASH)),
     );
     assert!(signature_verifies(&key, &bytes, &sent[1]));
-    let first = signing_key_revoked_signing_bytes(&identity_id, target, key_id, 1, None);
+    let first =
+        signing_key_revoked_signing_bytes(NETWORK_ID, &identity_id, target, key_id, 1, None);
     assert!(signature_verifies(&key, &first, &sent[0]));
 }
 
@@ -269,4 +276,38 @@ async fn a_conflict_that_is_not_a_stale_position_is_not_retried() {
         "{err:?}"
     );
     assert_eq!(posts_to(&server, "/revoke").await.len(), 1);
+}
+
+#[tokio::test]
+async fn an_unverified_network_stops_approval_before_any_request_is_sent() {
+    let server = MockServer::start().await;
+    let key = SigningKey::from_bytes(&[7u8; 32]);
+    let (s, ..) = session(&server, &key).await;
+    // A session from a client with no declared network id and a node that is not a known network.
+    let client = AvalonClient::new(AvalonConfig {
+        server_url: server.uri(),
+        integrator_credential_key_id: "test".to_string(),
+        integrator_slug: None,
+        signing_key: None,
+        retry: Default::default(),
+    })
+    .with_witness_policy(avalon_sdk::known_list::WitnessPolicy::None);
+    let undeclared = client
+        .resume_account_session_with_signing_key("tok", key.to_bytes())
+        .await
+        .expect("resume");
+    drop(s);
+    let requested = SigningKey::from_bytes(&[9u8; 32]);
+    let err = undeclared
+        .approve_device_grant(
+            Uuid::new_v4(),
+            &BASE64.encode(requested.verifying_key().to_bytes()),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, SdkError::NetworkNotVerified { .. }),
+        "{err:?}"
+    );
+    assert!(posts_to(&server, "/approve").await.is_empty());
 }

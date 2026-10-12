@@ -50,6 +50,7 @@ namespace Avalon.Sdk
         private readonly HttpClient _http;
         private readonly string _serverUrl;
         private SigningKeyMaterial? _signing;
+        private readonly NetworkIdSource _networkIds;
 
         /// <summary>This session's own bearer token — for a caller (e.g. a game backend, a
         /// test harness) that wants to persist it and later call
@@ -80,8 +81,11 @@ namespace Avalon.Sdk
         /// <see cref="Session"/>'s own <c>OwnIdentityId</c> field.</summary>
         internal IdentityId OwnIdentityId => Identity.Id;
 
-        internal AccountSession(Identity identity, Profile profile, HttpClient http, string serverUrl, string token, SigningKeyMaterial? signing)
+        internal AccountSession(
+            Identity identity, Profile profile, HttpClient http, string serverUrl, string token, SigningKeyMaterial? signing,
+            NetworkIdSource? networkIds = null)
         {
+            _networkIds = networkIds ?? new NetworkIdSource(null, null);
             Identity = identity;
             Profile = profile;
             _http = http;
@@ -461,7 +465,9 @@ namespace Avalon.Sdk
             string token = "test-token",
             IdentityId? identityId = null,
             SigningKeyMaterial? signing = null,
-            Profile? profile = null)
+            Profile? profile = null,
+            string? networkId = null,
+            Func<CancellationToken, Task<NetworkTrustStatus>>? verifyNetwork = null)
         {
             var id = identityId ?? IdentityId.RandomForTests();
             return new AccountSession(
@@ -470,7 +476,8 @@ namespace Avalon.Sdk
                 http ?? AvalonTraceHandler.NewDefaultClient(),
                 serverUrl,
                 token,
-                signing);
+                signing,
+                new NetworkIdSource(networkId, verifyNetwork));
         }
     }
 
@@ -528,7 +535,7 @@ namespace Avalon.Sdk
         public async Task<AccountSession> ResumeAccountSessionAsync(string token, CancellationToken ct = default)
         {
             var (identity, profile) = await AccountSession.FetchMeAsync(Http, ServerUrl, token, ct).ConfigureAwait(false);
-            return new AccountSession(identity, profile, Http, ServerUrl, token, null);
+            return new AccountSession(identity, profile, Http, ServerUrl, token, null, _networkIds);
         }
 
         /// <summary>
@@ -542,7 +549,7 @@ namespace Avalon.Sdk
         {
             var (identity, profile) = await AccountSession.FetchMeAsync(Http, ServerUrl, token, ct).ConfigureAwait(false);
             var signing = await AccountSession.ResolveSigningKeyAsync(Http, ServerUrl, token, signingKeySeed, ct).ConfigureAwait(false);
-            return new AccountSession(identity, profile, Http, ServerUrl, token, signing);
+            return new AccountSession(identity, profile, Http, ServerUrl, token, signing, _networkIds);
         }
     }
 }

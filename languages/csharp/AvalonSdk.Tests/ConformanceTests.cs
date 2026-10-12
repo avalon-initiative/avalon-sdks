@@ -230,70 +230,88 @@ public class ConformanceTests
         return vectors;
     }
 
-    [Fact]
-    public void AttestationSigning_VectorFile_ListsCSharpAsSupported()
+    private static byte[] AttestationBytes(JsonElement input)
     {
-        using var doc = LoadVector("attestation-signing.json");
-        Assert.True(
-            SupportedIn(doc.RootElement, "csharp"),
-            "attestation-signing.json must list csharp in supportedIn — Achievements.cs implements it");
-    }
-
-    [Theory]
-    [MemberData(nameof(AttestationSigningVectors))]
-    public void AttestationSigning_MatchesSharedVector(string vectorName)
-    {
-        using var doc = LoadVector("attestation-signing.json");
-        var root = doc.RootElement;
-        var secretKey = HexToBytes(root.GetProperty("signingKeySeedHex").GetString()!);
-
-        JsonElement? found = null;
-        foreach (var v in root.GetProperty("vectors").EnumerateArray())
-        {
-            if (v.GetProperty("name").GetString() == vectorName) { found = v.Clone(); break; }
-        }
-        Assert.True(found.HasValue, $"vector {vectorName} not found");
-        var vector = found!.Value;
-        var input = vector.GetProperty("input");
-        var expected = vector.GetProperty("expected");
-
+        var networkId = input.GetProperty("networkId").GetString()!;
         var claimKind = input.GetProperty("claimKind").GetString()!;
         var issuerRef = input.GetProperty("issuerRef").GetString()!;
+        var keyId = Guid.Parse(input.GetProperty("signingKeyId").GetString()!);
         var operation = input.GetProperty("operation").GetString()!;
 
-        byte[] bytes;
         switch (operation)
         {
             case "issue":
-                bytes = InvokeSessionSigningBytes(
+                return InvokeSessionSigningBytes(
                     "AttestationSigningBytes",
-                    claimKind, issuerRef, IdentityId.Parse(input.GetProperty("subject").GetString()!),
-                    input.GetProperty("achievement").GetString()!);
-                break;
+                    networkId, claimKind, issuerRef, keyId, IdentityId.Parse(input.GetProperty("subject").GetString()!),
+                    input.GetProperty("achievement").GetString()!, input.GetProperty("issuedAtMicros").GetInt64());
             case "bulk_issue":
                 var refs = new List<string>();
                 foreach (var a in input.GetProperty("achievements").EnumerateArray())
                 {
                     refs.Add(a.GetString()!);
                 }
-                bytes = InvokeSessionSigningBytes(
+                return InvokeSessionSigningBytes(
                     "BulkAttestationSigningBytes",
-                    claimKind, issuerRef, IdentityId.Parse(input.GetProperty("subject").GetString()!),
-                    (IReadOnlyList<string>)refs);
-                break;
+                    networkId, claimKind, issuerRef, keyId, IdentityId.Parse(input.GetProperty("subject").GetString()!),
+                    (IReadOnlyList<string>)refs, input.GetProperty("issuedAtMicros").GetInt64());
             case "revoke":
-                bytes = InvokeSessionSigningBytes(
+                return InvokeSessionSigningBytes(
                     "RevocationSigningBytes",
-                    claimKind, issuerRef, Guid.Parse(input.GetProperty("attestationId").GetString()!),
-                    input.GetProperty("reasonCode").GetString()!);
-                break;
+                    networkId, claimKind, issuerRef, keyId, Guid.Parse(input.GetProperty("attestationId").GetString()!),
+                    input.GetProperty("reasonCode").GetString()!, input.GetProperty("reason").GetString()!);
             default:
                 throw new InvalidOperationException($"unknown operation {operation}");
         }
+    }
 
-        Assert.Equal(expected.GetProperty("signingBytesHex").GetString(), ToLowerHex(bytes));
-        var signature = InvokeSignWithIdentityKey(secretKey, bytes);
-        Assert.Equal(expected.GetProperty("signatureHex").GetString(), ToLowerHex(signature));
+    [Fact]
+    public void AttestationSigning_MatchesSharedVectors()
+    {
+        using var doc = LoadVector("attestation-signing.json");
+        var root = doc.RootElement;
+        var secretKey = HexToBytes(root.GetProperty("signingKeySeedHex").GetString()!);
+        var publicKey = HexToBytes(root.GetProperty("signingPublicKeyHex").GetString()!);
+
+        var count = 0;
+        foreach (var vector in root.GetProperty("vectors").EnumerateArray())
+        {
+            var name = vector.GetProperty("name").GetString();
+            var expected = vector.GetProperty("expected");
+            var bytes = AttestationBytes(vector.GetProperty("input"));
+            Assert.True(expected.GetProperty("signingBytesHex").GetString() == ToLowerHex(bytes), $"[{name}] signing bytes");
+            Assert.True(
+                expected.GetProperty("signatureHex").GetString() == ToLowerHex(InvokeSignWithIdentityKey(secretKey, bytes)),
+                $"[{name}] signature");
+            count++;
+        }
+        Assert.Equal(18, count);
+
+        var replays = 0;
+        foreach (var vector in root.GetProperty("replayVectors").EnumerateArray())
+        {
+            Assert.False(
+                IdentitySigning.VerifyStrict(publicKey, AttestationBytes(vector.GetProperty("input")), HexToBytes(vector.GetProperty("signatureHex").GetString()!)),
+                $"[{vector.GetProperty("name").GetString()}] a replayed signature verified");
+            replays++;
+        }
+        Assert.Equal(21, replays);
+
+        var legacy = 0;
+        foreach (var vector in root.GetProperty("legacyLayoutVectors").EnumerateArray())
+        {
+            var signature = HexToBytes(vector.GetProperty("signatureHex").GetString()!);
+            Assert.True(IdentitySigning.VerifyStrict(publicKey, Encoding.UTF8.GetBytes(vector.GetProperty("legacySigningBytesUtf8").GetString()!), signature));
+            Assert.False(IdentitySigning.VerifyStrict(publicKey, AttestationBytes(vector.GetProperty("input")), signature));
+            legacy++;
+        }
+        Assert.Equal(3, legacy);
+    }
+
+    private static long TreeSizeOf(JsonElement input)
+    {
+        var size = input.GetProperty("treeSize");
+        return size.ValueKind == JsonValueKind.String ? long.Parse(size.GetString()!) : size.GetInt64();
     }
 
     [Fact]
@@ -301,34 +319,74 @@ public class ConformanceTests
     {
         using var doc = LoadVector("signed-tree-head.json");
         var root = doc.RootElement;
-        Assert.True(SupportedIn(root, "csharp"), "signed-tree-head.json must list csharp in supportedIn");
         var publicKeyHex = root.GetProperty("signingPublicKeyHex").GetString()!;
 
+        var count = 0;
         foreach (var vector in root.GetProperty("vectors").EnumerateArray())
         {
             var name = vector.GetProperty("name").GetString();
             var input = vector.GetProperty("input");
             var expected = vector.GetProperty("expected");
-            var treeSize = input.GetProperty("treeSize").GetInt64();
-            var rootHash = input.GetProperty("rootHashHex").GetString()!;
-            var networkId = input.GetProperty("networkId").GetString()!;
             var createdAt = DateTimeOffset.FromUnixTimeSeconds(input.GetProperty("createdAtUnixSeconds").GetInt64());
-
-            var bytes = AvalonClient.SthSigningMessage(treeSize, rootHash, networkId, createdAt);
-            Assert.True(
-                expected.GetProperty("signingBytesHex").GetString() == ToLowerHex(bytes),
-                $"[{name}] signing bytes diverged from the shared vector");
+            Assert.Equal(createdAt, DateTimeOffset.Parse(input.GetProperty("createdAtRfc3339").GetString()!, System.Globalization.CultureInfo.InvariantCulture));
 
             var wire = new SignedTreeHeadWire
             {
-                TreeSize = treeSize,
-                RootHash = rootHash,
-                NetworkId = networkId,
+                TreeSize = TreeSizeOf(input),
+                RootHash = input.GetProperty("rootHashHex").GetString()!,
+                NetworkId = input.GetProperty("networkId").GetString()!,
+                SigningKeyId = input.GetProperty("signingKeyId").GetString()!,
                 CreatedAt = createdAt,
                 Signature = expected.GetProperty("signatureHex").GetString()!,
             };
+            var bytes = AvalonClient.SthSigningMessage(wire);
+            Assert.True(
+                expected.GetProperty("signingBytesHex").GetString() == ToLowerHex(bytes),
+                $"[{name}] signing bytes diverged from the shared vector");
             Assert.True(AvalonClient.VerifyTreeHeadHex(publicKeyHex, wire), $"[{name}] vector signature does not verify");
+            count++;
         }
+        Assert.Equal(10, count);
+    }
+
+    [Fact]
+    public void SignedTreeHead_RejectedRootHashesProduceNoBytesAndNeverVerify()
+    {
+        using var doc = LoadVector("signed-tree-head.json");
+        var root = doc.RootElement;
+        var publicKeyHex = root.GetProperty("signingPublicKeyHex").GetString()!;
+        var count = 0;
+        foreach (var vector in root.GetProperty("rejectedVectors").EnumerateArray())
+        {
+            var input = vector.GetProperty("input");
+            Assert.Equal("invalid_root_hash", vector.GetProperty("expected").GetProperty("error").GetString());
+            var wire = new SignedTreeHeadWire
+            {
+                TreeSize = TreeSizeOf(input),
+                RootHash = input.GetProperty("rootHashHex").GetString()!,
+                NetworkId = input.GetProperty("networkId").GetString()!,
+                SigningKeyId = input.GetProperty("signingKeyId").GetString()!,
+                CreatedAt = DateTimeOffset.FromUnixTimeSeconds(input.GetProperty("createdAtUnixSeconds").GetInt64()),
+                Signature = new string('0', 128),
+            };
+            Assert.Throws<ArgumentException>(() => AvalonClient.SthSigningMessage(wire));
+            Assert.False(AvalonClient.VerifyTreeHeadHex(publicKeyHex, wire));
+            count++;
+        }
+        Assert.Equal(5, count);
+    }
+
+    [Fact]
+    public void SignedTreeHead_ReadRejectVectors_FailWithTheExpectedError()
+    {
+        using var doc = LoadVector("signed-tree-head.json");
+        var count = 0;
+        foreach (var vector in doc.RootElement.GetProperty("readRejectVectors").EnumerateArray())
+        {
+            StructuredConformanceTests.AssertReadRejects(vector);
+            count++;
+        }
+        Assert.Equal(5, count);
     }
 
     // Vector files with no runner in this SDK yet, each with the reason it is skipped.

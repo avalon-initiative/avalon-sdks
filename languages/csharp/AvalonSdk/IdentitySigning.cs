@@ -18,27 +18,27 @@ namespace Avalon.Sdk
         public static bool VerifyStrict(byte[] publicKey, byte[] message, byte[] signature) =>
             StrictEd25519.VerifyStrict(publicKey, message, signature);
 
-        /// <summary>Bytes signed for <c>identity.created</c>: tag <c>avalon.identity.created</c>, version 1, then
-        /// network id, shard id, ticket id (also the inception key's id), identity id, inception public key and
-        /// display name. The event is unchained, so no position is signed.</summary>
+        /// <summary>Bytes signed for <c>identity.created</c>: tag <c>avalon.identity.created</c>, layout 1, then
+        /// network id, ticket id (also the inception key's id), identity id, inception public key and display name.
+        /// The shard id is not signed and the event is unchained, so no position is signed.</summary>
         public static byte[] IdentityCreatedSigningBytes(
-            string networkId, string shardId, Guid ticketId, IdentityId identityId, byte[] publicKey, string displayName) =>
+            string networkId, Guid ticketId, IdentityId identityId, byte[] publicKey, string displayName) =>
             new SigningBytesBuilder(DomainTags.IdentityCreated, 1)
                 .Str(networkId)
-                .Str(shardId)
                 .Uuid(ticketId)
                 .Fixed(identityId.ToBytes())
                 .Key(publicKey)
                 .Str(displayName)
                 .Finish();
 
-        /// <summary>Bytes the approving device signs for a grant: tag <c>avalon.device_grant.approved</c>, version 1,
-        /// then grant id (also the new key's id), identity id, approver signing key id, requested public key and the
-        /// chain position (<paramref name="seq"/>, <paramref name="prevHash"/>, null for the first chained event).</summary>
+        /// <summary>Bytes the approving device signs for a grant: tag <c>avalon.device_grant.approved</c>, layout 1,
+        /// then network id, grant id (also the new key's id), identity id, approver signing key id, requested public key
+        /// and the chain position (<paramref name="seq"/>, <paramref name="prevHash"/>, null for the first chained event).</summary>
         public static byte[] DeviceGrantApprovalSigningBytes(
-            Guid grantId, IdentityId identityId, Guid approverSigningKeyId, byte[] requestedPublicKey, ulong seq, byte[]? prevHash) =>
+            string networkId, Guid grantId, IdentityId identityId, Guid approverSigningKeyId, byte[] requestedPublicKey, ulong seq, byte[]? prevHash) =>
             WithPosition(
                 new SigningBytesBuilder(DomainTags.DeviceGrantApproved, 1)
+                    .Str(networkId)
                     .Uuid(grantId)
                     .Fixed(identityId.ToBytes())
                     .Uuid(approverSigningKeyId)
@@ -46,22 +46,23 @@ namespace Avalon.Sdk
                 seq,
                 prevHash).Finish();
 
-        /// <summary>Bytes a signing-key revocation signs: tag <c>avalon.identity.signing_key_revoked</c>, version 1,
-        /// then identity id, revoked key id, revoking key id and the chain position as for a grant.</summary>
+        /// <summary>Bytes a signing-key revocation signs: tag <c>avalon.identity.signing_key_revoked</c>, layout 1,
+        /// then network id, identity id, revoked key id, revoking key id and the chain position as for a grant.</summary>
         public static byte[] SigningKeyRevokedSigningBytes(
-            IdentityId identityId, Guid signingKeyId, Guid revokedBySigningKeyId, ulong seq, byte[]? prevHash) =>
+            string networkId, IdentityId identityId, Guid signingKeyId, Guid revokedBySigningKeyId, ulong seq, byte[]? prevHash) =>
             WithPosition(
                 new SigningBytesBuilder(DomainTags.IdentitySigningKeyRevoked, 1)
+                    .Str(networkId)
                     .Fixed(identityId.ToBytes())
                     .Uuid(signingKeyId)
                     .Uuid(revokedBySigningKeyId),
                 seq,
                 prevHash).Finish();
 
-        // seq u64, then prev_hash as a flag byte (0 none, 1 followed by the 32-byte head hash).
+        // seq u64, the hash algorithm byte, then prev_hash as a flag byte (0 none, 1 followed by the 32-byte head hash).
         private static SigningBytesBuilder WithPosition(SigningBytesBuilder builder, ulong seq, byte[]? prevHash)
         {
-            builder.U64(seq);
+            builder.U64(seq).HashAlgo(HashAlgo.Sha256);
             return prevHash == null ? builder.U8(0) : builder.U8(1).Hash(prevHash);
         }
     }

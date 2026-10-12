@@ -44,11 +44,14 @@ import {
   type CosignedVerifyOptions,
   type KnownListCache,
 } from './network/cosignedTrust.js'
+import { resolveVerifiedNetworkId } from './network/verifiedNetworkId.js'
 import { discover, type DiscoverOptions } from './network/discover.js'
 import type { TargetNetwork } from './network/targetNetwork.js'
 
 export interface AvalonClientConfig {
   serverUrl: string
+  /** The network id to sign into messages; when omitted it is verified against the trust anchors on first use. */
+  networkId?: string
 }
 
 // Hand-written, not generated — `challenge` is an opaque blob in the
@@ -78,10 +81,12 @@ export interface VerifyNetworkOptions extends CosignedVerifyOptions {
 
 export class AvalonClient {
   private readonly serverUrl: string
+  private readonly networkId?: string
   private knownLists: KnownListCache = new Map()
 
   constructor(config: AvalonClientConfig) {
     this.serverUrl = config.serverUrl
+    this.networkId = config.networkId
   }
 
   /** Registers a brand-new identity and returns a fresh `AccountSession`
@@ -123,6 +128,7 @@ export class AvalonClient {
     if (!isAcceptableShardKey(publicKey)) {
       throw new TypeError('the inception key is not an acceptable Ed25519 key')
     }
+    const networkId = this.networkId ?? (await resolveVerifiedNetworkId(this.serverUrl, this.knownLists))
     // The id is derived from the inception key, so the key comes first.
     const identityId = deriveIdentityId(publicKey)
 
@@ -138,8 +144,7 @@ export class AvalonClient {
     const credential: RegistrationResponseJSON = await runRegistrationCeremony(start.challenge.publicKey)
 
     const signingBytes = identityCreatedSigningBytes(
-      start.network_id,
-      start.shard_id,
+      networkId,
       start.ticket_id,
       identityId,
       publicKey,
@@ -171,6 +176,7 @@ export class AvalonClient {
 
     const session = await this.finishLogin(identityId, secretKey)
     session._credentials = credentials
+    session._networkId = networkId
     return session
   }
 
@@ -232,7 +238,7 @@ export class AvalonClient {
   async resumeAccountSession(token: string): Promise<AccountSession> {
     const body = await request<MeResponseWire>(this.serverUrl, '/me', { token })
     const { identity, profile } = fromMeResponse(body)
-    return new AccountSession({ identity, profile, serverUrl: this.serverUrl, token })
+    return new AccountSession({ identity, profile, serverUrl: this.serverUrl, token, networkId: this.networkId })
   }
 
   /** Same as `resumeAccountSession`, but also resolves `signingKeySeed`'s
@@ -250,6 +256,7 @@ export class AvalonClient {
       profile,
       serverUrl: this.serverUrl,
       token,
+      networkId: this.networkId,
       signing: signingKeyId ? { secretKey: signingKeySeed, publicKey, signingKeyId } : undefined,
     })
   }
@@ -268,7 +275,7 @@ export class AvalonClient {
    * `IntegratorSession` scoped to this integrator's own granted
    * capabilities. */
   async authenticate(options: Omit<AuthenticateOptions, 'serverUrl'>): Promise<IntegratorSession> {
-    return authenticateIntegrator({ ...options, serverUrl: this.serverUrl })
+    return authenticateIntegrator({ networkId: this.networkId, ...options, serverUrl: this.serverUrl })
   }
 
   /** `GET /nodes/status` for this client's configured `serverUrl` —
@@ -313,7 +320,10 @@ export class AvalonClient {
   static async connect(target: TargetNetwork, options: DiscoverOptions = {}): Promise<AvalonClient> {
     const knownLists: KnownListCache = options.knownLists ?? new Map()
     const { serverUrl } = await discover(target, { ...options, knownLists })
-    const client = new AvalonClient({ serverUrl })
+    const client = new AvalonClient({
+      serverUrl,
+      networkId: target.kind === 'network-id' ? target.networkId : undefined,
+    })
     client.knownLists = knownLists
     return client
   }

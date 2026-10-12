@@ -131,8 +131,12 @@ impl ManagedHostingClient {
                 preview.tree_size,
                 &preview.root_hash,
                 &preview.network_id,
+                signing_key_id,
                 created_at,
-            );
+            )
+            .map_err(|e| {
+                ManagedHostingError::Protocol(format!("the prepared head cannot be signed: {e}"))
+            })?;
             let signature =
                 hex::encode(ed25519_dalek::Signer::sign(signing_key, &message).to_bytes());
 

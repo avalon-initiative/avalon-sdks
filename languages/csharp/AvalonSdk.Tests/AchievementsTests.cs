@@ -123,7 +123,8 @@ public class AchievementsTests
             handler.ToHttpClient(),
             integratorKeyId: Guid.NewGuid().ToString(),
             integratorSlug: "dragons-inc",
-            signingKey: TestSigningKey);
+            signingKey: TestSigningKey,
+            networkId: "avalon-test-net");
 
         var id = await session.IssueAchievementAsync("dragon_slayer");
 
@@ -131,6 +132,15 @@ public class AchievementsTests
         Assert.Equal(2, handler.Requests.Count);
         Assert.Contains("/integrations/dragons-inc/challenge", handler.Requests[0].Url);
         Assert.Contains("/integrations/dragons-inc/achievements/dragon_slayer/issue", handler.Requests[1].Url);
+
+        var body = System.Text.Json.JsonDocument.Parse(handler.Requests[1].Body!).RootElement;
+        var keyId = body.GetProperty("key_id").GetGuid();
+        var issuedAt = body.GetProperty("issued_at_micros").GetInt64();
+        Assert.InRange(issuedAt, LedgerEntry.TimestampMicros(DateTimeOffset.UtcNow) - 60_000_000, LedgerEntry.TimestampMicros(DateTimeOffset.UtcNow) + 60_000_000);
+        var expectedBytes = (byte[])typeof(Session).GetMethod("AttestationSigningBytes", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+            .Invoke(null, new object[] { "avalon-test-net", "achievement", "game:dragons-inc", keyId, session.IdentityId, "game:dragons-inc:achievement:dragon_slayer", issuedAt })!;
+        var publicKey = new Org.BouncyCastle.Crypto.Parameters.Ed25519PrivateKeyParameters(TestSigningKey, 0).GeneratePublicKey().GetEncoded();
+        Assert.True(IdentitySigning.VerifyStrict(publicKey, expectedBytes, Convert.FromBase64String(body.GetProperty("signature").GetString()!)));
     }
 
     [Fact]
@@ -145,7 +155,8 @@ public class AchievementsTests
             handler.ToHttpClient(),
             integratorKeyId: Guid.NewGuid().ToString(),
             integratorSlug: "dragons-inc",
-            signingKey: TestSigningKey);
+            signingKey: TestSigningKey,
+            networkId: "avalon-test-net");
 
         await Assert.ThrowsAsync<AvalonRequestException>(() => session.IssueAchievementAsync("dragon_slayer"));
     }
@@ -203,7 +214,8 @@ public class AchievementsTests
             handler.ToHttpClient(),
             integratorKeyId: Guid.NewGuid().ToString(),
             integratorSlug: "dragons-inc",
-            signingKey: TestSigningKey);
+            signingKey: TestSigningKey,
+            networkId: "avalon-test-net");
 
         var revocation = await session.RevokeAttestationAsync(attestationId, "achievement", "game:dragons-inc", "issuer_error", "mistake");
 
@@ -242,7 +254,8 @@ public class AchievementsTests
             handler.ToHttpClient(),
             integratorKeyId: Guid.NewGuid().ToString(),
             integratorSlug: "dragons-inc",
-            signingKey: TestSigningKey);
+            signingKey: TestSigningKey,
+            networkId: "avalon-test-net");
 
         var definition = await session.CreateAchievementDefinitionAsync("dragon_slayer", "Dragon Slayer", "Slew a dragon");
 
@@ -294,7 +307,8 @@ public class AchievementsTests
             handler.ToHttpClient(),
             integratorKeyId: Guid.NewGuid().ToString(),
             integratorSlug: "dragons-inc",
-            signingKey: TestSigningKey);
+            signingKey: TestSigningKey,
+            networkId: "avalon-test-net");
 
         var results = await session.BulkIssueAchievementsAsync(new[]
         {
@@ -333,7 +347,8 @@ public class AchievementsTests
             handler.ToHttpClient(),
             integratorKeyId: Guid.NewGuid().ToString(),
             integratorSlug: "wallet-app",
-            signingKey: TestSigningKey);
+            signingKey: TestSigningKey,
+            networkId: "avalon-test-net");
 
         var id = await session.IssueMilestoneAsync("onboarded", "app");
 
