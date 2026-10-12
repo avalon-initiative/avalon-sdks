@@ -13,7 +13,7 @@
 // attestations.rs/issuer_registration.rs.
 import { sha256 } from '@noble/hashes/sha2.js'
 import { request } from './http.js'
-import { getNodeStatus } from './nodeStatus.js'
+import { resolveVerifiedNetworkId } from './network/verifiedNetworkId.js'
 import { Builder, tags } from './crypto/signingBytes.js'
 import { sign as ed25519Sign, bytesToBase64, base64ToBytes, publicKeyFromSecretKey } from './crypto/signing.js'
 import type { components } from './generated.js'
@@ -546,12 +546,14 @@ export async function revokeAttestation(
   signingKey: Uint8Array,
   reasonCode: string,
   reason: string,
+  networkId?: string,
 ): Promise<RevokeAttestationResult> {
+  const signedNetworkId = networkId ?? (await resolveVerifiedNetworkId(serverUrl))
   const headers = await integratorAuthHeaders(serverUrl, issuerSlug, keyId, signingKey)
   const signature = ed25519Sign(
     signingKey,
     revocationSigningBytes(
-      (await getNodeStatus(serverUrl)).network_id,
+      signedNetworkId,
       claimKind,
       issuerRef,
       keyId,

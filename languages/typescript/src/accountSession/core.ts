@@ -22,7 +22,7 @@
 // method signatures into the `AccountSession` interface below via
 // `declare module`.
 import { request } from '../http.js'
-import { getNodeStatus } from '../nodeStatus.js'
+import { resolveVerifiedNetworkId } from '../network/verifiedNetworkId.js'
 import {
   canonicalMessage,
   sign as ed25519Sign,
@@ -80,10 +80,10 @@ export class AccountSession {
     this._networkId = init.networkId
   }
 
-  /** The network id of the node this session talks to: signed into every identity key event so a
-   * signature never verifies on another network. Read once from `GET /nodes/status` and cached. */
+  /** The network id signed into every identity key event: the declared one, else verified once against the
+   * trust anchors and cached. Throws `NetworkNotVerifiedError` when it cannot be verified. */
   async networkId(): Promise<string> {
-    this._networkId ??= (await getNodeStatus(this._serverUrl)).network_id
+    this._networkId ??= await resolveVerifiedNetworkId(this._serverUrl)
     return this._networkId
   }
 

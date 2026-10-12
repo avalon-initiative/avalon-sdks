@@ -123,6 +123,7 @@ export {
 } from './shardFamily.js'
 export type { FamilyHead, FamilyMember, FamilyProof, ShardFamilyResponse } from './shardFamily.js'
 export { getNodeStatus } from './nodeStatus.js'
+export { NetworkNotVerifiedError } from './network/verifiedNetworkId.js'
 export { getTopology, probeNode, traceRoute } from './nodeTopology.js'
 export { withTrace } from './opTrace.js'
 export type {
