@@ -1,4 +1,4 @@
-//! Key acceptability, strict verification and the v3 identity key-event signing bytes.
+//! Key acceptability, strict verification and the identity key-event signing bytes.
 //!
 //! Layouts are the structured form of [`crate::signing_bytes`] (keys and ids raw); a public key is
 //! standard base64 on the wire. Pinned by `conformance/vectors/identity-id.json`, `identity-created-signing.json`,
@@ -7,7 +7,7 @@
 use ed25519_dalek::{Signature, VerifyingKey};
 use uuid::Uuid;
 
-use crate::signing_bytes::{tags, Builder};
+use crate::signing_bytes::{tags, Builder, HashAlgo};
 use crate::types::ids::IdentityId;
 
 /// Whether `key` is an acceptable id-committed key: canonical encoding and not of small order.
@@ -26,11 +26,11 @@ pub fn verify_strict(key: &VerifyingKey, message: &[u8], signature: &[u8; 64]) -
         .is_ok()
 }
 
-/// Bytes signed for `identity.created`: tag, version 1, then `network_id` str, `shard_id` str,
-/// `ticket_id` uuid, `identity_id` raw, inception key raw, `display_name` str.
+/// Bytes signed for `identity.created`: tag, layout version 1, then `network_id` str, `ticket_id`
+/// uuid, `identity_id` raw, inception key (algorithm byte and 32 raw bytes), `display_name` str.
+/// The shard id is not signed; the ticket id is also the id of the inception key.
 pub fn identity_created_signing_bytes(
     network_id: &str,
-    shard_id: &str,
     ticket_id: Uuid,
     identity_id: &IdentityId,
     public_key: &[u8; 32],
@@ -38,7 +38,6 @@ pub fn identity_created_signing_bytes(
 ) -> Vec<u8> {
     Builder::new(tags::IDENTITY_CREATED, 1)
         .str(network_id)
-        .str(shard_id)
         .uuid(ticket_id)
         .fixed(&identity_id.to_bytes())
         .key(public_key)
@@ -47,18 +46,20 @@ pub fn identity_created_signing_bytes(
         .expect("identity.created fields fit a u32 length")
 }
 
-/// The chain position a key event signs: `seq` u64, then `prev_hash` as a flag byte (0, or 1 and 32 raw bytes).
+/// The chain position a key event signs: `seq` u64, `hash_algo` u8, then `prev_hash` as a flag byte
+/// (0, or 1 and 32 raw bytes).
 fn with_position(builder: Builder, seq: u64, prev_hash: Option<&[u8; 32]>) -> Builder {
-    let builder = builder.u64(seq);
+    let builder = builder.u64(seq).hash_algo(HashAlgo::Sha256);
     match prev_hash {
         Some(hash) => builder.u8(1).hash(hash),
         None => builder.u8(0),
     }
 }
 
-/// Bytes the approving device signs for a grant: tag, version 1, then `grant_id` uuid, `identity_id`
-/// raw, `approver_signing_key_id` uuid, requested key raw, and the chain position.
+/// Bytes the approving device signs for a grant: tag, version 1, then `network_id` str, `grant_id`
+/// uuid, `identity_id` raw, `approver_signing_key_id` uuid, requested key, and the chain position.
 pub fn device_grant_approval_signing_bytes(
+    network_id: &str,
     grant_id: Uuid,
     identity_id: &IdentityId,
     approver_signing_key_id: Uuid,
@@ -67,6 +68,7 @@ pub fn device_grant_approval_signing_bytes(
     prev_hash: Option<&[u8; 32]>,
 ) -> Vec<u8> {
     let builder = Builder::new(tags::DEVICE_GRANT_APPROVED, 1)
+        .str(network_id)
         .uuid(grant_id)
         .fixed(&identity_id.to_bytes())
         .uuid(approver_signing_key_id)
@@ -76,9 +78,10 @@ pub fn device_grant_approval_signing_bytes(
         .expect("device grant fields fit a u32 length")
 }
 
-/// Bytes a signing-key revocation signs: tag, version 1, then `identity_id` raw, `signing_key_id`
-/// uuid, `revoked_by_signing_key_id` uuid, and the chain position.
+/// Bytes a signing-key revocation signs: tag, version 1, then `network_id` str, `identity_id` raw,
+/// `signing_key_id` uuid, `revoked_by_signing_key_id` uuid, and the chain position.
 pub fn signing_key_revoked_signing_bytes(
+    network_id: &str,
     identity_id: &IdentityId,
     signing_key_id: Uuid,
     revoked_by_signing_key_id: Uuid,
@@ -86,6 +89,7 @@ pub fn signing_key_revoked_signing_bytes(
     prev_hash: Option<&[u8; 32]>,
 ) -> Vec<u8> {
     let builder = Builder::new(tags::IDENTITY_SIGNING_KEY_REVOKED, 1)
+        .str(network_id)
         .fixed(&identity_id.to_bytes())
         .uuid(signing_key_id)
         .uuid(revoked_by_signing_key_id);

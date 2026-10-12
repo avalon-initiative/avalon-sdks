@@ -12,6 +12,8 @@ use uuid::Uuid;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+const NETWORK_ID: &str = "avalon-test-net";
+
 /// A session with `key` as its local signing key; also its identity id and the key's row id.
 async fn session(
     server: &MockServer,
@@ -48,6 +50,18 @@ async fn session(
                 "added_at": "2023-01-01T00:00:00Z",
             }])),
         )
+        .mount(server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/ledger/sth/latest"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "tree_size": 1,
+            "root_hash": "ab".repeat(32),
+            "network_id": NETWORK_ID,
+            "signing_key_id": "k",
+            "signature": "00",
+            "created_at": "2023-01-01T00:00:00Z",
+        })))
         .mount(server)
         .await;
     let session = client
@@ -137,6 +151,7 @@ async fn approve_signs_at_a_new_chain_and_sends_the_position() {
     assert!(sent[0].get("prev_hash").is_none());
     assert_eq!(sent[0]["approver_signing_key_id"], key_id.to_string());
     let bytes = device_grant_approval_signing_bytes(
+        NETWORK_ID,
         grant,
         &identity_id,
         key_id,
@@ -178,6 +193,7 @@ async fn approve_re_signs_once_at_the_head_a_stale_409_returns() {
     assert_eq!(sent[1]["seq"], 5);
     assert_eq!(sent[1]["prev_hash"], HEAD_HASH);
     let bytes = device_grant_approval_signing_bytes(
+        NETWORK_ID,
         grant,
         &identity_id,
         key_id,
@@ -238,6 +254,7 @@ async fn revoke_signs_the_position_and_retries_once_on_stale() {
     assert_eq!(sent[1]["prev_hash"], HEAD_HASH);
     assert_eq!(sent[1]["revoked_by_signing_key_id"], key_id.to_string());
     let bytes = signing_key_revoked_signing_bytes(
+        NETWORK_ID,
         &identity_id,
         target,
         key_id,
@@ -245,7 +262,8 @@ async fn revoke_signs_the_position_and_retries_once_on_stale() {
         Some(&hash32(HEAD_HASH)),
     );
     assert!(signature_verifies(&key, &bytes, &sent[1]));
-    let first = signing_key_revoked_signing_bytes(&identity_id, target, key_id, 1, None);
+    let first =
+        signing_key_revoked_signing_bytes(NETWORK_ID, &identity_id, target, key_id, 1, None);
     assert!(signature_verifies(&key, &first, &sent[0]));
 }
 

@@ -82,7 +82,6 @@ async fn register_and_login(http: &reqwest::Client, base: &str, display_name: &s
 
     let signing_bytes = identity_created_signing_bytes(
         start["network_id"].as_str().unwrap(),
-        start["shard_id"].as_str().unwrap(),
         ticket_id.parse().unwrap(),
         &identity_id,
         signing_key.verifying_key().as_bytes(),

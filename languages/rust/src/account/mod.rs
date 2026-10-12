@@ -647,7 +647,6 @@ impl AvalonClient {
         struct RegisterStartResponse {
             ticket_id: Uuid,
             network_id: String,
-            shard_id: String,
             challenge: passkey_types::webauthn::CredentialCreationOptions,
         }
         let start: RegisterStartResponse = http
@@ -672,7 +671,6 @@ impl AvalonClient {
 
         let signing_bytes = crate::identity_signing::identity_created_signing_bytes(
             &start.network_id,
-            &start.shard_id,
             start.ticket_id,
             &identity_id,
             public_key.as_bytes(),

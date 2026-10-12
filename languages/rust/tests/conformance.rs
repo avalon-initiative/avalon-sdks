@@ -843,7 +843,6 @@ fn identity_created_signing_matches_shared_vectors() {
             assert!(identity_id.matches_key(&public_key));
             identity_created_signing_bytes(
                 input["networkId"].as_str().unwrap(),
-                input["shardId"].as_str().unwrap(),
                 parse_uuid(input, "ticketId"),
                 &identity_id,
                 &public_key,
@@ -865,6 +864,7 @@ fn device_grant_approval_signing_matches_shared_vectors() {
     let count = run_key_event_vectors("device-grant-approval.json", &doc, &|_, input| {
         let (seq, prev_hash) = parse_position(input);
         device_grant_approval_signing_bytes(
+            input["networkId"].as_str().unwrap(),
             parse_uuid(input, "grantId"),
             &parse_identity_id(input, "identityId"),
             parse_uuid(input, "approverSigningKeyId"),
@@ -884,6 +884,7 @@ fn signing_key_revoked_signing_matches_shared_vectors() {
         &|_, input| {
             let (seq, prev_hash) = parse_position(input);
             signing_key_revoked_signing_bytes(
+                input["networkId"].as_str().unwrap(),
                 &parse_identity_id(input, "identityId"),
                 parse_uuid(input, "signingKeyId"),
                 parse_uuid(input, "revokedBySigningKeyId"),
