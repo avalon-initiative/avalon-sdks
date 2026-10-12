@@ -348,7 +348,7 @@ struct ListMyAchievementsResponse {
 impl Session {
     /// The network id the node serves, the value every attestation signature binds.
     async fn node_network_id(&self) -> Result<String, SdkError> {
-        crate::network::fetch_network_id(&self.http, &self.retry, &self.server_url).await
+        self.network.get().await
     }
 
     pub(crate) async fn fetch_achievements(&self) -> Result<Vec<VerifiedAttestation>, SdkError> {
@@ -414,6 +414,8 @@ impl Session {
         // retried by `http::send` itself — a failed attempt here means
         // `retry_write` redoes this whole function, fetching a fresh
         // challenge along with it.
+        let network_id = self.node_network_id().await?;
+
         let challenge_response = crate::http::send(&self.http, &self.retry, false, |c| {
             c.post(format!(
                 "{}/integrations/{}/challenge",
@@ -440,7 +442,6 @@ impl Session {
         let claim_kind = IntegratorCategory::Game.claim_kind();
         let issuer_ref = format!("game:{slug}");
         let achievement = format!("game:{slug}:achievement:{key}");
-        let network_id = self.node_network_id().await?;
         let signer = AttestationSigner {
             network_id: &network_id,
             claim_kind,
@@ -520,6 +521,8 @@ impl Session {
             .parse()
             .map_err(|_| SdkError::MissingIssuerCredentials)?;
 
+        let network_id = self.node_network_id().await?;
+
         let challenge_response = crate::http::send(&self.http, &self.retry, false, |c| {
             c.post(format!(
                 "{}/integrations/{}/challenge",
@@ -546,7 +549,6 @@ impl Session {
             .iter()
             .map(|key| format!("game:{slug}:achievement:{key}"))
             .collect();
-        let network_id = self.node_network_id().await?;
         let signer = AttestationSigner {
             network_id: &network_id,
             claim_kind,
@@ -629,6 +631,8 @@ impl Session {
             .parse()
             .map_err(|_| SdkError::MissingIssuerCredentials)?;
 
+        let network_id = self.node_network_id().await?;
+
         let challenge_response = crate::http::send(&self.http, &self.retry, false, |c| {
             c.post(format!(
                 "{}/integrations/{}/challenge",
@@ -650,7 +654,6 @@ impl Session {
 
         let claim_kind = IntegratorCategory::Game.claim_kind();
         let issuer_ref = format!("game:{slug}");
-        let network_id = self.node_network_id().await?;
         let signer = AttestationSigner {
             network_id: &network_id,
             claim_kind,
@@ -938,6 +941,8 @@ impl Session {
             .parse()
             .map_err(|_| SdkError::MissingIssuerCredentials)?;
 
+        let network_id = self.node_network_id().await?;
+
         let challenge_response = crate::http::send(&self.http, &self.retry, false, |c| {
             c.post(format!(
                 "{}/integrations/{}/challenge",
@@ -961,7 +966,6 @@ impl Session {
         let claim_kind = category.claim_kind();
         let issuer_ref = format!("{}:{slug}", category.as_str());
         let achievement = format!("{}:{slug}:milestone:{key}", category.as_str());
-        let network_id = self.node_network_id().await?;
         let signer = AttestationSigner {
             network_id: &network_id,
             claim_kind,
@@ -1040,6 +1044,8 @@ impl Session {
             .parse()
             .map_err(|_| SdkError::MissingIssuerCredentials)?;
 
+        let network_id = self.node_network_id().await?;
+
         let challenge_response = crate::http::send(&self.http, &self.retry, false, |c| {
             c.post(format!(
                 "{}/integrations/{}/challenge",
@@ -1066,7 +1072,6 @@ impl Session {
             .iter()
             .map(|key| format!("{}:{slug}:milestone:{key}", category.as_str()))
             .collect();
-        let network_id = self.node_network_id().await?;
         let signer = AttestationSigner {
             network_id: &network_id,
             claim_kind,

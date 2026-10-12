@@ -136,6 +136,7 @@ pub struct AccountSession {
     signing: Option<AccountSigningKey>,
     local_credentials: Option<AccountCredentials>,
     retry: RetryConfig,
+    network: crate::network::NetworkIdSource,
 }
 
 /// `identity_created_at`/`added_at`/`expires_at` come through the
@@ -840,6 +841,7 @@ impl AvalonClient {
             }),
             local_credentials: None,
             retry: self.config.retry.clone(),
+            network: self.network_source(),
         })
     }
 
@@ -867,6 +869,7 @@ impl AvalonClient {
             signing: None,
             local_credentials: None,
             retry: self.config.retry.clone(),
+            network: self.network_source(),
         })
     }
 
@@ -949,6 +952,7 @@ mod tests {
     #[test]
     fn sign_with_no_local_key_yields_empty_signature_fields() {
         let session = AccountSession {
+            network: crate::network::NetworkIdSource::declared("test-net"),
             identity: Identity {
                 id: IdentityId::random_for_tests(),
                 created_at: time::OffsetDateTime::now_utc(),
@@ -987,6 +991,7 @@ mod tests {
         let signing_key_id = Uuid::new_v4();
 
         let session = AccountSession {
+            network: crate::network::NetworkIdSource::declared("test-net"),
             identity: Identity {
                 id: IdentityId::random_for_tests(),
                 created_at: time::OffsetDateTime::now_utc(),
