@@ -190,7 +190,8 @@ mod tests {
             &"ab".repeat(32),
             network_id,
             OffsetDateTime::UNIX_EPOCH,
-        );
+        )
+        .unwrap();
         Mock::given(method("GET"))
             .and(path("/ledger/sth/latest"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({

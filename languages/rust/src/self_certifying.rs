@@ -226,6 +226,7 @@ mod tests {
             "avalon-test",
             OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(1_780_000_000),
         )
+        .unwrap()
     }
 
     fn key_hex(signing: &SigningKey) -> String {

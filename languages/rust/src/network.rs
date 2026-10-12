@@ -1016,6 +1016,7 @@ mod tests {
             network_id,
             OffsetDateTime::UNIX_EPOCH,
         )
+        .unwrap()
     }
 
     #[test]
@@ -1129,12 +1130,13 @@ mod tests {
             .collect();
         let now = OffsetDateTime::now_utc();
         let head =
-            crate::sth::sign_tree_head(&author, "k", 5, &"ab".repeat(32), "avalon-test", now);
+            crate::sth::sign_tree_head(&author, "k", 5, &"ab".repeat(32), "avalon-test", now)
+                .unwrap();
         let body = |signers: &[SigningKey]| {
             let cosigs: Vec<_> = signers
                 .iter()
                 .map(|k| {
-                    let c = sign_witness_cosignature(k, &head, now);
+                    let c = sign_witness_cosignature(k, &head, now).unwrap();
                     serde_json::json!({
                         "witness_key_id": c.witness_key_id,
                         "observed_at": c.observed_at.format(&time::format_description::well_known::Rfc3339).unwrap(),
@@ -1217,7 +1219,7 @@ mod tests {
                 .await;
             let key_id = hex::encode(key.verifying_key().as_bytes());
             let proof = hex::encode(
-                key.sign(&witness_announce_message(&w.uri(), &key_id, now))
+                key.sign(&witness_announce_message(&w.uri(), &key_id, now).unwrap())
                     .to_bytes(),
             );
             peers.push(
@@ -1237,11 +1239,12 @@ mod tests {
             .mount(&node)
             .await;
         let head =
-            crate::sth::sign_tree_head(&author, "k", 5, &"ab".repeat(32), "avalon-test", now);
+            crate::sth::sign_tree_head(&author, "k", 5, &"ab".repeat(32), "avalon-test", now)
+                .unwrap();
         let cosigs: Vec<_> = keys[..cosigners]
             .iter()
             .map(|k| {
-                let c = sign_witness_cosignature(k, &head, now);
+                let c = sign_witness_cosignature(k, &head, now).unwrap();
                 serde_json::json!({"witness_key_id": c.witness_key_id,
                     "observed_at": rfc3339(now), "signature": c.signature})
             })
@@ -1796,11 +1799,12 @@ mod tests {
     ) {
         use crate::witness::sign_witness_cosignature;
         let now = OffsetDateTime::now_utc();
-        let head = crate::sth::sign_tree_head(author, "k", 5, &"ab".repeat(32), "avalon-test", now);
+        let head = crate::sth::sign_tree_head(author, "k", 5, &"ab".repeat(32), "avalon-test", now)
+            .unwrap();
         let cosigs: Vec<_> = keys[..cosigners]
             .iter()
             .map(|k| {
-                let c = sign_witness_cosignature(k, &head, now);
+                let c = sign_witness_cosignature(k, &head, now).unwrap();
                 serde_json::json!({"witness_key_id": c.witness_key_id,
                     "observed_at": rfc3339(now), "signature": c.signature})
             })

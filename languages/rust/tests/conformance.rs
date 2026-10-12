@@ -263,11 +263,13 @@ fn signed_tree_head_signing_matches_shared_vectors() {
             OffsetDateTime::from_unix_timestamp(input["createdAtUnixSeconds"].as_i64().unwrap())
                 .unwrap();
         let bytes = sth_signing_message(
-            input["treeSize"].as_i64().unwrap(),
+            tree_size_of(&input["treeSize"]),
             input["rootHashHex"].as_str().unwrap(),
             input["networkId"].as_str().unwrap(),
+            input["signingKeyId"].as_str().unwrap(),
             created_at,
-        );
+        )
+        .unwrap_or_else(|e| panic!("[{name}] {e}"));
 
         assert_eq!(
             to_hex(&bytes),
@@ -281,14 +283,59 @@ fn signed_tree_head_signing_matches_shared_vectors() {
             vector["expected"]["signatureHex"].as_str().unwrap(),
         );
     }
+    for vector in doc["rejectedVectors"].as_array().unwrap() {
+        let name = vector["name"].as_str().unwrap();
+        let input = &vector["input"];
+        let err = sth_signing_message(
+            tree_size_of(&input["treeSize"]),
+            input["rootHashHex"].as_str().unwrap(),
+            input["networkId"].as_str().unwrap(),
+            input["signingKeyId"].as_str().unwrap(),
+            OffsetDateTime::from_unix_timestamp(input["createdAtUnixSeconds"].as_i64().unwrap())
+                .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            avalon_sdk::sth::SthSigningError::InvalidRootHash,
+            "[{name}]"
+        );
+        assert_eq!(vector["expected"]["error"], "invalid_root_hash");
+    }
+    assert_read_rejects(&doc);
+}
+
+/// A tree size is a JSON number, or a decimal string at 2^53 or more.
+fn tree_size_of(value: &Value) -> i64 {
+    match value {
+        Value::String(decimal) => decimal.parse().unwrap(),
+        number => number.as_i64().unwrap(),
+    }
+}
+
+/// Every `readRejectVectors` entry must fail to read with its expected error.
+fn assert_read_rejects(doc: &Value) {
+    let vectors = doc["readRejectVectors"].as_array().unwrap();
+    assert!(!vectors.is_empty());
+    for vector in vectors {
+        let name = vector["name"].as_str().unwrap();
+        let expected = &vector["expected"];
+        let err = reject_error(&vector["input"]);
+        let (code, detail) = error_code(&err);
+        assert_eq!(code, expected["error"].as_str().unwrap(), "[{name}] {err}");
+        if let Some((what, number)) = detail {
+            assert_eq!(what, expected["what"].as_str().unwrap(), "[{name}]");
+            assert_eq!(number, expected["required"].as_u64().unwrap(), "[{name}]");
+        }
+    }
 }
 
 #[test]
 fn witness_cosigned_tree_head_matches_shared_vectors() {
     use avalon_sdk::sth::SignedTreeHead;
     use avalon_sdk::witness::{
-        find_equivocating_witnesses, verify_cosigned_tree_head, CosignedTreeHead,
-        WitnessCosignature,
+        find_equivocating_witnesses, verify_cosigned_tree_head, witness_signing_message,
+        CosignedTreeHead, WitnessCosignature,
     };
     let doc = load("witness-cosigned-tree-head.json");
     if !supported_in(&doc, "rust") {
@@ -305,7 +352,8 @@ fn witness_cosigned_tree_head_matches_shared_vectors() {
     let network_id = doc["networkId"].as_str().unwrap();
     let head_of = |v: &Value| {
         let sth = &v["sth"];
-        let tree_size = sth["treeSize"].as_i64().unwrap();
+        let tree_size = tree_size_of(&sth["treeSize"]);
+        let key_id = sth["signingKeyId"].as_str().unwrap();
         let root = sth["rootHashHex"].as_str().unwrap();
         let created = ts(sth["createdAtUnixSeconds"].as_i64().unwrap());
         CosignedTreeHead {
@@ -313,7 +361,7 @@ fn witness_cosigned_tree_head_matches_shared_vectors() {
                 tree_size,
                 root_hash: root.to_string(),
                 network_id: network_id.to_string(),
-                signing_key_id: "author".to_string(),
+                signing_key_id: key_id.to_string(),
                 signature: sth["signatureHex"].as_str().unwrap().to_string(),
                 created_at: created,
             },
@@ -326,6 +374,8 @@ fn witness_cosigned_tree_head_matches_shared_vectors() {
                     root_hash: root.to_string(),
                     network_id: network_id.to_string(),
                     author_created_at: created,
+                    author_key_id: key_id.to_string(),
+                    author_signature: sth["signatureHex"].as_str().unwrap().to_string(),
                     witness_key_id: c["witnessKeyId"].as_str().unwrap().to_string(),
                     observed_at: ts(c["observedAtUnixSeconds"].as_i64().unwrap()),
                     signature: c["signatureHex"].as_str().unwrap().to_string(),
@@ -345,6 +395,36 @@ fn witness_cosigned_tree_head_matches_shared_vectors() {
             })
             .collect()
     };
+    for vector in doc["vectors"].as_array().unwrap() {
+        let input = &vector["input"];
+        for head_input in [input, &input["headA"], &input["headB"]] {
+            if head_input.get("sth").is_none() {
+                continue;
+            }
+            let head = head_of(head_input);
+            for (wire, cosig) in head_input["cosignatures"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .zip(&head.cosignatures)
+            {
+                // A cosignature under another envelope cannot be rebuilt here, so it never verifies.
+                let Some(bytes_hex) = wire["signingBytesHex"]
+                    .as_str()
+                    .filter(|_| wire.get("envelope").is_none())
+                else {
+                    continue;
+                };
+                let key = key32(keys[cosig.witness_key_id.as_str()].as_str().unwrap());
+                assert_eq!(
+                    to_hex(&witness_signing_message(cosig, &key).unwrap()),
+                    bytes_hex,
+                    "[{}] cosignature bytes",
+                    vector["name"]
+                );
+            }
+        }
+    }
     for vector in doc["vectors"].as_array().unwrap() {
         let name = vector["name"].as_str().unwrap();
         let input = &vector["input"];
@@ -383,6 +463,7 @@ fn witness_cosigned_tree_head_matches_shared_vectors() {
             );
         }
     }
+    assert_read_rejects(&doc);
 }
 
 #[test]
@@ -455,7 +536,7 @@ fn witness_announce_matches_shared_vectors() {
         let announced_at = parse(input["announcedAt"].as_str().unwrap());
         if let Some(message_hex) = input.get("messageHex").and_then(Value::as_str) {
             assert_eq!(
-                hex::encode(witness_announce_message(base_url, key_id, announced_at)),
+                hex::encode(witness_announce_message(base_url, key_id, announced_at).unwrap()),
                 message_hex,
                 "[{name}] message bytes"
             );
@@ -472,6 +553,7 @@ fn witness_announce_matches_shared_vectors() {
             "[{name}]"
         );
     }
+    assert_read_rejects(&doc);
 }
 
 #[test]
@@ -1289,6 +1371,7 @@ fn build_ledger_entry(
     use avalon_sdk::ledger_entry::{
         entry_hash, entry_signing_bytes, parse_hash, payload_hash, EntryHashError, EntryHashInput,
     };
+    use avalon_sdk::signing_bytes::{Envelope, Extension, Extensions, HashAlgo};
     let text = |k: &str| input[k].as_str().unwrap().to_string();
     let prev = parse_hash("prev_hash", &text("prevHashHex"))?;
     let payload_hash = match input["payloadHashHex"].as_str() {
@@ -1301,8 +1384,28 @@ fn build_ledger_entry(
     let seq: u64 = text("seq")
         .parse()
         .map_err(|_| EntryHashError::OutOfRange("seq"))?;
-    let version = u16::try_from(input["version"].as_i64().unwrap())
-        .map_err(|_| EntryHashError::OutOfRange("version"))?;
+    let event_version = u32::try_from(input["eventVersion"].as_i64().unwrap())
+        .map_err(|_| EntryHashError::OutOfRange("event_version"))?;
+    let rules_version = input["rulesVersion"].as_u64().unwrap() as u32;
+    let extensions = Extensions::new(
+        input["extensions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| Extension {
+                ext_type: e["type"].as_u64().unwrap() as u16,
+                critical: e["critical"].as_bool().unwrap(),
+                value: hex::decode(e["valueHex"].as_str().unwrap()).unwrap(),
+            })
+            .collect(),
+        rules_version,
+    )?;
+    let envelope = Envelope {
+        layout_version: input["layoutVersion"].as_u64().unwrap() as u16,
+        rules_version,
+        hash_algo: HashAlgo::from_id(input["hashAlgo"].as_u64().unwrap() as u8)?,
+        extensions,
+    };
     let entry = EntryHashInput {
         network_id: &text("networkId"),
         shard_id: &text("shardId"),
@@ -1314,7 +1417,8 @@ fn build_ledger_entry(
         subject: &text("subject"),
         payload_hash: &payload_hash,
         timestamp_micros: text("timestampUnixMicros").parse().unwrap(),
-        version,
+        event_version,
+        envelope: &envelope,
     };
     Ok((entry_signing_bytes(&entry)?, entry_hash(&entry)?))
 }
@@ -1380,13 +1484,24 @@ fn ledger_entry_hash_rejects_per_shared_vectors() {
     assert!(!vectors.is_empty());
     for v in vectors {
         let name = v["name"].as_str().unwrap();
-        let got = match build_ledger_entry(&v["input"]) {
-            Err(EntryHashError::InvalidHash(_)) => "invalid_hash",
-            Err(EntryHashError::OutOfRange(_)) => "out_of_range",
-            Err(other) => panic!("[{name}] unexpected {other}"),
+        let expected = &v["expected"];
+        let err = match build_ledger_entry(&v["input"]) {
+            Err(e) => e,
             Ok(_) => panic!("[{name}] accepted"),
         };
-        assert_eq!(got, v["expected"]["error"].as_str().unwrap(), "[{name}]");
+        let code = match &err {
+            EntryHashError::InvalidHash(_) => "invalid_hash",
+            EntryHashError::OutOfRange(_) => "out_of_range",
+            EntryHashError::Layout(inner) => {
+                let (code, detail) = error_code(inner);
+                if let Some((what, number)) = detail {
+                    assert_eq!(what, expected["what"].as_str().unwrap(), "[{name}]");
+                    assert_eq!(number, expected["required"].as_u64().unwrap(), "[{name}]");
+                }
+                code
+            }
+        };
+        assert_eq!(code, expected["error"].as_str().unwrap(), "[{name}] {err}");
     }
     println!("ledger-entry-hash.json: {} reject vectors", vectors.len());
 }
