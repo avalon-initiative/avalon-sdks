@@ -1078,7 +1078,7 @@ enum ReadField {
     Hash([u8; 32]),
     HashAlgo(avalon_sdk::signing_bytes::HashAlgo),
     Uuid(Uuid),
-    Int(&'static str, String),
+    Int(String),
 }
 
 fn read_fields(
@@ -1096,11 +1096,11 @@ fn read_fields(
             "hash" => ReadField::Hash(reader.hash()?),
             "hash_algo" => ReadField::HashAlgo(reader.hash_algo()?),
             "uuid" => ReadField::Uuid(reader.uuid()?),
-            "u8" => ReadField::Int("u8", reader.u8()?.to_string()),
-            "u16" => ReadField::Int("u16", reader.u16()?.to_string()),
-            "u32" => ReadField::Int("u32", reader.u32()?.to_string()),
-            "u64" => ReadField::Int("u64", reader.u64()?.to_string()),
-            "i64" => ReadField::Int("i64", reader.i64()?.to_string()),
+            "u8" => ReadField::Int(reader.u8()?.to_string()),
+            "u16" => ReadField::Int(reader.u16()?.to_string()),
+            "u32" => ReadField::Int(reader.u32()?.to_string()),
+            "u64" => ReadField::Int(reader.u64()?.to_string()),
+            "i64" => ReadField::Int(reader.i64()?.to_string()),
             other => panic!("unknown read type {other}"),
         });
     }
@@ -1143,7 +1143,7 @@ fn structured_signing_bytes_build_and_read_back_per_shared_vectors() {
                 }
                 ReadField::Signature(b) => assert_eq!(b.to_vec(), field_bytes(f), "[{name}]"),
                 ReadField::Uuid(u) => assert_eq!(u.to_string(), f["value"], "[{name}]"),
-                ReadField::Int(_, v) => assert_eq!(v, &field_int(f), "[{name}]"),
+                ReadField::Int(v) => assert_eq!(v, &field_int(f), "[{name}]"),
                 ReadField::HashAlgo(a) => assert_eq!(a.id().to_string(), field_int(f)),
             }
         }
@@ -1285,7 +1285,7 @@ fn envelope_matches_shared_vectors() {
                 ReadField::Hash(b) => builder.hash(&b),
                 ReadField::HashAlgo(a) => builder.hash_algo(a),
                 ReadField::Uuid(u) => builder.uuid(u),
-                ReadField::Int(..) => panic!("[{name}] no integer read vectors"),
+                ReadField::Int(_) => panic!("[{name}] no integer read vectors"),
             };
         }
         assert_eq!(
