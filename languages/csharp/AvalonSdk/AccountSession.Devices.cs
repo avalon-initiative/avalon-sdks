@@ -89,9 +89,10 @@ namespace Avalon.Sdk
                 throw new InvalidOperationException("RevokeDeviceAsync requires a local signing key — this AccountSession has none");
             }
             var revokedBy = SigningKeyId.Value;
+            var networkId = await NetworkIdAsync(ct).ConfigureAwait(false);
             await SignAtChainPositionAsync(async (seq, prevHash) =>
             {
-                var bytes = IdentitySigning.SigningKeyRevokedSigningBytes(OwnIdentityId, signingKeyId, revokedBy, seq, prevHash);
+                var bytes = IdentitySigning.SigningKeyRevokedSigningBytes(networkId, OwnIdentityId, signingKeyId, revokedBy, seq, prevHash);
                 await PostNoResponseAsync(
                     $"/me/devices/{signingKeyId}/revoke",
                     new Avalon.Sdk.Generated.RevokeDeviceRequest
@@ -105,6 +106,10 @@ namespace Avalon.Sdk
                 return true;
             }).ConfigureAwait(false);
         }
+
+        // Key events sign the network id; the serving node's own is the one that verifies them.
+        private async Task<string> NetworkIdAsync(CancellationToken ct) =>
+            _networkId ??= (await GetAsync<NodeStatus>("/nodes/status", ct).ConfigureAwait(false)).NetworkId;
 
         /// <summary>Runs <paramref name="send"/> at the first chained position (seq 1, no prev hash); on a stale
         /// position it runs once more at the returned head, and a second stale answer is surfaced.</summary>
@@ -189,9 +194,10 @@ namespace Avalon.Sdk
             {
                 throw new ArgumentException("the requested key is not an acceptable Ed25519 key", nameof(requestedSigningPublicKeyB64));
             }
+            var networkId = await NetworkIdAsync(ct).ConfigureAwait(false);
             return await SignAtChainPositionAsync((seq, prevHash) =>
             {
-                var bytes = IdentitySigning.DeviceGrantApprovalSigningBytes(grantId, OwnIdentityId, approver, requestedKey, seq, prevHash);
+                var bytes = IdentitySigning.DeviceGrantApprovalSigningBytes(networkId, grantId, OwnIdentityId, approver, requestedKey, seq, prevHash);
                 return PostAsync<Avalon.Sdk.Generated.ApproveDeviceGrantRequest, AccountDevice>(
                     $"/me/devices/grants/{grantId}/approve",
                     new Avalon.Sdk.Generated.ApproveDeviceGrantRequest

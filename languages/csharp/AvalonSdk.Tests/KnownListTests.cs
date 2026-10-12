@@ -238,7 +238,7 @@ public class KnownListTests
             return new SignedTreeHeadWire
             {
                 TreeSize = size, RootHash = root, NetworkId = Net, SigningKeyId = "author", CreatedAt = CreatedAt,
-                Signature = Hex(Sign(Author, AvalonClient.SthSigningMessage(size, root, Net, CreatedAt))),
+                Signature = Hex(Sign(Author, AvalonClient.SthSigningMessage(size, root, Net, "author", CreatedAt))),
             };
         }
 
@@ -247,8 +247,7 @@ public class KnownListTests
             var body = JsonSerializer.Serialize(sth);
             var extra = string.Join(",", cosigners.Select(w =>
             {
-                var sig = Hex(Sign(w.Key, WitnessCosigning.WitnessSigningMessage(
-                    sth.TreeSize, sth.RootHash, Net, sth.CreatedAt, w.Id, CreatedAt)));
+                var sig = Cosig(this, w, sth).Signature;
                 return "{\"witness_key_id\":\"" + w.Id + "\",\"observed_at\":\"" + CreatedAt.ToString("o") + "\",\"signature\":\"" + sig + "\"}";
             }));
             return body.TrimEnd('}') + ",\"cosignatures\":[" + extra + "]}";
@@ -349,11 +348,15 @@ public class KnownListTests
         Assert.Empty(await KnownListBuilder.CrossCheckHeadAsync(new HttpClient(down), PubHex(f.Author), known, acceptedHead, Options()));
     }
 
-    private static WitnessCosignature Cosig(NetFixture f, Witness w, SignedTreeHeadWire sth) => new WitnessCosignature
+    private static WitnessCosignature Cosig(NetFixture f, Witness w, SignedTreeHeadWire sth)
     {
-        TreeSize = sth.TreeSize, RootHash = sth.RootHash, NetworkId = Net, AuthorCreatedAt = sth.CreatedAt,
-        WitnessKeyId = w.Id, ObservedAt = f.CreatedAt,
-        Signature = Hex(Sign(w.Key, WitnessCosigning.WitnessSigningMessage(
-            sth.TreeSize, sth.RootHash, Net, sth.CreatedAt, w.Id, f.CreatedAt))),
-    };
+        var cosig = new WitnessCosignature
+        {
+            TreeSize = sth.TreeSize, RootHash = sth.RootHash, NetworkId = Net, AuthorCreatedAt = sth.CreatedAt,
+            AuthorSigningKeyId = sth.SigningKeyId, AuthorSignature = sth.Signature,
+            WitnessKeyId = w.Id, ObservedAt = f.CreatedAt,
+        };
+        cosig.Signature = Hex(Sign(w.Key, WitnessCosigning.WitnessSigningMessage(cosig, w.Key.GeneratePublicKey().GetEncoded())));
+        return cosig;
+    }
 }

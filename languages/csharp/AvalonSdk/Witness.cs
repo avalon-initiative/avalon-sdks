@@ -27,6 +27,12 @@ namespace Avalon.Sdk
         /// <summary>The author's own tree head timestamp this cosignature is bound to.</summary>
         public DateTimeOffset AuthorCreatedAt { get; set; }
 
+        /// <summary>The author tree head's <c>signing_key_id</c>, covered by the cosignature.</summary>
+        public string AuthorSigningKeyId { get; set; } = "";
+
+        /// <summary>The author tree head's signature (128 hex characters), covered by the cosignature.</summary>
+        public string AuthorSignature { get; set; } = "";
+
         /// <summary>Lowercase hex Ed25519 public key identifying the witness.</summary>
         public string WitnessKeyId { get; set; } = "";
 
@@ -35,6 +41,10 @@ namespace Avalon.Sdk
 
         /// <summary>Lowercase hex Ed25519 signature (64 bytes).</summary>
         public string Signature { get; set; } = "";
+
+        /// <summary>This cosignature's layout, rules version and extensions; its hash algorithm is the author head's
+        /// Merkle hash algorithm.</summary>
+        public Envelope Envelope { get; set; } = Avalon.Sdk.Envelope.Current(DomainTags.WitnessCosign);
     }
 
     /// <summary>A verifier-chosen witness: the id cosignatures name and the hex Ed25519 key
@@ -76,7 +86,7 @@ namespace Avalon.Sdk
 
     /// <summary>One cosignature as served with <c>?witnesses=1</c>; the bound head fields come
     /// from the enclosing tree head.</summary>
-    public sealed class WitnessCosignatureWire
+    public sealed class WitnessCosignatureWire : EnvelopeWire
     {
         [JsonPropertyName("witness_key_id")]
         public string WitnessKeyId { get; set; } = "";
@@ -106,19 +116,38 @@ namespace Avalon.Sdk
                 Signature = Signature,
                 CreatedAt = CreatedAt,
                 SigningPublicKey = SigningPublicKey,
+                LayoutVersion = LayoutVersion,
+                RulesVersion = RulesVersion,
+                HashAlgo = HashAlgo,
+                Extensions = Extensions,
             };
-            var cosignatures = (Cosignatures ?? new List<WitnessCosignatureWire>())
-                .Select(c => new WitnessCosignature
+            // A cosignature this SDK cannot read is left out: it never counts and never voids the head.
+            var cosignatures = new List<WitnessCosignature>();
+            foreach (var c in Cosignatures ?? new List<WitnessCosignatureWire>())
+            {
+                Envelope envelope;
+                try
+                {
+                    envelope = c.ToEnvelope(DomainTags.WitnessCosign);
+                }
+                catch (SigningBytesException)
+                {
+                    continue;
+                }
+                cosignatures.Add(new WitnessCosignature
                 {
                     TreeSize = TreeSize,
                     RootHash = RootHash,
                     NetworkId = NetworkId,
                     AuthorCreatedAt = CreatedAt,
+                    AuthorSigningKeyId = SigningKeyId,
+                    AuthorSignature = Signature,
                     WitnessKeyId = c.WitnessKeyId,
                     ObservedAt = c.ObservedAt,
                     Signature = c.Signature,
-                })
-                .ToList();
+                    Envelope = envelope,
+                });
+            }
             return new CosignedTreeHead(sth, cosignatures);
         }
     }
@@ -138,24 +167,41 @@ namespace Avalon.Sdk
         public static bool IsCosignedByMajority(int listSize, int distinctWitnesses) =>
             distinctWitnesses >= MajorityThreshold(listSize);
 
-        /// <summary>The exact bytes a witness signs.</summary>
-        public static byte[] WitnessSigningMessage(
-            long treeSize,
-            string rootHashHex,
-            string networkId,
-            DateTimeOffset authorCreatedAt,
-            string witnessKeyId,
-            DateTimeOffset observedAt)
+        /// <summary>The exact bytes a witness signs (tag <c>avalon.witness.cosign</c>) for <paramref name="cosignature"/>
+        /// under <paramref name="witnessKey"/>, its 32-byte verifying key; the cosignature's own signature is not read.
+        /// Throws <see cref="ArgumentException"/> for a root hash, author signature or key that is malformed.</summary>
+        public static byte[] WitnessSigningMessage(WitnessCosignature cosignature, byte[] witnessKey)
         {
-            var message = new List<byte>();
-            message.AddRange(Encoding.UTF8.GetBytes("avalon-witness-cosign-v1"));
-            message.AddRange(BigEndian(treeSize));
-            AddLengthPrefixed(message, rootHashHex);
-            AddLengthPrefixed(message, networkId);
-            message.AddRange(BigEndian(authorCreatedAt.ToUnixTimeSeconds()));
-            AddLengthPrefixed(message, witnessKeyId);
-            message.AddRange(BigEndian(observedAt.ToUnixTimeSeconds()));
-            return message.ToArray();
+            var root = Parse32(cosignature.RootHash, "root_hash");
+            var authorSignature = TryHex(cosignature.AuthorSignature);
+            if (authorSignature == null || authorSignature.Length != 64)
+            {
+                throw new ArgumentException("author_signature is not 64 bytes of hex", nameof(cosignature));
+            }
+            return SigningBytesBuilder.WithEnvelope(DomainTags.WitnessCosign, cosignature.Envelope)
+                .I64(cosignature.TreeSize)
+                .Str(cosignature.NetworkId)
+                .I64(cosignature.AuthorCreatedAt.ToUnixTimeSeconds())
+                .Str(cosignature.AuthorSigningKeyId)
+                .Signature(authorSignature)
+                .Str(cosignature.WitnessKeyId)
+                .Key(witnessKey)
+                .I64(cosignature.ObservedAt.ToUnixTimeSeconds())
+                .HashAlgo(cosignature.Envelope.HashAlgo)
+                .Hash(root)
+                .Finish();
+        }
+
+        private static byte[] Parse32(string hex, string name)
+        {
+            try
+            {
+                return LedgerEntry.ParseHash(name, hex);
+            }
+            catch (LedgerEntryException)
+            {
+                throw new ArgumentException(name + " is not 64 lowercase hex characters", "cosignature");
+            }
         }
 
         /// <summary>Verifies a cosignature under <paramref name="witnessVerifyKeyHex"/>; false
@@ -170,13 +216,7 @@ namespace Avalon.Sdk
                 {
                     return false;
                 }
-                var message = WitnessSigningMessage(
-                    cosignature.TreeSize,
-                    cosignature.RootHash,
-                    cosignature.NetworkId,
-                    cosignature.AuthorCreatedAt,
-                    cosignature.WitnessKeyId,
-                    cosignature.ObservedAt);
+                var message = WitnessSigningMessage(cosignature, key);
                 var signer = new Ed25519Signer();
                 signer.Init(false, new Ed25519PublicKeyParameters(key, 0));
                 signer.BlockUpdate(message, 0, message.Length);
@@ -277,7 +317,10 @@ namespace Avalon.Sdk
                 if (cosig.TreeSize != head.Sth.TreeSize
                     || cosig.RootHash != head.Sth.RootHash
                     || cosig.NetworkId != head.Sth.NetworkId
-                    || cosig.AuthorCreatedAt.ToUnixTimeSeconds() != head.Sth.CreatedAt.ToUnixTimeSeconds())
+                    || cosig.AuthorCreatedAt.ToUnixTimeSeconds() != head.Sth.CreatedAt.ToUnixTimeSeconds()
+                    || (int)cosig.Envelope.HashAlgo != head.Sth.HashAlgo
+                    || cosig.AuthorSigningKeyId != head.Sth.SigningKeyId
+                    || !string.Equals(cosig.AuthorSignature, head.Sth.Signature, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -296,28 +339,6 @@ namespace Avalon.Sdk
                 }
             }
             return verified;
-        }
-
-        internal static void AddLengthPrefixed(List<byte> message, string value)
-        {
-            var bytes = Encoding.UTF8.GetBytes(value);
-            var length = BitConverter.GetBytes((uint)bytes.Length);
-            if (BitConverter.IsLittleEndian)
-            {
-                Array.Reverse(length);
-            }
-            message.AddRange(length);
-            message.AddRange(bytes);
-        }
-
-        internal static byte[] BigEndian(long value)
-        {
-            var bytes = BitConverter.GetBytes(value);
-            if (BitConverter.IsLittleEndian)
-            {
-                Array.Reverse(bytes);
-            }
-            return bytes;
         }
 
         internal static byte[]? TryHex(string? hex)

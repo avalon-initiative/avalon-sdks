@@ -1,11 +1,11 @@
-// The ledger entry hash: tag `avalon.ledger.entry`, the entry's own `version` in the u16 slot, then
-// network id, shard id, seq u64, prev hash (32 raw), event id (16 raw), kind, issuer, subject, payload
-// hash (32 raw), event time as i64 unix microseconds. Matches avalon_protocol::ledger_entry;
+// The ledger entry hash: tag `avalon.ledger.entry`, the envelope header, then network id, shard id, seq u64,
+// event id (16 raw), kind, issuer, subject, event version u32, event time as i64 unix microseconds, the hash
+// algorithm byte, prev hash and payload hash (32 raw each), the extensions. Matches avalon_protocol::ledger_entry;
 // conformance/vectors/ledger-entry-hash.json is the shared arbiter.
 import { sha256 } from '@noble/hashes/sha2.js'
 import { bytesToHex } from '@noble/hashes/utils.js'
 import { canonicalize } from './canonicalPayload.js'
-import { Builder, tags } from './crypto/signingBytes.js'
+import { Builder, currentEnvelope, tags, type Envelope } from './crypto/signingBytes.js'
 
 export type EntryHashErrorCode = 'invalid_hash' | 'out_of_range'
 
@@ -35,7 +35,10 @@ export interface EntryHashInput {
   /** 32 raw bytes: `payloadHash` of the canonical payload, or a skeleton row's stored hash. */
   payloadHash: Uint8Array
   timestampMicros: bigint | number
-  version: number
+  /** The payload schema version of the kind (u32). */
+  eventVersion: number
+  /** Layout and rules version, hash algorithm and extensions the hash covers; defaults to the current envelope. */
+  envelope?: Envelope
 }
 
 /** SHA-256 of the canonical payload bytes: what an entry commits to in place of the payload. */
@@ -110,31 +113,35 @@ export function parseHash(name: string, text: string): Uint8Array {
   return out
 }
 
-/** The exact bytes the entry hash is the SHA-256 of. */
+/** The exact bytes the entry hash is the digest of; throws `EntryHashError`, or `SigningBytesError` for an
+ * envelope this SDK cannot build (`needs_newer_version`, unsorted or oversize extensions). */
 export function entrySigningBytes(input: EntryHashInput): Uint8Array {
   const seq = toBigInt(input.seq, 'seq')
   if (seq < 0n || seq >= 1n << 64n) {
     throw new EntryHashError('out_of_range', 'seq is out of range for the entry layout')
   }
-  if (!Number.isInteger(input.version) || input.version < 0 || input.version > 0xffff) {
-    throw new EntryHashError('out_of_range', 'version is out of range for the entry layout')
+  if (!Number.isInteger(input.eventVersion) || input.eventVersion < 0 || input.eventVersion > 0xffff_ffff) {
+    throw new EntryHashError('out_of_range', 'event version is out of range for the entry layout')
   }
   const micros = checkI64(toBigInt(input.timestampMicros, 'timestamp'), 'timestamp')
-  return new Builder(tags.LEDGER_ENTRY, input.version)
+  const envelope = input.envelope ?? currentEnvelope(tags.LEDGER_ENTRY)
+  return Builder.withEnvelope(tags.LEDGER_ENTRY, envelope)
     .str(input.networkId)
     .str(input.shardId)
     .u64(seq)
-    .hash(input.prevHash)
     .uuid(input.eventId)
     .str(input.kind)
     .str(input.issuer)
     .str(input.subject)
-    .hash(input.payloadHash)
+    .u32(input.eventVersion)
     .i64(micros)
+    .hashAlgo(envelope.hashAlgo)
+    .hash(input.prevHash)
+    .hash(input.payloadHash)
     .finish()
 }
 
-/** The entry hash: SHA-256 of `entrySigningBytes`. */
+/** The entry hash: SHA-256 (the only hash algorithm defined) of `entrySigningBytes`. */
 export function entryHash(input: EntryHashInput): Uint8Array {
   return sha256(entrySigningBytes(input))
 }

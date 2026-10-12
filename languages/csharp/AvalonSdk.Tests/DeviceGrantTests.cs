@@ -52,6 +52,8 @@ public class DeviceGrantTests
         Assert.Empty(handler.Requests);
     }
 
+    private const string Net = "avalon-test-net";
+
     private sealed class Harness
     {
         public StubHttpMessageHandler Handler { get; } = new StubHttpMessageHandler();
@@ -60,7 +62,7 @@ public class DeviceGrantTests
         public IdentityId Identity { get; } = IdentityId.RandomForTests();
         public byte[] PublicKey => Key.GeneratePublicKey().GetEncoded();
         public AccountSession Session => AccountSession.ForTesting(
-            Handler.ToHttpClient(), identityId: Identity, signing: new AccountSession.SigningKeyMaterial(Key, KeyId));
+            Handler.ToHttpClient(), identityId: Identity, signing: new AccountSession.SigningKeyMaterial(Key, KeyId), networkId: Net);
 
         public (long Seq, string? PrevHash, byte[] Signature, JsonElement Body) Sent(int index)
         {
@@ -99,9 +101,29 @@ public class DeviceGrantTests
         Assert.Equal(1, sent.Seq);
         Assert.Null(sent.PrevHash);
         Assert.Equal(h.KeyId, sent.Body.GetProperty("approver_signing_key_id").GetGuid());
-        var bytes = IdentitySigning.DeviceGrantApprovalSigningBytes(grant, h.Identity, h.KeyId, requested, 1, null);
+        var bytes = IdentitySigning.DeviceGrantApprovalSigningBytes(Net, grant, h.Identity, h.KeyId, requested, 1, null);
         Assert.True(IdentitySigning.VerifyStrict(h.PublicKey, bytes, sent.Signature));
         Assert.EndsWith($"/me/devices/grants/{grant}/approve", h.Handler.Requests[0].Url);
+    }
+
+    [Fact]
+    public async Task ApproveDeviceGrantAsync_SignsTheServingNodesNetworkIdAndFetchesItOnce()
+    {
+        var handler = new StubHttpMessageHandler();
+        var key = new Ed25519PrivateKeyParameters(new SecureRandom());
+        var identity = IdentityId.RandomForTests();
+        var session = AccountSession.ForTesting(
+            handler.ToHttpClient(), identityId: identity, signing: new AccountSession.SigningKeyMaterial(key, Guid.NewGuid()));
+        var grant = Guid.NewGuid();
+        var requested = NewDeviceKey();
+        handler.Enqueue("{\"network_id\":\"avalon-fetched\"}").Enqueue(DeviceJson(grant, Convert.ToBase64String(requested)));
+
+        await session.ApproveDeviceGrantAsync(grant, Convert.ToBase64String(requested));
+
+        Assert.EndsWith("/nodes/status", handler.Requests[0].Url);
+        var signature = Convert.FromBase64String(JsonDocument.Parse(handler.Requests[1].Body!).RootElement.GetProperty("signature").GetString()!);
+        var bytes = IdentitySigning.DeviceGrantApprovalSigningBytes("avalon-fetched", grant, identity, session.SigningKeyId!.Value, requested, 1, null);
+        Assert.True(IdentitySigning.VerifyStrict(key.GeneratePublicKey().GetEncoded(), bytes, signature));
     }
 
     [Fact]
@@ -118,7 +140,7 @@ public class DeviceGrantTests
         var retry = h.Sent(1);
         Assert.Equal(5, retry.Seq);
         Assert.Equal(Head, retry.PrevHash);
-        var bytes = IdentitySigning.DeviceGrantApprovalSigningBytes(grant, h.Identity, h.KeyId, requested, 5, LedgerEntry.ParseHash("h", Head));
+        var bytes = IdentitySigning.DeviceGrantApprovalSigningBytes(Net, grant, h.Identity, h.KeyId, requested, 5, LedgerEntry.ParseHash("h", Head));
         Assert.True(IdentitySigning.VerifyStrict(h.PublicKey, bytes, retry.Signature));
         Assert.False(IdentitySigning.VerifyStrict(h.PublicKey, bytes, h.Sent(0).Signature));
     }
@@ -153,7 +175,7 @@ public class DeviceGrantTests
         Assert.Equal(1, sent.Seq);
         Assert.Null(sent.PrevHash);
         Assert.Equal(h.KeyId, sent.Body.GetProperty("revoked_by_signing_key_id").GetGuid());
-        var bytes = IdentitySigning.SigningKeyRevokedSigningBytes(h.Identity, target, h.KeyId, 1, null);
+        var bytes = IdentitySigning.SigningKeyRevokedSigningBytes(Net, h.Identity, target, h.KeyId, 1, null);
         Assert.True(IdentitySigning.VerifyStrict(h.PublicKey, bytes, sent.Signature));
         Assert.EndsWith($"/me/devices/{target}/revoke", h.Handler.Requests[1].Url);
     }
@@ -170,7 +192,7 @@ public class DeviceGrantTests
         var sent = h.Sent(1);
         Assert.Equal(3, sent.Seq);
         Assert.Equal(Head, sent.PrevHash);
-        var bytes = IdentitySigning.SigningKeyRevokedSigningBytes(h.Identity, target, h.KeyId, 3, LedgerEntry.ParseHash("h", Head));
+        var bytes = IdentitySigning.SigningKeyRevokedSigningBytes(Net, h.Identity, target, h.KeyId, 3, LedgerEntry.ParseHash("h", Head));
         Assert.True(IdentitySigning.VerifyStrict(h.PublicKey, bytes, sent.Signature));
     }
 

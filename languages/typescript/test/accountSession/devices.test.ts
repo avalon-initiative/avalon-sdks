@@ -14,6 +14,8 @@ import { parseHash } from '../../src/ledgerEntry.js'
 import { IdentityChainPositionStaleError, NoLocalSigningKeyError, ProtocolError } from '../../src/errors.js'
 import '../../src/accountSession/devices.js'
 
+const NETWORK_ID = 'avalon-test-net'
+
 function testProfile(identityId: IdentityId) {
   return {
     identityId,
@@ -46,6 +48,7 @@ function testSession(signing?: { secretKey: Uint8Array; publicKey: Uint8Array; s
     serverUrl: 'http://127.0.0.1:1',
     token: 'test-token',
     signing,
+    networkId: NETWORK_ID,
   })
 }
 
@@ -99,7 +102,7 @@ describe('AccountSession.approveDeviceGrant', () => {
     const { url, body } = sent(fetchMock, 0)
     expect(url).toMatch(new RegExp(`/me/devices/grants/${grantId}/approve$`))
     expect(body).toMatchObject({ approver_signing_key_id: approverKeyId, seq: 1, prev_hash: null })
-    const bytes = deviceGrantApprovalSigningBytes(grantId, session.identity().id, approverKeyId, requested, 1, null)
+    const bytes = deviceGrantApprovalSigningBytes(NETWORK_ID, grantId, session.identity().id, approverKeyId, requested, 1, null)
     expect(verify(publicKey, bytes, base64ToBytes(body.signature as string))).toBe(true)
   })
 
@@ -121,7 +124,7 @@ describe('AccountSession.approveDeviceGrant', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
     const retry = sent(fetchMock, 1).body
     expect(retry).toMatchObject({ seq: 5, prev_hash: head })
-    const bytes = deviceGrantApprovalSigningBytes(grantId, session.identity().id, approverKeyId, requested, 5, parseHash('h', head))
+    const bytes = deviceGrantApprovalSigningBytes(NETWORK_ID, grantId, session.identity().id, approverKeyId, requested, 5, parseHash('h', head))
     expect(verify(publicKey, bytes, base64ToBytes(retry.signature as string))).toBe(true)
   })
 
@@ -191,7 +194,7 @@ describe('AccountSession.revokeDevice', () => {
     expect(first.body).toMatchObject({ revoked_by_signing_key_id: revokerKeyId, seq: 1, prev_hash: null })
     const retry = sent(fetchMock, 1).body
     expect(retry).toMatchObject({ seq: 1, prev_hash: null })
-    const bytes = signingKeyRevokedSigningBytes(session.identity().id, revokedKeyId, revokerKeyId, 1, null)
+    const bytes = signingKeyRevokedSigningBytes(NETWORK_ID, session.identity().id, revokedKeyId, revokerKeyId, 1, null)
     expect(verify(publicKey, bytes, base64ToBytes(retry.signature as string))).toBe(true)
   })
 

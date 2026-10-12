@@ -38,10 +38,12 @@ function cosignWire(w: number, sth: SignedTreeHeadResponse) {
     root_hash: sth.root_hash,
     network_id: sth.network_id,
     author_created_at: sth.created_at,
+    author_key_id: sth.signing_key_id,
+    author_signature: sth.signature,
     witness_key_id: hexKey(w),
     observed_at: new Date(NOW.getTime() - 1000).toISOString(),
   }
-  return { witness_key_id: base.witness_key_id, observed_at: base.observed_at, signature: bytesToHex(ed25519.sign(witnessSigningMessage(base), seed(w))) }
+  return { witness_key_id: base.witness_key_id, observed_at: base.observed_at, signature: bytesToHex(ed25519.sign(witnessSigningMessage(base, hexKey(w)), seed(w))) }
 }
 
 interface World {
@@ -290,7 +292,7 @@ describe('crossCheckHead', () => {
     const forked = makeHead('bb'.repeat(32))
     const acceptedWithCosigs: CosignedTreeHead = {
       sth: good,
-      cosignatures: [2, 3].map((w) => ({ ...cosignWire(w, good), tree_size: good.tree_size, root_hash: good.root_hash, network_id: NET, author_created_at: good.created_at })),
+      cosignatures: [2, 3].map((w) => ({ ...cosignWire(w, good), tree_size: good.tree_size, root_hash: good.root_hash, network_id: NET, author_created_at: good.created_at, author_key_id: good.signing_key_id, author_signature: good.signature })),
     }
     stub({
       discover: {},

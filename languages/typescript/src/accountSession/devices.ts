@@ -159,12 +159,13 @@ AccountSession.prototype.revokeDevice = async function (this: AccountSession, si
     throw new NoLocalSigningKeyError('revokeDevice')
   }
   const identityId = this.identity().id
+  const networkId = await this.networkId()
   await submitChainedEvent(({ seq, prevHash }) =>
     this.postNoResponse(`/me/devices/${signingKeyId}/revoke`, {
       revoked_by_signing_key_id: revokerKeyId,
       seq,
       prev_hash: prevHashWire(prevHash),
-      signature: this.signRaw(signingKeyRevokedSigningBytes(identityId, signingKeyId, revokerKeyId, seq, prevHash)),
+      signature: this.signRaw(signingKeyRevokedSigningBytes(networkId, identityId, signingKeyId, revokerKeyId, seq, prevHash)),
     }),
   )
 }
@@ -210,13 +211,14 @@ AccountSession.prototype.approveDeviceGrant = async function (
     throw new TypeError('the requested key is not an acceptable Ed25519 key')
   }
   const identityId = this.identity().id
+  const networkId = await this.networkId()
   const wire = await submitChainedEvent(({ seq, prevHash }) =>
     this.post<DeviceWire>(`/me/devices/grants/${grantId}/approve`, {
       approver_signing_key_id: approverKeyId,
       seq,
       prev_hash: prevHashWire(prevHash),
       signature: this.signRaw(
-        deviceGrantApprovalSigningBytes(grantId, identityId, approverKeyId, requestedKey, seq, prevHash),
+        deviceGrantApprovalSigningBytes(networkId, grantId, identityId, approverKeyId, requestedKey, seq, prevHash),
       ),
     }),
   )

@@ -121,7 +121,7 @@ namespace Avalon.Sdk
     }
 
     /// <summary>GET /ledger/sth/latest's wire shape.</summary>
-    public class SignedTreeHeadWire
+    public class SignedTreeHeadWire : EnvelopeWire
     {
         [JsonPropertyName("tree_size")]
         public long TreeSize { get; set; }
@@ -833,7 +833,7 @@ namespace Avalon.Sdk
 
             try
             {
-                var message = SthSigningMessage(wire.TreeSize, wire.RootHash, wire.NetworkId, wire.CreatedAt);
+                var message = SthSigningMessage(wire);
                 return StrictEd25519.Verify(keyBytes, message, signatureBytes);
             }
             catch (Exception)
@@ -842,42 +842,36 @@ namespace Avalon.Sdk
             }
         }
 
-        /// <summary>The exact bytes an STH's signature covers: a fixed domain tag, tree_size and
-        /// the unix timestamp as fixed-width big-endian integers, and root_hash explicitly
-        /// length-prefixed ahead of its bytes, followed by the raw network_id bytes. Must stay
-        /// byte-for-byte identical to the server's and the Rust SDK's own construction —
-        /// conformance/vectors/signed-tree-head.json is what proves it still is.</summary>
-        internal static byte[] SthSigningMessage(long treeSize, string rootHashHex, string networkId, DateTimeOffset createdAt)
+        /// <summary>The exact bytes an STH's signature covers: the structured layout with tag
+        /// <c>avalon.settlement.sth</c>. Throws <see cref="ArgumentException"/> unless the root hash is 64 lowercase hex
+        /// characters, and <see cref="SigningBytesException"/> for an envelope this SDK cannot read.
+        /// conformance/vectors/signed-tree-head.json proves it matches the node byte for byte.</summary>
+        internal static byte[] SthSigningMessage(
+            long treeSize, string rootHashHex, string networkId, string signingKeyId, DateTimeOffset createdAt, Envelope? envelope = null)
         {
-            var message = new List<byte>();
-            message.AddRange(Encoding.UTF8.GetBytes("avalon-settlement-sth-v1"));
-            message.AddRange(BigEndian(treeSize));
-            var rootHashBytes = Encoding.UTF8.GetBytes(rootHashHex);
-            message.AddRange(BigEndian((uint)rootHashBytes.Length));
-            message.AddRange(rootHashBytes);
-            message.AddRange(Encoding.UTF8.GetBytes(networkId));
-            message.AddRange(BigEndian(createdAt.ToUnixTimeSeconds()));
-            return message.ToArray();
+            byte[] root;
+            try
+            {
+                root = LedgerEntry.ParseHash("root_hash", rootHashHex);
+            }
+            catch (LedgerEntryException)
+            {
+                throw new ArgumentException("root_hash is not 64 lowercase hex characters", nameof(rootHashHex));
+            }
+            var env = envelope ?? Envelope.Current(DomainTags.SettlementSth);
+            return SigningBytesBuilder.WithEnvelope(DomainTags.SettlementSth, env)
+                .I64(treeSize)
+                .Str(networkId)
+                .Str(signingKeyId)
+                .I64(createdAt.ToUnixTimeSeconds())
+                .HashAlgo(env.HashAlgo)
+                .Hash(root)
+                .Finish();
         }
 
-        private static byte[] BigEndian(long value)
-        {
-            var bytes = BitConverter.GetBytes(value);
-            if (BitConverter.IsLittleEndian)
-            {
-                Array.Reverse(bytes);
-            }
-            return bytes;
-        }
-
-        private static byte[] BigEndian(uint value)
-        {
-            var bytes = BitConverter.GetBytes(value);
-            if (BitConverter.IsLittleEndian)
-            {
-                Array.Reverse(bytes);
-            }
-            return bytes;
-        }
+        /// <summary>The signing bytes of <paramref name="wire"/> under the envelope it was served with.</summary>
+        internal static byte[] SthSigningMessage(SignedTreeHeadWire wire) =>
+            SthSigningMessage(
+                wire.TreeSize, wire.RootHash, wire.NetworkId, wire.SigningKeyId, wire.CreatedAt, wire.ToEnvelope(DomainTags.SettlementSth));
     }
 }

@@ -56,9 +56,15 @@ export async function getCosignedTreeHead(
       root_hash: sth.root_hash,
       network_id: sth.network_id,
       author_created_at: sth.created_at,
+      author_key_id: sth.signing_key_id,
+      author_signature: sth.signature,
       witness_key_id: cosig.witness_key_id,
       observed_at: cosig.observed_at,
       signature: cosig.signature,
+      layout_version: cosig.layout_version,
+      rules_version: cosig.rules_version,
+      hash_algo: cosig.hash_algo,
+      extensions: cosig.extensions,
     })),
   }
 }

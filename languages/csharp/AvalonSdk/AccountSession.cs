@@ -50,6 +50,7 @@ namespace Avalon.Sdk
         private readonly HttpClient _http;
         private readonly string _serverUrl;
         private SigningKeyMaterial? _signing;
+        private string? _networkId;
 
         /// <summary>This session's own bearer token — for a caller (e.g. a game backend, a
         /// test harness) that wants to persist it and later call
@@ -461,7 +462,8 @@ namespace Avalon.Sdk
             string token = "test-token",
             IdentityId? identityId = null,
             SigningKeyMaterial? signing = null,
-            Profile? profile = null)
+            Profile? profile = null,
+            string? networkId = null)
         {
             var id = identityId ?? IdentityId.RandomForTests();
             return new AccountSession(
@@ -470,7 +472,10 @@ namespace Avalon.Sdk
                 http ?? AvalonTraceHandler.NewDefaultClient(),
                 serverUrl,
                 token,
-                signing);
+                signing)
+            {
+                _networkId = networkId,
+            };
         }
     }
 

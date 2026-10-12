@@ -47,26 +47,26 @@ public class WitnessTests
             NetworkId = Net,
             SigningKeyId = "author",
             CreatedAt = createdAt,
-            Signature = Hex(Sign(author, AvalonClient.SthSigningMessage(size, Root, Net, createdAt))),
+            Signature = Hex(Sign(author, AvalonClient.SthSigningMessage(size, Root, Net, "author", createdAt))),
         };
     }
 
     private static WitnessCosignature Cosign(
         Ed25519PrivateKeyParameters key, string id, SignedTreeHeadWire sth, DateTimeOffset? observedAt = null)
     {
-        var observed = observedAt ?? Now;
-        var message = WitnessCosigning.WitnessSigningMessage(
-            sth.TreeSize, sth.RootHash, sth.NetworkId, sth.CreatedAt, id, observed);
-        return new WitnessCosignature
+        var cosig = new WitnessCosignature
         {
             TreeSize = sth.TreeSize,
             RootHash = sth.RootHash,
             NetworkId = sth.NetworkId,
             AuthorCreatedAt = sth.CreatedAt,
+            AuthorSigningKeyId = sth.SigningKeyId,
+            AuthorSignature = sth.Signature,
             WitnessKeyId = id,
-            ObservedAt = observed,
-            Signature = Hex(Sign(key, message)),
+            ObservedAt = observedAt ?? Now,
         };
+        cosig.Signature = Hex(Sign(key, WitnessCosigning.WitnessSigningMessage(cosig, key.GeneratePublicKey().GetEncoded())));
+        return cosig;
     }
 
     private sealed class Fixture
@@ -108,16 +108,35 @@ public class WitnessTests
     [Fact]
     public void SigningMessage_HasTheDocumentedLayout()
     {
-        var message = WitnessCosigning.WitnessSigningMessage(
-            1, "ab", "n", DateTimeOffset.FromUnixTimeSeconds(2), "w", DateTimeOffset.FromUnixTimeSeconds(3));
+        var cosig = new WitnessCosignature
+        {
+            TreeSize = 1,
+            RootHash = Root,
+            NetworkId = "n",
+            AuthorCreatedAt = DateTimeOffset.FromUnixTimeSeconds(2),
+            AuthorSigningKeyId = "a",
+            AuthorSignature = new string('c', 128),
+            WitnessKeyId = "w",
+            ObservedAt = DateTimeOffset.FromUnixTimeSeconds(3),
+        };
+        var key = Enumerable.Repeat((byte)7, 32).ToArray();
+        var message = WitnessCosigning.WitnessSigningMessage(cosig, key);
         var expected = new List<byte>();
-        expected.AddRange(System.Text.Encoding.UTF8.GetBytes("avalon-witness-cosign-v1"));
+        expected.AddRange(System.Text.Encoding.ASCII.GetBytes("avalon.witness.cosign"));
+        expected.AddRange(new byte[] { 0, 1, 0, 0, 0, 1 });
         expected.AddRange(new byte[] { 0, 0, 0, 0, 0, 0, 0, 1 });
-        expected.AddRange(new byte[] { 0, 0, 0, 2, (byte)'a', (byte)'b' });
         expected.AddRange(new byte[] { 0, 0, 0, 1, (byte)'n' });
         expected.AddRange(new byte[] { 0, 0, 0, 0, 0, 0, 0, 2 });
+        expected.AddRange(new byte[] { 0, 0, 0, 1, (byte)'a' });
+        expected.Add(1);
+        expected.AddRange(Enumerable.Repeat((byte)0xcc, 64));
         expected.AddRange(new byte[] { 0, 0, 0, 1, (byte)'w' });
+        expected.Add(1);
+        expected.AddRange(key);
         expected.AddRange(new byte[] { 0, 0, 0, 0, 0, 0, 0, 3 });
+        expected.Add(1);
+        expected.AddRange(Enumerable.Repeat((byte)0xab, 32));
+        expected.AddRange(new byte[] { 0, 0 });
         Assert.Equal(expected.ToArray(), message);
     }
 
@@ -219,7 +238,7 @@ public class WitnessTests
         var b = new SignedTreeHeadWire
         {
             TreeSize = a.TreeSize, RootHash = otherRoot, NetworkId = Net, SigningKeyId = "author", CreatedAt = a.CreatedAt,
-            Signature = Hex(Sign(f.Author, AvalonClient.SthSigningMessage(a.TreeSize, otherRoot, Net, a.CreatedAt))),
+            Signature = Hex(Sign(f.Author, AvalonClient.SthSigningMessage(a.TreeSize, otherRoot, Net, "author", a.CreatedAt))),
         };
         var headA = new CosignedTreeHead(a, new[] { 0, 1 }.Select(i => Cosign(f.Witnesses[i].Key, f.Witnesses[i].Id, a)).ToList());
         var headB = new CosignedTreeHead(b, new[] { 1, 2 }.Select(i => Cosign(f.Witnesses[i].Key, f.Witnesses[i].Id, b)).ToList());
@@ -240,7 +259,8 @@ public class WitnessTests
         var body = System.Text.Json.JsonSerializer.Serialize(sth);
         var extra = string.Join(",", cosigs.Select(c =>
             "{\"witness_key_id\":\"" + c.WitnessKeyId + "\",\"observed_at\":\"" +
-            c.ObservedAt.ToString("o") + "\",\"signature\":\"" + c.Signature + "\"}"));
+            c.ObservedAt.ToString("o") + "\",\"signature\":\"" + c.Signature +
+            "\",\"layout_version\":1,\"rules_version\":1,\"hash_algo\":1,\"extensions\":\"0000\"}"));
         return body.TrimEnd('}') + ",\"cosignatures\":[" + extra + "]}";
     }
 
@@ -253,7 +273,7 @@ public class WitnessTests
         var sth = new SignedTreeHeadWire
         {
             TreeSize = 5, RootHash = Root, NetworkId = Net, SigningKeyId = "author", CreatedAt = createdAt,
-            Signature = Hex(Sign(f.Author, AvalonClient.SthSigningMessage(5, Root, Net, createdAt))),
+            Signature = Hex(Sign(f.Author, AvalonClient.SthSigningMessage(5, Root, Net, "author", createdAt))),
         };
         var sigs = new[] { 0, 1 }.Select(i => Cosign(f.Witnesses[i].Key, f.Witnesses[i].Id, sth, createdAt)).ToList();
 

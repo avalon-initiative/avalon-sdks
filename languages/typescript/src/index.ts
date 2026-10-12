@@ -325,8 +325,22 @@ export {
   deviceGrantApprovalSigningBytes,
   signingKeyRevokedSigningBytes,
 } from './crypto/signing.js'
-export { Builder, Reader, DomainTag, tags, ALL_TAGS, SigningBytesError, uuidToBytes } from './crypto/signingBytes.js'
-export type { SigningBytesErrorCode } from './crypto/signingBytes.js'
+export {
+  Builder,
+  Reader,
+  DomainTag,
+  tags,
+  ALL_TAGS,
+  SigningBytesError,
+  uuidToBytes,
+  currentEnvelope,
+  envelopeFromWire,
+  layoutVersions,
+  maxExtensionBytes,
+  RULES_VERSION,
+  HASH_ALGO_SHA256,
+} from './crypto/signingBytes.js'
+export type { Envelope, EnvelopeWire, Extension, SigningBytesErrorCode, VersionKind } from './crypto/signingBytes.js'
 export { canonicalize, canonicalizeStr, parseStrict, CanonicalPayloadError } from './canonicalPayload.js'
 export type { CanonicalPayloadErrorCode } from './canonicalPayload.js'
 export {

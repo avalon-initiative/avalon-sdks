@@ -13,7 +13,11 @@
 import { request } from './http.js'
 import { CapabilityNotGrantedError, MissingIssuerCredentialsError } from './errors.js'
 import { fromMeResponse, type Identity, type Profile, type MeResponseWire } from './types.js'
+import { hexToBytes } from '@noble/hashes/utils.js'
 import { sign as ed25519Sign, bytesToBase64, base64ToBytes } from './crypto/signing.js'
+import { Builder, tags, type DomainTag } from './crypto/signingBytes.js'
+import { parseIdentityId, type IdentityId } from './identityId.js'
+import { getNodeStatus } from './nodeStatus.js'
 import type { components } from './generated.js'
 
 export type Capability =
@@ -106,50 +110,57 @@ interface ChallengeResponseWire {
   nonce: string
 }
 
-/** The exact bytes an issuer's key signs to authorize an attestation. Must stay
- * byte-for-byte identical to the server's own construction
- * (`avalon_protocol::achievements::attestation_signing_bytes`) and to the Rust/C#
- * SDKs' — `conformance/vectors/attestation-signing.json` is what proves it does.
- * Exported for that conformance runner, not part of the public SDK surface. */
-export function attestationSigningBytes(
+/** The fields every attestation layout starts with: network id, claim kind, issuer ref and the signing key's id. */
+function attestationHeader(
+  tag: DomainTag,
+  networkId: string,
   claimKind: 'achievement' | 'milestone',
   issuerRef: string,
-  subject: string,
-  achievement: string,
-): Uint8Array {
-  return new TextEncoder().encode(`avalon:${claimKind}.issued:v1:${issuerRef}:${subject}:${achievement}`)
+  signingKeyId: string,
+): Builder {
+  return new Builder(tag, 1).str(networkId).str(claimKind).str(issuerRef).uuid(signingKeyId)
 }
 
-/** Must match `avalon_protocol::achievements::bulk_attestation_signing_bytes`
- * byte-for-byte, including the big-endian u32 length prefixes that make two
- * different orderings/splits of the same achievement refs sign differently.
- * Checked against `conformance/vectors/attestation-signing.json`; exported for
- * that runner, not part of the public SDK surface. */
-export function bulkAttestationSigningBytes(
+/** The exact bytes an issuer's key signs to authorize an attestation (tag `avalon.attestation.issue`, layout 1):
+ * network id, claim kind, issuer ref, signing key id (uuid), subject (32 raw), achievement id and `issued_at` as
+ * i64 unix microseconds. Must stay byte-for-byte identical to
+ * `avalon_protocol::achievements::attestation_signing_bytes`; `conformance/vectors/attestation-signing.json`
+ * proves it. Exported for that conformance runner, not part of the public SDK surface. */
+export function attestationSigningBytes(
+  networkId: string,
   claimKind: 'achievement' | 'milestone',
   issuerRef: string,
-  subject: string,
+  signingKeyId: string,
+  subject: IdentityId,
+  achievement: string,
+  issuedAtMicros: bigint | number,
+): Uint8Array {
+  return attestationHeader(tags.ATTESTATION_ISSUE, networkId, claimKind, issuerRef, signingKeyId)
+    .fixed(hexToBytes(parseIdentityId(subject)), 32)
+    .str(achievement)
+    .i64(issuedAtMicros)
+    .finish()
+}
+
+/** Must match `avalon_protocol::achievements::bulk_attestation_signing_bytes` byte-for-byte (tag
+ * `avalon.attestation.bulk_issue`, layout 1): the issue header and subject, one `issued_at` for every claim,
+ * the claim count as u32, then each achievement id in order. Checked against
+ * `conformance/vectors/attestation-signing.json`; exported for that runner, not part of the public SDK surface. */
+export function bulkAttestationSigningBytes(
+  networkId: string,
+  claimKind: 'achievement' | 'milestone',
+  issuerRef: string,
+  signingKeyId: string,
+  subject: IdentityId,
+  issuedAtMicros: bigint | number,
   achievements: string[],
 ): Uint8Array {
-  const encoder = new TextEncoder()
-  const chunks: Uint8Array[] = [encoder.encode(`avalon:${claimKind}.issued.bulk:v1:${issuerRef}:${subject}:`)]
-  const countPrefix = new Uint8Array(4)
-  new DataView(countPrefix.buffer).setUint32(0, achievements.length, false)
-  chunks.push(countPrefix)
-  for (const achievement of achievements) {
-    const bytes = encoder.encode(achievement)
-    const lengthPrefix = new Uint8Array(4)
-    new DataView(lengthPrefix.buffer).setUint32(0, bytes.length, false)
-    chunks.push(lengthPrefix, bytes)
-  }
-  const total = chunks.reduce((sum, c) => sum + c.length, 0)
-  const out = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    out.set(chunk, offset)
-    offset += chunk.length
-  }
-  return out
+  const builder = attestationHeader(tags.ATTESTATION_BULK_ISSUE, networkId, claimKind, issuerRef, signingKeyId)
+    .fixed(hexToBytes(parseIdentityId(subject)), 32)
+    .i64(issuedAtMicros)
+    .u32(achievements.length)
+  for (const achievement of achievements) builder.str(achievement)
+  return builder.finish()
 }
 
 interface ClaimProof {
@@ -203,6 +214,7 @@ export class IntegratorSession {
   /** @internal */ private readonly integratorKeyId: string
   /** @internal */ private readonly integratorSlug?: string
   /** @internal */ private readonly signingKey?: Uint8Array
+  /** @internal */ private networkIdValue?: string
 
   constructor(init: IntegratorSessionInit) {
     this.identityValue = init.identity
@@ -232,6 +244,12 @@ export class IntegratorSession {
    * identity. */
   hasCapability(capability: Capability): boolean {
     return this.granted.has(capability)
+  }
+
+  /** The network id of the node, signed into every attestation; read once from `GET /nodes/status`. */
+  private async networkId(): Promise<string> {
+    this.networkIdValue ??= (await getNodeStatus(this.serverUrl)).network_id
+    return this.networkIdValue
   }
 
   /** Every capability-gated method calls this first — throws
@@ -371,7 +389,11 @@ export class IntegratorSession {
   private async prepareClaimIssuance(
     claimKind: 'achievement' | 'milestone',
     key: string,
-  ): Promise<{ slug: string; headers: Record<string, string>; body: { key_id: string; signature: string } }> {
+  ): Promise<{
+    slug: string
+    headers: Record<string, string>
+    body: { key_id: string; signature: string; issued_at_micros: number }
+  }> {
     this.require(claimKind === 'achievement' ? 'achievements.issue' : 'milestones.issue')
     if (!this.integratorSlug || !this.signingKey) {
       throw new MissingIssuerCredentialsError()
@@ -387,7 +409,19 @@ export class IntegratorSession {
     const subject = this.identityValue.id
     const issuerRef = `game:${slug}`
     const achievement = `game:${slug}:${claimKind}:${key}`
-    const signature = ed25519Sign(this.signingKey, attestationSigningBytes(claimKind, issuerRef, subject, achievement))
+    const issuedAtMicros = Date.now() * 1000
+    const signature = ed25519Sign(
+      this.signingKey,
+      attestationSigningBytes(
+        await this.networkId(),
+        claimKind,
+        issuerRef,
+        this.integratorKeyId,
+        subject,
+        achievement,
+        issuedAtMicros,
+      ),
+    )
 
     return {
       slug,
@@ -398,7 +432,7 @@ export class IntegratorSession {
         'x-avalon-identity-id': subject,
         'idempotency-key': crypto.randomUUID(),
       },
-      body: { key_id: this.integratorKeyId, signature: bytesToBase64(signature) },
+      body: { key_id: this.integratorKeyId, signature: bytesToBase64(signature), issued_at_micros: issuedAtMicros },
     }
   }
 
@@ -439,7 +473,12 @@ export class IntegratorSession {
   ): Promise<{
     slug: string
     headers: Record<string, string>
-    body: { key_id: string; signature: string; claims: { key: string; evidence: unknown }[] }
+    body: {
+      key_id: string
+      signature: string
+      issued_at_micros: number
+      claims: { key: string; evidence: unknown }[]
+    }
   }> {
     this.require(claimKind === 'achievement' ? 'achievements.issue' : 'milestones.issue')
     if (!this.integratorSlug || !this.signingKey) {
@@ -456,9 +495,18 @@ export class IntegratorSession {
     const subject = this.identityValue.id
     const issuerRef = `game:${slug}`
     const achievementRefs = claims.map((c) => `game:${slug}:${claimKind}:${c.key}`)
+    const issuedAtMicros = Date.now() * 1000
     const signature = ed25519Sign(
       this.signingKey,
-      bulkAttestationSigningBytes(claimKind, issuerRef, subject, achievementRefs),
+      bulkAttestationSigningBytes(
+        await this.networkId(),
+        claimKind,
+        issuerRef,
+        this.integratorKeyId,
+        subject,
+        issuedAtMicros,
+        achievementRefs,
+      ),
     )
 
     return {
@@ -473,6 +521,7 @@ export class IntegratorSession {
       body: {
         key_id: this.integratorKeyId,
         signature: bytesToBase64(signature),
+        issued_at_micros: issuedAtMicros,
         claims: claims.map((c) => ({ key: c.key, evidence: c.evidence ?? null })),
       },
     }

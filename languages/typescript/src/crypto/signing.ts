@@ -70,19 +70,18 @@ function identityIdBytes(identityId: IdentityId): Uint8Array {
   return hexToBytes(parseIdentityId(identityId))
 }
 
-/** Appends the identity-chain position a key event claims: `seq` u64, then `prev_hash` as a flag byte
- * (0, or 1 followed by 32 raw bytes). `prevHash` is null for the first chained event. */
+/** Appends the identity-chain position a key event claims: `seq` u64, the hash algorithm byte, then
+ * `prev_hash` as a flag byte (0, or 1 followed by 32 raw bytes). `prevHash` is null for the first chained event. */
 function withPosition(builder: Builder, seq: bigint | number, prevHash: Uint8Array | null): Builder {
-  builder.u64(seq)
+  builder.u64(seq).hashAlgo()
   return prevHash === null ? builder.u8(0) : builder.u8(1).hash(prevHash)
 }
 
-/** Bytes signed for `identity.created` (tag `avalon.identity.created`, version 1): network id and shard id
- * as `str`, the ticket id as uuid (also the inception key's id), the identity id and inception public key
- * as 32 raw bytes each, then the display name as `str`. */
+/** Bytes signed for `identity.created` (tag `avalon.identity.created`, layout 1): network id as `str`, the
+ * ticket id as uuid (also the inception key's id), the identity id (32 raw), the inception public key
+ * (algorithm byte then 32 raw), then the display name as `str`. */
 export function identityCreatedSigningBytes(
   networkId: string,
-  shardId: string,
   ticketId: string,
   identityId: IdentityId,
   publicKey: Uint8Array,
@@ -90,7 +89,6 @@ export function identityCreatedSigningBytes(
 ): Uint8Array {
   return new Builder(tags.IDENTITY_CREATED, 1)
     .str(networkId)
-    .str(shardId)
     .uuid(ticketId)
     .fixed(identityIdBytes(identityId), 32)
     .key(publicKey)
@@ -98,10 +96,11 @@ export function identityCreatedSigningBytes(
     .finish()
 }
 
-/** Bytes the approving device signs for a grant (tag `avalon.device_grant.approved`, version 1): grant id
- * uuid (also the new key's id), identity id (32 raw), approver key id uuid, the requested public key (32 raw),
+/** Bytes the approving device signs for a grant (tag `avalon.device_grant.approved`, layout 1): network id,
+ * grant id uuid (also the new key's id), identity id (32 raw), approver key id uuid, the requested public key,
  * then the chain position the approval will occupy. */
 export function deviceGrantApprovalSigningBytes(
+  networkId: string,
   grantId: string,
   identityId: IdentityId,
   approverSigningKeyId: string,
@@ -110,6 +109,7 @@ export function deviceGrantApprovalSigningBytes(
   prevHash: Uint8Array | null,
 ): Uint8Array {
   const builder = new Builder(tags.DEVICE_GRANT_APPROVED, 1)
+    .str(networkId)
     .uuid(grantId)
     .fixed(identityIdBytes(identityId), 32)
     .uuid(approverSigningKeyId)
@@ -117,9 +117,10 @@ export function deviceGrantApprovalSigningBytes(
   return withPosition(builder, seq, prevHash).finish()
 }
 
-/** Bytes a signing-key revocation signs (tag `avalon.identity.signing_key_revoked`, version 1): identity id
- * (32 raw), the revoked key id uuid, the revoking key id uuid, then the chain position. */
+/** Bytes a signing-key revocation signs (tag `avalon.identity.signing_key_revoked`, layout 1): network id,
+ * identity id (32 raw), the revoked key id uuid, the revoking key id uuid, then the chain position. */
 export function signingKeyRevokedSigningBytes(
+  networkId: string,
   identityId: IdentityId,
   signingKeyId: string,
   revokedBySigningKeyId: string,
@@ -127,6 +128,7 @@ export function signingKeyRevokedSigningBytes(
   prevHash: Uint8Array | null,
 ): Uint8Array {
   const builder = new Builder(tags.IDENTITY_SIGNING_KEY_REVOKED, 1)
+    .str(networkId)
     .fixed(identityIdBytes(identityId), 32)
     .uuid(signingKeyId)
     .uuid(revokedBySigningKeyId)

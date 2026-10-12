@@ -4,39 +4,382 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace Avalon.Sdk
 {
-    /// <summary>Why a structured message could not be read.</summary>
+    /// <summary>Why a structured message could not be built or read.</summary>
     public enum SigningBytesError
     {
+        /// <summary>A field is longer than a u32 length prefix can carry.</summary>
+        FieldTooLong,
         /// <summary>The message does not start with the expected domain tag.</summary>
         TagMismatch,
         /// <summary>The message ends before the field does.</summary>
         Truncated,
         /// <summary>A string field is not valid UTF-8.</summary>
         InvalidUtf8,
-        /// <summary>Bytes remain after the last field.</summary>
+        /// <summary>Bytes remain after the extensions region.</summary>
         TrailingBytes,
+        /// <summary>The message needs a layout, rules version, algorithm or extension this SDK lacks; nothing is verified.</summary>
+        NeedsNewerVersion,
+        /// <summary>A layout or rules version below the supported range.</summary>
+        UnsupportedVersion,
+        /// <summary>Extensions are not in ascending type order.</summary>
+        ExtensionsUnsorted,
+        /// <summary>Two extensions share a type.</summary>
+        ExtensionDuplicate,
+        /// <summary>An extension sets a reserved flag bit.</summary>
+        ExtensionReservedFlags,
+        /// <summary>The extension entries exceed the cap of the message's rules version.</summary>
+        ExtensionsTooLarge,
+        /// <summary>A wire hex field is not lowercase hex of whole bytes.</summary>
+        InvalidHex,
+    }
+
+    /// <summary>Which part of a message needs a newer version.</summary>
+    public enum VersionKind
+    {
+        Layout,
+        Rules,
+        HashAlgo,
+        /// <summary>An unknown key or signature algorithm byte.</summary>
+        SigAlgo,
+        /// <summary>A critical extension the tag does not understand; the value is its type.</summary>
+        CriticalExtension,
     }
 
     /// <summary>A malformed structured message; <see cref="Error"/> is the stable reason.</summary>
     public sealed class SigningBytesException : Exception
     {
         public SigningBytesException(SigningBytesError error)
-            : base(error switch
-            {
-                SigningBytesError.TagMismatch => "message does not start with the expected domain tag",
-                SigningBytesError.Truncated => "message ends before the field does",
-                SigningBytesError.InvalidUtf8 => "string field is not valid UTF-8",
-                _ => "bytes remain after the last field",
-            })
+            : this(error, null, 0)
+        {
+        }
+
+        public SigningBytesException(SigningBytesError error, VersionKind? kind, uint value)
+            : base(error + (kind == null ? "" : " " + kind + " " + value))
         {
             Error = error;
+            Kind = kind;
+            Value = value;
         }
 
         public SigningBytesError Error { get; }
+
+        /// <summary>The version part behind <see cref="SigningBytesError.NeedsNewerVersion"/> or <see cref="SigningBytesError.UnsupportedVersion"/>.</summary>
+        public VersionKind? Kind { get; }
+
+        /// <summary>The required version, algorithm id or extension type, or the unsupported value.</summary>
+        public uint Value { get; }
+    }
+
+    /// <summary>The hash algorithm named by a layout's <c>hash_algo</c> byte.</summary>
+    public enum HashAlgo : byte
+    {
+        Sha256 = 1,
+    }
+
+    /// <summary>One extension entry; reserved flag bits are not representable.</summary>
+    public sealed class SigningExtension
+    {
+        public SigningExtension(ushort type, bool critical, byte[] value)
+        {
+            Type = type;
+            Critical = critical;
+            Value = value ?? throw new ArgumentNullException(nameof(value));
+        }
+
+        public ushort Type { get; }
+
+        public bool Critical { get; }
+
+        public byte[] Value { get; }
+    }
+
+    /// <summary>The header values of a stored or received message: layout and rules version, hash algorithm and extensions.</summary>
+    public sealed class Envelope
+    {
+        public Envelope(ushort layoutVersion, uint rulesVersion, HashAlgo hashAlgo, IReadOnlyList<SigningExtension> extensions)
+        {
+            LayoutVersion = layoutVersion;
+            RulesVersion = rulesVersion;
+            HashAlgo = hashAlgo;
+            Extensions = extensions;
+        }
+
+        public ushort LayoutVersion { get; }
+
+        public uint RulesVersion { get; }
+
+        public HashAlgo HashAlgo { get; }
+
+        public IReadOnlyList<SigningExtension> Extensions { get; }
+
+        /// <summary>What this SDK authors for <paramref name="tag"/>: its newest layout, the current rules version, SHA-256, no extensions.</summary>
+        public static Envelope Current(DomainTag tag) =>
+            new Envelope(SigningBytes.NewestLayout(tag), SigningBytes.RulesVersion, HashAlgo.Sha256, new SigningExtension[0]);
+
+        /// <summary>Rebuilds from stored or wire values, checking each against this SDK's ranges in the protocol's order:
+        /// layout, rules, extensions, then the hash algorithm byte.</summary>
+        public static Envelope FromParts(
+            DomainTag tag, long layoutVersion, long rulesVersion, int hashAlgo, IReadOnlyList<SigningExtension> extensions)
+        {
+            SigningBytes.CheckLayout(tag, layoutVersion);
+            SigningBytes.CheckRules(rulesVersion);
+            SigningBytes.ValidateExtensions(extensions, (uint)rulesVersion);
+            return Finish(layoutVersion, rulesVersion, hashAlgo, extensions);
+        }
+
+        /// <summary>As <see cref="FromParts(DomainTag, long, long, int, IReadOnlyList{SigningExtension})"/> for values off the wire:
+        /// the extensions arrive as lowercase hex of the encoded region (<c>0000</c> when there are none).</summary>
+        public static Envelope FromWire(DomainTag tag, long layoutVersion, long rulesVersion, int hashAlgo, string extensionsHex)
+        {
+            SigningBytes.CheckLayout(tag, layoutVersion);
+            SigningBytes.CheckRules(rulesVersion);
+            var extensions = SigningBytes.DecodeExtensions(SigningBytes.DecodeLowerHex(extensionsHex), (uint)rulesVersion);
+            return Finish(layoutVersion, rulesVersion, hashAlgo, extensions);
+        }
+
+        private static Envelope Finish(long layoutVersion, long rulesVersion, int hashAlgo, IReadOnlyList<SigningExtension> extensions)
+        {
+            SigningBytes.RequireUnderstood(extensions);
+            if (hashAlgo != (int)HashAlgo.Sha256)
+            {
+                throw new SigningBytesException(SigningBytesError.NeedsNewerVersion, VersionKind.HashAlgo, (uint)hashAlgo);
+            }
+            return new Envelope((ushort)layoutVersion, (uint)rulesVersion, HashAlgo.Sha256, extensions);
+        }
+    }
+
+    /// <summary>An <see cref="Envelope"/> as it travels in JSON: plain integers and the hex of the extensions region.
+    /// A server always sends all four fields; the defaults are the current values.</summary>
+    public class EnvelopeWire
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("layout_version")]
+        public long LayoutVersion { get; set; } = 1;
+
+        [System.Text.Json.Serialization.JsonPropertyName("rules_version")]
+        public long RulesVersion { get; set; } = 1;
+
+        [System.Text.Json.Serialization.JsonPropertyName("hash_algo")]
+        public int HashAlgo { get; set; } = 1;
+
+        /// <summary>Lowercase hex of the extensions region; <c>0000</c> when there are none.</summary>
+        [System.Text.Json.Serialization.JsonPropertyName("extensions")]
+        public string Extensions { get; set; } = "0000";
+
+        /// <summary>Checks every part against this SDK's ranges; throws <see cref="SigningBytesException"/> for anything it cannot read.</summary>
+        public Envelope ToEnvelope(DomainTag tag) => Envelope.FromWire(tag, LayoutVersion, RulesVersion, HashAlgo, Extensions);
+    }
+
+    /// <summary>Header ranges, caps and extension rules shared by every structured layout.</summary>
+    public static class SigningBytes
+    {
+        /// <summary>The rules version this SDK authors under.</summary>
+        public const uint RulesVersion = 1;
+
+        /// <summary>The lowest rules version still verified.</summary>
+        public const uint RulesVersionMin = 1;
+
+        /// <summary>The highest rules version understood; anything above is <see cref="SigningBytesError.NeedsNewerVersion"/>.</summary>
+        public const uint RulesVersionMax = 1;
+
+        private const int ExtensionEntryHeader = 7;
+
+        /// <summary>The cap on extension entry bytes (7 header bytes each) for a message authored under <paramref name="rulesVersion"/>.</summary>
+        public static int MaxExtensionBytes(uint rulesVersion) => 4096;
+
+        /// <summary>The supported layout versions of <paramref name="tag"/>: 1 to its newest.</summary>
+        internal static ushort NewestLayout(DomainTag tag)
+        {
+            if (tag.Equals(DomainTags.Conformance))
+            {
+                return 2;
+            }
+            if (!DomainTags.All.Contains(tag))
+            {
+                throw new ArgumentException("unregistered tag", nameof(tag));
+            }
+            return 1;
+        }
+
+        internal static void CheckLayout(DomainTag tag, long version)
+        {
+            if (version > NewestLayout(tag))
+            {
+                throw new SigningBytesException(SigningBytesError.NeedsNewerVersion, VersionKind.Layout, (uint)version);
+            }
+            if (version < 1)
+            {
+                throw new SigningBytesException(SigningBytesError.UnsupportedVersion, VersionKind.Layout, (uint)version);
+            }
+        }
+
+        internal static void CheckRules(long version)
+        {
+            if (version > RulesVersionMax)
+            {
+                throw new SigningBytesException(SigningBytesError.NeedsNewerVersion, VersionKind.Rules, (uint)version);
+            }
+            if (version < RulesVersionMin)
+            {
+                throw new SigningBytesException(SigningBytesError.UnsupportedVersion, VersionKind.Rules, (uint)version);
+            }
+        }
+
+        // Per entry the running size against the cap, then order and duplicates by position.
+        internal static void ValidateExtensions(IReadOnlyList<SigningExtension> entries, uint rulesVersion)
+        {
+            var max = MaxExtensionBytes(rulesVersion);
+            long total = 0;
+            foreach (var e in entries)
+            {
+                total += ExtensionEntryHeader + e.Value.Length;
+                if (total > max)
+                {
+                    throw new SigningBytesException(SigningBytesError.ExtensionsTooLarge);
+                }
+            }
+            if (entries.Count > ushort.MaxValue)
+            {
+                throw new SigningBytesException(SigningBytesError.ExtensionsTooLarge);
+            }
+            for (var i = 1; i < entries.Count; i++)
+            {
+                if (entries[i - 1].Type == entries[i].Type)
+                {
+                    throw new SigningBytesException(SigningBytesError.ExtensionDuplicate);
+                }
+                if (entries[i - 1].Type > entries[i].Type)
+                {
+                    throw new SigningBytesException(SigningBytesError.ExtensionsUnsorted);
+                }
+            }
+        }
+
+        // No critical extension is understood by any tag yet.
+        internal static void RequireUnderstood(IReadOnlyList<SigningExtension> entries)
+        {
+            foreach (var e in entries)
+            {
+                if (e.Critical)
+                {
+                    throw new SigningBytesException(SigningBytesError.NeedsNewerVersion, VersionKind.CriticalExtension, e.Type);
+                }
+            }
+        }
+
+        internal static byte[] EncodeExtensions(IReadOnlyList<SigningExtension> entries)
+        {
+            var b = new List<byte> { (byte)(entries.Count >> 8), (byte)entries.Count };
+            foreach (var e in entries)
+            {
+                b.Add((byte)(e.Type >> 8));
+                b.Add((byte)e.Type);
+                b.Add(e.Critical ? (byte)1 : (byte)0);
+                var len = (uint)e.Value.Length;
+                b.Add((byte)(len >> 24));
+                b.Add((byte)(len >> 16));
+                b.Add((byte)(len >> 8));
+                b.Add((byte)len);
+                b.AddRange(e.Value);
+            }
+            return b.ToArray();
+        }
+
+        // Reads an extensions region at pos: reserved flags and the running size per entry, then order and duplicates.
+        internal static IReadOnlyList<SigningExtension> ReadExtensions(byte[] buf, ref int pos, uint rulesVersion)
+        {
+            var max = MaxExtensionBytes(rulesVersion);
+            var count = (int)ReadBe(buf, ref pos, 2);
+            var entries = new List<SigningExtension>();
+            long total = 0;
+            for (var i = 0; i < count; i++)
+            {
+                var type = (ushort)ReadBe(buf, ref pos, 2);
+                var flags = (byte)ReadBe(buf, ref pos, 1);
+                if ((flags & ~1) != 0)
+                {
+                    throw new SigningBytesException(SigningBytesError.ExtensionReservedFlags);
+                }
+                var len = ReadBe(buf, ref pos, 4);
+                total += ExtensionEntryHeader + (long)len;
+                if (total > max)
+                {
+                    throw new SigningBytesException(SigningBytesError.ExtensionsTooLarge);
+                }
+                if ((long)len > buf.Length - pos)
+                {
+                    throw new SigningBytesException(SigningBytesError.Truncated);
+                }
+                var value = new byte[len];
+                Buffer.BlockCopy(buf, pos, value, 0, (int)len);
+                pos += (int)len;
+                entries.Add(new SigningExtension(type, flags == 1, value));
+            }
+            ValidateExtensions(entries, rulesVersion);
+            return entries;
+        }
+
+        private static ulong ReadBe(byte[] buf, ref int pos, int width)
+        {
+            if (width > buf.Length - pos)
+            {
+                throw new SigningBytesException(SigningBytesError.Truncated);
+            }
+            ulong v = 0;
+            for (var i = 0; i < width; i++)
+            {
+                v = (v << 8) | buf[pos++];
+            }
+            return v;
+        }
+
+        /// <summary>Parses a whole extensions region (as stored or served in hex); bytes after the last entry are an error.</summary>
+        public static IReadOnlyList<SigningExtension> DecodeExtensions(byte[] region, uint rulesVersion)
+        {
+            var pos = 0;
+            var entries = ReadExtensions(region, ref pos, rulesVersion);
+            if (pos != region.Length)
+            {
+                throw new SigningBytesException(SigningBytesError.TrailingBytes);
+            }
+            return entries;
+        }
+
+        /// <summary>Decodes lowercase hex of whole bytes; uppercase, odd length and non-hex are <see cref="SigningBytesError.InvalidHex"/>.</summary>
+        public static byte[] DecodeLowerHex(string text)
+        {
+            if (text == null || text.Length % 2 != 0)
+            {
+                throw new SigningBytesException(SigningBytesError.InvalidHex);
+            }
+            var bytes = new byte[text.Length / 2];
+            for (var i = 0; i < bytes.Length; i++)
+            {
+                var hi = Nibble(text[i * 2]);
+                var lo = Nibble(text[i * 2 + 1]);
+                if (hi < 0 || lo < 0)
+                {
+                    throw new SigningBytesException(SigningBytesError.InvalidHex);
+                }
+                bytes[i] = (byte)((hi << 4) | lo);
+            }
+            return bytes;
+        }
+
+        private static int Nibble(char c) => c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1;
+
+        /// <summary>The digest of <paramref name="data"/> under <paramref name="algo"/>.</summary>
+        public static byte[] Digest(HashAlgo algo, byte[] data)
+        {
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            {
+                return sha.ComputeHash(data);
+            }
+        }
     }
 
     /// <summary>A registered domain tag: ASCII <c>[a-z0-9._]</c>, 1 to 255 bytes, written with no length prefix.</summary>
@@ -92,6 +435,10 @@ namespace Avalon.Sdk
         public static readonly DomainTag IntegratorNonceChallenge = new DomainTag("avalon.integrator.nonce_challenge");
         public static readonly DomainTag LedgerEntry = new DomainTag("avalon.ledger.entry");
         public static readonly DomainTag IdentityChainEvent = new DomainTag("avalon.identity.chain_event");
+        public static readonly DomainTag IdentityKeyEvent = new DomainTag("avalon.identity.key_event");
+        public static readonly DomainTag SettlementSth = new DomainTag("avalon.settlement.sth");
+        public static readonly DomainTag WitnessCosign = new DomainTag("avalon.witness.cosign");
+        public static readonly DomainTag WitnessAnnounce = new DomainTag("avalon.witness.announce");
 
         /// <summary>Reserved for conformance vectors; never signed in production.</summary>
         public static readonly DomainTag Conformance = new DomainTag("avalon.conformance.vector");
@@ -101,7 +448,7 @@ namespace Avalon.Sdk
             IdentityCreated, DeviceGrantApproved, IdentitySigningKeyRevoked, CrossNodeLogin, SessionContinuation,
             InterestClaim, AttestationIssue, AttestationBulkIssue, AttestationRevoke, IssuerRegistered,
             SignatureGateAction, IntegratorNonceChallenge, LedgerEntry,
-            IdentityChainEvent, Conformance,
+            IdentityChainEvent, IdentityKeyEvent, SettlementSth, WitnessCosign, WitnessAnnounce, Conformance,
         };
     }
 
@@ -127,17 +474,50 @@ namespace Avalon.Sdk
         }
     }
 
-    /// <summary>Builds a structured message: <c>new SigningBytesBuilder(tag, version).Str(..).Key(..).Finish()</c>.</summary>
+    /// <summary>Builds a structured message: <c>new SigningBytesBuilder(tag, layout).Str(..).Key(..).Finish()</c>. The header
+    /// is written first and the extensions region last, by <see cref="Finish"/>.</summary>
     public sealed class SigningBytesBuilder
     {
         private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
 
         private readonly List<byte> _out = new List<byte>();
+        private readonly List<SigningExtension> _extensions = new List<SigningExtension>();
+        private readonly uint _rulesVersion;
 
-        public SigningBytesBuilder(DomainTag tag, ushort version)
+        public SigningBytesBuilder(DomainTag tag, ushort layoutVersion)
+            : this(tag, layoutVersion, SigningBytes.RulesVersion)
         {
+        }
+
+        /// <summary>A header with an explicit rules version, for rebuilding a stored message. A version outside the
+        /// supported ranges throws <see cref="SigningBytesException"/>.</summary>
+        public SigningBytesBuilder(DomainTag tag, ushort layoutVersion, uint rulesVersion)
+        {
+            SigningBytes.CheckLayout(tag, layoutVersion);
+            SigningBytes.CheckRules(rulesVersion);
+            _rulesVersion = rulesVersion;
             _out.AddRange(tag.ToBytes());
-            U16(version);
+            U16(layoutVersion);
+            U32(rulesVersion);
+        }
+
+        /// <summary>The header and extensions of a stored <see cref="Envelope"/>; its hash algorithm is written by
+        /// <see cref="HashAlgo"/> where the layout places it.</summary>
+        public static SigningBytesBuilder WithEnvelope(DomainTag tag, Envelope envelope)
+        {
+            var builder = new SigningBytesBuilder(tag, envelope.LayoutVersion, envelope.RulesVersion);
+            builder._extensions.AddRange(envelope.Extensions);
+            return builder;
+        }
+
+        /// <summary>The hash algorithm byte; call it immediately before the first hash-valued field.</summary>
+        public SigningBytesBuilder HashAlgo(HashAlgo algo) => U8((byte)algo);
+
+        /// <summary>Adds an extension; entries must be added in ascending type order.</summary>
+        public SigningBytesBuilder Extension(ushort type, bool critical, byte[] value)
+        {
+            _extensions.Add(new SigningExtension(type, critical, value));
+            return this;
         }
 
         /// <summary>A UTF-8 string with a u32 BE length prefix. A string with a lone surrogate throws <see cref="ArgumentException"/>.</summary>
@@ -179,11 +559,14 @@ namespace Avalon.Sdk
             return this;
         }
 
-        /// <summary>A 32-byte public key, raw.</summary>
-        public SigningBytesBuilder Key(byte[] value) => Exactly32(value, nameof(value));
+        /// <summary>An Ed25519 public key: algorithm byte 1, then 32 raw bytes.</summary>
+        public SigningBytesBuilder Key(byte[] value) => U8(1).Fixed(Exactly(value, 32, nameof(value)));
+
+        /// <summary>An Ed25519 signature: algorithm byte 1, then 64 raw bytes.</summary>
+        public SigningBytesBuilder Signature(byte[] value) => U8(1).Fixed(Exactly(value, 64, nameof(value)));
 
         /// <summary>A 32-byte hash, raw.</summary>
-        public SigningBytesBuilder Hash(byte[] value) => Exactly32(value, nameof(value));
+        public SigningBytesBuilder Hash(byte[] value) => Fixed(Exactly(value, 32, nameof(value)));
 
         public SigningBytesBuilder Uuid(Guid value) => Fixed(UuidBytes.Of(value));
 
@@ -197,15 +580,23 @@ namespace Avalon.Sdk
 
         public SigningBytesBuilder I64(long value) => Fixed(BigEndian(unchecked((ulong)value), 8));
 
-        public byte[] Finish() => _out.ToArray();
-
-        private SigningBytesBuilder Exactly32(byte[] value, string name)
+        /// <summary>Appends the extensions region and returns the bytes.</summary>
+        public byte[] Finish()
         {
-            if (value == null || value.Length != 32)
+            SigningBytes.ValidateExtensions(_extensions, _rulesVersion);
+            SigningBytes.RequireUnderstood(_extensions);
+            var result = new List<byte>(_out);
+            result.AddRange(SigningBytes.EncodeExtensions(_extensions));
+            return result.ToArray();
+        }
+
+        private static byte[] Exactly(byte[] value, int width, string name)
+        {
+            if (value == null || value.Length != width)
             {
-                throw new ArgumentException("a key or hash is exactly 32 bytes", name);
+                throw new ArgumentException("expected exactly " + width + " bytes", name);
             }
-            return Fixed(value);
+            return value;
         }
 
         private static byte[] BigEndian(ulong value, int width)
@@ -228,6 +619,8 @@ namespace Avalon.Sdk
         private readonly byte[] _message;
         private int _pos;
 
+        /// <summary>Checks the tag, then the layout and rules versions; a version above the supported range is
+        /// <see cref="SigningBytesError.NeedsNewerVersion"/> before any field is read.</summary>
         public SigningBytesReader(DomainTag tag, byte[] message)
         {
             _message = message ?? throw new ArgumentNullException(nameof(message));
@@ -244,11 +637,15 @@ namespace Avalon.Sdk
                 }
             }
             _pos = tagBytes.Length;
-            Version = U16();
+            LayoutVersion = U16();
+            SigningBytes.CheckLayout(tag, LayoutVersion);
+            RulesVersion = U32();
+            SigningBytes.CheckRules(RulesVersion);
         }
 
-        /// <summary>The message's version slot.</summary>
-        public ushort Version { get; }
+        public ushort LayoutVersion { get; }
+
+        public uint RulesVersion { get; }
 
         private byte[] Take(long len)
         {
@@ -288,6 +685,36 @@ namespace Avalon.Sdk
 
         public byte[] Fixed(int width) => Take(width);
 
+        /// <summary>A public key; an unknown algorithm byte is <see cref="SigningBytesError.NeedsNewerVersion"/>.</summary>
+        public byte[] Key() => AfterAlgorithm(32);
+
+        /// <summary>A signature; an unknown algorithm byte is <see cref="SigningBytesError.NeedsNewerVersion"/>.</summary>
+        public byte[] Signature() => AfterAlgorithm(64);
+
+        /// <summary>A 32-byte hash, raw.</summary>
+        public byte[] Hash() => Take(32);
+
+        /// <summary>The hash algorithm byte; an unknown value is <see cref="SigningBytesError.NeedsNewerVersion"/>.</summary>
+        public HashAlgo HashAlgo()
+        {
+            var id = U8();
+            if (id != (byte)Avalon.Sdk.HashAlgo.Sha256)
+            {
+                throw new SigningBytesException(SigningBytesError.NeedsNewerVersion, VersionKind.HashAlgo, id);
+            }
+            return Avalon.Sdk.HashAlgo.Sha256;
+        }
+
+        private byte[] AfterAlgorithm(int width)
+        {
+            var id = U8();
+            if (id != 1)
+            {
+                throw new SigningBytesException(SigningBytesError.NeedsNewerVersion, VersionKind.SigAlgo, id);
+            }
+            return Take(width);
+        }
+
         public Guid Uuid() => UuidBytes.From(Take(16));
 
         public byte U8() => (byte)Be(1);
@@ -300,13 +727,18 @@ namespace Avalon.Sdk
 
         public long I64() => unchecked((long)Be(8));
 
-        /// <summary>Fails with <see cref="SigningBytesError.TrailingBytes"/> if any bytes remain.</summary>
-        public void Finish()
+        /// <summary>Reads the extensions region, which must be all that remains, and returns its entries (unknown
+        /// non-critical ones included, for the caller to keep). An unknown critical extension is
+        /// <see cref="SigningBytesError.NeedsNewerVersion"/>; bytes after the region are <see cref="SigningBytesError.TrailingBytes"/>.</summary>
+        public IReadOnlyList<SigningExtension> Finish()
         {
+            var entries = SigningBytes.ReadExtensions(_message, ref _pos, RulesVersion);
             if (_pos != _message.Length)
             {
                 throw new SigningBytesException(SigningBytesError.TrailingBytes);
             }
+            SigningBytes.RequireUnderstood(entries);
+            return entries;
         }
     }
 }
