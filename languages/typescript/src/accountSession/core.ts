@@ -22,6 +22,7 @@
 // method signatures into the `AccountSession` interface below via
 // `declare module`.
 import { request } from '../http.js'
+import { getNodeStatus } from '../nodeStatus.js'
 import {
   canonicalMessage,
   sign as ed25519Sign,
@@ -56,6 +57,8 @@ export interface AccountSessionInit {
   token: string
   signing?: AccountSigningKey
   credentials?: AccountCredentials
+  /** The node's network id when already known; otherwise fetched on first use. */
+  networkId?: string
 }
 
 export class AccountSession {
@@ -65,6 +68,7 @@ export class AccountSession {
   /** @internal */ _token: string
   /** @internal */ _signing?: AccountSigningKey
   /** @internal */ _credentials?: AccountCredentials
+  /** @internal */ _networkId?: string
 
   constructor(init: AccountSessionInit) {
     this._identity = init.identity
@@ -73,6 +77,14 @@ export class AccountSession {
     this._token = init.token
     this._signing = init.signing
     this._credentials = init.credentials
+    this._networkId = init.networkId
+  }
+
+  /** The network id of the node this session talks to: signed into every identity key event so a
+   * signature never verifies on another network. Read once from `GET /nodes/status` and cached. */
+  async networkId(): Promise<string> {
+    this._networkId ??= (await getNodeStatus(this._serverUrl)).network_id
+    return this._networkId
   }
 
   /** This session's own identity, as of construction or the last

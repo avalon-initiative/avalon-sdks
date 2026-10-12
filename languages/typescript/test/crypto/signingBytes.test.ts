@@ -24,7 +24,7 @@ describe('tag registry', () => {
 describe('Builder and Reader', () => {
   it('round-trips every field type', () => {
     const id = '00000000-0000-0000-0000-000000000007'
-    const msg = new Builder(tags.CONFORMANCE, 3)
+    const msg = new Builder(tags.CONFORMANCE, 2)
       .str('a:b,c\0d')
       .bytes(new Uint8Array(0))
       .key(new Uint8Array(32).fill(9))
@@ -36,7 +36,8 @@ describe('Builder and Reader', () => {
       .i64(-(2n ** 63n))
       .finish()
     const r = new Reader(tags.CONFORMANCE, msg)
-    expect(r.version).toBe(3)
+    expect(r.layoutVersion).toBe(2)
+    expect(r.rulesVersion).toBe(1)
     expect(r.str()).toBe('a:b,c\0d')
     expect(r.bytes()).toEqual(new Uint8Array(0))
     expect(r.key()).toEqual(new Uint8Array(32).fill(9))
@@ -44,7 +45,7 @@ describe('Builder and Reader', () => {
     expect([r.u8(), r.u16(), r.u32()]).toEqual([1, 2, 3])
     expect(r.u64()).toBe(2n ** 64n - 1n)
     expect(r.i64()).toBe(-(2n ** 63n))
-    r.finish()
+    expect(r.finish()).toEqual([])
   })
 
   it('moving a delimiter between fields changes the bytes', () => {
@@ -71,7 +72,7 @@ describe('Builder and Reader', () => {
 
   it('encodes non-BMP text as UTF-8', () => {
     const msg = new Builder(tags.CONFORMANCE, 1).str('\u{1F600}').finish()
-    expect(msg.slice(-8)).toEqual(new Uint8Array([0, 0, 0, 4, 0xf0, 0x9f, 0x98, 0x80]))
+    expect(msg.slice(-10, -2)).toEqual(new Uint8Array([0, 0, 0, 4, 0xf0, 0x9f, 0x98, 0x80]))
   })
 
   it('reads a leading U+FEFF as data, not a byte order mark', () => {
@@ -92,7 +93,7 @@ describe('Builder and Reader', () => {
     const ok = new Builder(tags.CONFORMANCE, 1).str('ab').finish()
     expect(codeOf(() => new Reader(tags.INTEREST_CLAIM, ok))).toBe('tag_mismatch')
     expect(codeOf(() => new Reader(tags.CONFORMANCE, tags.CONFORMANCE.bytes))).toBe('truncated')
-    expect(codeOf(() => new Reader(tags.CONFORMANCE, ok.subarray(0, ok.length - 1)).str())).toBe('truncated')
+    expect(codeOf(() => new Reader(tags.CONFORMANCE, ok.subarray(0, ok.length - 3)).str())).toBe('truncated')
     expect(codeOf(() => new Reader(tags.CONFORMANCE, ok).finish())).toBe('trailing_bytes')
     const bad = new Builder(tags.CONFORMANCE, 1).bytes(new Uint8Array([0xff])).finish()
     expect(codeOf(() => new Reader(tags.CONFORMANCE, bad).str())).toBe('invalid_utf8')

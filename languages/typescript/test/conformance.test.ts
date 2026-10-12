@@ -585,7 +585,6 @@ function runIdentityKeyEventVectors(file: string, build: (doc: any, input: any) 
 runIdentityKeyEventVectors('identity-created-signing.json', (doc, input) =>
   identityCreatedSigningBytes(
     input.networkId,
-    input.shardId,
     input.ticketId,
     doc.identityId,
     hexToBytes(doc.signingPublicKeyHex),
@@ -595,6 +594,7 @@ runIdentityKeyEventVectors('identity-created-signing.json', (doc, input) =>
 
 runIdentityKeyEventVectors('device-grant-approval.json', (_doc, input) =>
   deviceGrantApprovalSigningBytes(
+    input.networkId,
     input.grantId,
     input.identityId,
     input.approverSigningKeyId,
@@ -606,6 +606,7 @@ runIdentityKeyEventVectors('device-grant-approval.json', (_doc, input) =>
 
 runIdentityKeyEventVectors('signing-key-revoked.json', (_doc, input) =>
   signingKeyRevokedSigningBytes(
+    input.networkId,
     input.identityId,
     input.signingKeyId,
     input.revokedBySigningKeyId,

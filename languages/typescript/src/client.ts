@@ -139,7 +139,6 @@ export class AvalonClient {
 
     const signingBytes = identityCreatedSigningBytes(
       start.network_id,
-      start.shard_id,
       start.ticket_id,
       identityId,
       publicKey,
