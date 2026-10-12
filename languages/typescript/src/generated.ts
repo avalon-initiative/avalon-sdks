@@ -3326,6 +3326,12 @@ export interface components {
         BulkIssueAttestationRequest: {
             claims: components["schemas"]["BulkClaimRequest"][];
             /**
+             * Format: int64
+             * @description The `issued_at` the issuer signed for every claim, as unix microseconds; same window as
+             *     a single issuance.
+             */
+            issued_at_micros: number;
+            /**
              * Format: uuid
              * @description Which of the issuer's own keys signed the whole ordered list.
              */
@@ -4147,6 +4153,12 @@ export interface components {
              */
             evidence?: Record<string, never> | null;
             /**
+             * Format: int64
+             * @description The `issued_at` the issuer signed, as unix microseconds; it must be within
+             *     `ISSUED_AT_MAX_SKEW_SECS` of this node's clock and becomes the attestation's `issued_at`.
+             */
+            issued_at_micros: number;
+            /**
              * Format: uuid
              * @description Which of the issuer's own keys signed this attestation — resolved
              *     against that issuer's full key history at the moment of issuance
@@ -4733,9 +4745,9 @@ export interface components {
              *     `CreationChallengeResponse`, not this placeholder.
              */
             challenge: Record<string, never>;
-            /** @description The ledger network id; the client signs it, with the shard id and ticket, into `identity.created`. */
+            /** @description The ledger network id; the client signs it, with the ticket, into `identity.created`. */
             network_id: string;
-            /** @description The shard this node authors; part of the signed bytes. */
+            /** @description The shard this node authors; informational, not part of the signed bytes. */
             shard_id: string;
             /** Format: uuid */
             ticket_id: string;
@@ -9551,4 +9563,4 @@ export interface operations {
 }
 
 // Issue #735: the info.version this file's types were generated from.
-export const OPENAPI_SCHEMA_VERSION = "0.13.1" as const
+export const OPENAPI_SCHEMA_VERSION = "0.13.3" as const
