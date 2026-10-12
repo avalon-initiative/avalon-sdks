@@ -255,6 +255,34 @@ public class StructuredConformanceTests
         Assert.Equal(6, count);
     }
 
+    /// <summary>Asserts a vector whose <c>input.messageHex</c>, read as <c>input.read</c> under <c>input.tag</c>,
+    /// fails with exactly <c>expected</c> (error, and what plus required or value for a version error).</summary>
+    internal static void AssertReadRejects(JsonElement vector)
+    {
+        var name = Str(vector, "name");
+        var input = vector.GetProperty("input");
+        var tag = new DomainTag(Str(input, "tag"));
+        var message = Hex(Str(input, "messageHex"));
+        var types = input.GetProperty("read").EnumerateArray().Select(t => t.GetString()!).ToList();
+        var ex = Assert.Throws<SigningBytesException>(() =>
+        {
+            var reader = new SigningBytesReader(tag, message);
+            foreach (var t in types)
+            {
+                SkipRead(reader, t);
+            }
+            reader.Finish();
+        });
+        var expected = vector.GetProperty("expected");
+        Assert.True(Str(expected, "error") == Snake(ex.Error.ToString()), $"[{name}] got {ex.Error}");
+        if (expected.TryGetProperty("what", out var what))
+        {
+            Assert.True(what.GetString() == Snake(ex.Kind!.Value.ToString()), $"[{name}] what {ex.Kind}");
+            var value = expected.TryGetProperty("required", out var req) ? req : expected.GetProperty("value");
+            Assert.True(value.GetUInt32() == ex.Value, $"[{name}] value {ex.Value}");
+        }
+    }
+
     [Fact]
     public void Envelope_RejectVectors_FailWithTheExpectedError()
     {
@@ -262,28 +290,7 @@ public class StructuredConformanceTests
         var count = 0;
         foreach (var vector in doc.RootElement.GetProperty("rejectVectors").EnumerateArray())
         {
-            var name = Str(vector, "name");
-            var input = vector.GetProperty("input");
-            var tag = new DomainTag(Str(input, "tag"));
-            var message = Hex(Str(input, "messageHex"));
-            var types = input.GetProperty("read").EnumerateArray().Select(t => t.GetString()!).ToList();
-            var ex = Assert.Throws<SigningBytesException>(() =>
-            {
-                var reader = new SigningBytesReader(tag, message);
-                foreach (var t in types)
-                {
-                    SkipRead(reader, t);
-                }
-                reader.Finish();
-            });
-            var expected = vector.GetProperty("expected");
-            Assert.True(Str(expected, "error") == Snake(ex.Error.ToString()), $"[{name}] got {ex.Error}");
-            if (expected.TryGetProperty("what", out var what))
-            {
-                Assert.True(what.GetString() == Snake(ex.Kind!.Value.ToString()), $"[{name}] what {ex.Kind}");
-                var value = expected.TryGetProperty("required", out var req) ? req : expected.GetProperty("value");
-                Assert.True(value.GetUInt32() == ex.Value, $"[{name}] value {ex.Value}");
-            }
+            AssertReadRejects(vector);
             count++;
         }
         Assert.Equal(27, count);

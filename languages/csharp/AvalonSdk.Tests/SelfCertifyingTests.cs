@@ -28,7 +28,7 @@ public class SelfCertifyingTests
             SigningKeyId = "node-key-1",
             CreatedAt = DateTimeOffset.FromUnixTimeSeconds(1780000000),
         };
-        var message = AvalonClient.SthSigningMessage(head.TreeSize, head.RootHash, head.NetworkId, head.CreatedAt);
+        var message = AvalonClient.SthSigningMessage(head);
         var signer = new Ed25519Signer();
         signer.Init(true, new Ed25519PrivateKeyParameters(Seed(seed), 0));
         signer.BlockUpdate(message, 0, message.Length);

@@ -296,39 +296,85 @@ public class ConformanceTests
         Assert.Equal(expected.GetProperty("signatureHex").GetString(), ToLowerHex(signature));
     }
 
+    private static long TreeSizeOf(JsonElement input)
+    {
+        var size = input.GetProperty("treeSize");
+        return size.ValueKind == JsonValueKind.String ? long.Parse(size.GetString()!) : size.GetInt64();
+    }
+
     [Fact]
     public void SignedTreeHead_SigningMatchesSharedVectors()
     {
         using var doc = LoadVector("signed-tree-head.json");
         var root = doc.RootElement;
-        Assert.True(SupportedIn(root, "csharp"), "signed-tree-head.json must list csharp in supportedIn");
         var publicKeyHex = root.GetProperty("signingPublicKeyHex").GetString()!;
 
+        var count = 0;
         foreach (var vector in root.GetProperty("vectors").EnumerateArray())
         {
             var name = vector.GetProperty("name").GetString();
             var input = vector.GetProperty("input");
             var expected = vector.GetProperty("expected");
-            var treeSize = input.GetProperty("treeSize").GetInt64();
-            var rootHash = input.GetProperty("rootHashHex").GetString()!;
-            var networkId = input.GetProperty("networkId").GetString()!;
             var createdAt = DateTimeOffset.FromUnixTimeSeconds(input.GetProperty("createdAtUnixSeconds").GetInt64());
-
-            var bytes = AvalonClient.SthSigningMessage(treeSize, rootHash, networkId, createdAt);
-            Assert.True(
-                expected.GetProperty("signingBytesHex").GetString() == ToLowerHex(bytes),
-                $"[{name}] signing bytes diverged from the shared vector");
+            Assert.Equal(createdAt, DateTimeOffset.Parse(input.GetProperty("createdAtRfc3339").GetString()!, System.Globalization.CultureInfo.InvariantCulture));
 
             var wire = new SignedTreeHeadWire
             {
-                TreeSize = treeSize,
-                RootHash = rootHash,
-                NetworkId = networkId,
+                TreeSize = TreeSizeOf(input),
+                RootHash = input.GetProperty("rootHashHex").GetString()!,
+                NetworkId = input.GetProperty("networkId").GetString()!,
+                SigningKeyId = input.GetProperty("signingKeyId").GetString()!,
                 CreatedAt = createdAt,
                 Signature = expected.GetProperty("signatureHex").GetString()!,
             };
+            var bytes = AvalonClient.SthSigningMessage(wire);
+            Assert.True(
+                expected.GetProperty("signingBytesHex").GetString() == ToLowerHex(bytes),
+                $"[{name}] signing bytes diverged from the shared vector");
             Assert.True(AvalonClient.VerifyTreeHeadHex(publicKeyHex, wire), $"[{name}] vector signature does not verify");
+            count++;
         }
+        Assert.Equal(10, count);
+    }
+
+    [Fact]
+    public void SignedTreeHead_RejectedRootHashesProduceNoBytesAndNeverVerify()
+    {
+        using var doc = LoadVector("signed-tree-head.json");
+        var root = doc.RootElement;
+        var publicKeyHex = root.GetProperty("signingPublicKeyHex").GetString()!;
+        var count = 0;
+        foreach (var vector in root.GetProperty("rejectedVectors").EnumerateArray())
+        {
+            var input = vector.GetProperty("input");
+            Assert.Equal("invalid_root_hash", vector.GetProperty("expected").GetProperty("error").GetString());
+            var wire = new SignedTreeHeadWire
+            {
+                TreeSize = TreeSizeOf(input),
+                RootHash = input.GetProperty("rootHashHex").GetString()!,
+                NetworkId = input.GetProperty("networkId").GetString()!,
+                SigningKeyId = input.GetProperty("signingKeyId").GetString()!,
+                CreatedAt = DateTimeOffset.FromUnixTimeSeconds(input.GetProperty("createdAtUnixSeconds").GetInt64()),
+                Signature = new string('0', 128),
+            };
+            Assert.Throws<ArgumentException>(() => AvalonClient.SthSigningMessage(wire));
+            Assert.False(AvalonClient.VerifyTreeHeadHex(publicKeyHex, wire));
+            count++;
+        }
+        Assert.Equal(5, count);
+    }
+
+    [Fact]
+    public void SignedTreeHead_ReadRejectVectors_FailWithTheExpectedError()
+    {
+        using var doc = LoadVector("signed-tree-head.json");
+        var count = 0;
+        foreach (var vector in doc.RootElement.GetProperty("readRejectVectors").EnumerateArray())
+        {
+            StructuredConformanceTests.AssertReadRejects(vector);
+            count++;
+        }
+        Assert.Equal(5, count);
     }
 
     // Vector files with no runner in this SDK yet, each with the reason it is skipped.
