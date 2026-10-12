@@ -126,6 +126,27 @@ impl From<SignedTreeHeadWire> for crate::sth::SignedTreeHead {
     }
 }
 
+/// The network id a node serves, read from `GET /ledger/sth/latest`; what a signature that binds
+/// the network (attestations, key events) must be made for.
+pub(crate) async fn fetch_network_id(
+    http: &reqwest::Client,
+    retry: &crate::RetryConfig,
+    server_url: &str,
+) -> Result<String, SdkError> {
+    let response = crate::http::send(http, retry, true, |c| {
+        c.get(format!("{server_url}/ledger/sth/latest"))
+    })
+    .await?;
+    if !response.status().is_success() {
+        return Err(crate::http::map_error_response(response).await);
+    }
+    let head: SignedTreeHeadWire = response
+        .json()
+        .await
+        .map_err(|e| SdkError::Protocol(e.to_string()))?;
+    Ok(head.network_id)
+}
+
 /// The invariant this module exists for: `network_id` alone is never
 /// sufficient. Given a fetched Signed Tree Head and every network this
 /// build has a pinned key for, exactly one of these four states applies —

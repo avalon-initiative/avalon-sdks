@@ -28,6 +28,7 @@
 
 use avalon_sdk::achievements::{
     attestation_signing_bytes, bulk_attestation_signing_bytes, revocation_signing_bytes,
+    AttestationSigner,
 };
 use avalon_sdk::cross_node_login::signing_bytes as cross_node_login_signing_bytes;
 use avalon_sdk::identity_signing::{
@@ -195,27 +196,19 @@ fn attestation_signing_matches_shared_vectors() {
         "attestation-signing.json must list rust in supportedIn — \
          avalon_sdk::achievements implements all three constructions"
     );
-
-    let signing_key = signing_key_from_seed_hex(doc["signingKeySeedHex"].as_str().unwrap());
-    assert_eq!(
-        to_hex(signing_key.verifying_key().as_bytes()),
-        doc["signingPublicKeyHex"].as_str().unwrap(),
-        "the shared test keypair's derived public key must match the vector file"
-    );
-
-    for vector in doc["vectors"].as_array().unwrap() {
-        let name = vector["name"].as_str().unwrap_or("<unnamed>");
-        let input = &vector["input"];
-        let operation = input["operation"].as_str().unwrap();
-        let claim_kind = input["claimKind"].as_str().unwrap();
-        let issuer_ref = input["issuerRef"].as_str().unwrap();
-
-        let bytes = match operation {
+    let count = run_key_event_vectors("attestation-signing.json", &doc, &|_, input| {
+        let signer = AttestationSigner {
+            network_id: input["networkId"].as_str().unwrap(),
+            claim_kind: input["claimKind"].as_str().unwrap(),
+            issuer_ref: input["issuerRef"].as_str().unwrap(),
+            signing_key_id: parse_uuid(input, "signingKeyId"),
+        };
+        match input["operation"].as_str().unwrap() {
             "issue" => attestation_signing_bytes(
-                claim_kind,
-                issuer_ref,
+                &signer,
                 &parse_identity_id(input, "subject"),
                 input["achievement"].as_str().unwrap(),
+                input["issuedAtMicros"].as_i64().unwrap(),
             ),
             "bulk_issue" => {
                 let achievements: Vec<String> = input["achievements"]
@@ -225,40 +218,22 @@ fn attestation_signing_matches_shared_vectors() {
                     .map(|v| v.as_str().unwrap().to_string())
                     .collect();
                 bulk_attestation_signing_bytes(
-                    claim_kind,
-                    issuer_ref,
+                    &signer,
                     &parse_identity_id(input, "subject"),
                     &achievements,
+                    input["issuedAtMicros"].as_i64().unwrap(),
                 )
             }
             "revoke" => revocation_signing_bytes(
-                claim_kind,
-                issuer_ref,
+                &signer,
                 parse_uuid(input, "attestationId"),
                 input["reasonCode"].as_str().unwrap(),
+                input["reason"].as_str().unwrap(),
             ),
-            other => panic!("[{name}] unknown operation {other}"),
-        };
-
-        assert_eq!(
-            to_hex(&bytes),
-            vector["expected"]["signingBytesHex"].as_str().unwrap(),
-            "[{name}] signing bytes diverged from the shared vector"
-        );
-        if let Some(utf8) = vector["expected"]["signingBytesUtf8"].as_str() {
-            assert_eq!(
-                String::from_utf8(bytes.clone()).unwrap(),
-                utf8,
-                "[{name}] signing bytes diverged from the shared vector"
-            );
+            other => panic!("unknown operation {other}"),
         }
-        assert_signature_matches(
-            name,
-            &signing_key,
-            &bytes,
-            vector["expected"]["signatureHex"].as_str().unwrap(),
-        );
-    }
+    });
+    println!("attestation-signing.json: {count} vectors");
 }
 
 /// `crate::sth` is the other construction #774 made independent — a node's
