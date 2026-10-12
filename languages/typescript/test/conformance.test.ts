@@ -231,36 +231,70 @@ describe('conformance: BIP39 mnemonic-derived signing keys (#134/#712)', () => {
 
 describe('conformance: attestation issuance/bulk-issuance/revocation signing (#774)', () => {
   const doc = loadVector('attestation-signing.json')
+  const publicKey = hexToBytes(doc.signingPublicKeyHex)
 
-  it('lists typescript as supported', () => {
-    requireSupported(doc, 'typescript')
-  })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function build(input: any): Uint8Array {
+    const claimKind = input.claimKind as 'achievement' | 'milestone'
+    switch (input.operation) {
+      case 'issue':
+        return attestationSigningBytes(
+          input.networkId,
+          claimKind,
+          input.issuerRef,
+          input.signingKeyId,
+          input.subject,
+          input.achievement,
+          BigInt(input.issuedAtMicros),
+        )
+      case 'bulk_issue':
+        return bulkAttestationSigningBytes(
+          input.networkId,
+          claimKind,
+          input.issuerRef,
+          input.signingKeyId,
+          input.subject,
+          BigInt(input.issuedAtMicros),
+          input.achievements,
+        )
+      case 'revoke':
+        return revocationSigningBytes(
+          input.networkId,
+          claimKind,
+          input.issuerRef,
+          input.signingKeyId,
+          input.attestationId,
+          input.reasonCode,
+          input.reason,
+        )
+      default:
+        throw new Error(`unknown operation ${input.operation}`)
+    }
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const vector of doc.vectors as any[]) {
     it(`matches the shared vector: ${vector.name}`, () => {
       const secretKey = hexToBytes(doc.signingKeySeedHex)
-      const { input, expected } = vector
-      const claimKind = input.claimKind as 'achievement' | 'milestone'
-
-      let bytes: Uint8Array
-      switch (input.operation) {
-        case 'issue':
-          bytes = attestationSigningBytes(claimKind, input.issuerRef, input.subject, input.achievement)
-          break
-        case 'bulk_issue':
-          bytes = bulkAttestationSigningBytes(claimKind, input.issuerRef, input.subject, input.achievements)
-          break
-        case 'revoke':
-          bytes = revocationSigningBytes(claimKind, input.issuerRef, input.attestationId, input.reasonCode)
-          break
-        default:
-          throw new Error(`unknown operation ${input.operation}`)
-      }
-
-      expect(bytesToHex(bytes)).toBe(expected.signingBytesHex)
-      expect(bytesToHex(sign(secretKey, bytes))).toBe(expected.signatureHex)
+      const bytes = build(vector.input)
+      expect(bytesToHex(bytes)).toBe(vector.expected.signingBytesHex)
+      expect(bytesToHex(sign(secretKey, bytes))).toBe(vector.expected.signatureHex)
     })
+  }
+
+  for (const group of ['replayVectors', 'legacyLayoutVectors']) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const r of doc[group] as any[]) {
+      it(`${group}: ${r.name}`, () => {
+        const bytes = build(r.input)
+        if (r.legacySigningBytesUtf8 !== undefined) {
+          const legacy = new TextEncoder().encode(r.legacySigningBytesUtf8)
+          expect(bytes).not.toEqual(legacy)
+          expect(verifyStrict(publicKey, legacy, hexToBytes(r.signatureHex))).toBe(true)
+        }
+        expect(verifyStrict(publicKey, bytes, hexToBytes(r.signatureHex))).toBe(r.expected.valid)
+      })
+    }
   }
 })
 

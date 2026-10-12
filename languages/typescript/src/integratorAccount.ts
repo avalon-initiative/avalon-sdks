@@ -11,7 +11,10 @@
 // See crates/server/src/integrators.rs/achievements.rs/integrator_schemas.rs/
 // integrator_schema_mappings.rs/integrator_data.rs/recognitions.rs/
 // attestations.rs/issuer_registration.rs.
+import { sha256 } from '@noble/hashes/sha2.js'
 import { request } from './http.js'
+import { getNodeStatus } from './nodeStatus.js'
+import { Builder, tags } from './crypto/signingBytes.js'
 import { sign as ed25519Sign, bytesToBase64, base64ToBytes, publicKeyFromSecretKey } from './crypto/signing.js'
 import type { components } from './generated.js'
 
@@ -492,18 +495,30 @@ export async function revokeRecognition(
   })
 }
 
-/** The exact bytes an issuer's key signs to authorize a revocation. Must stay
- * byte-for-byte identical to the server's own construction
- * (`avalon_protocol::achievements::revocation_signing_bytes`) and to the Rust/C#
- * SDKs' — checked against `conformance/vectors/attestation-signing.json`.
- * Exported for that runner, not part of the public SDK surface. */
+/** The exact bytes an issuer's key signs to authorize a revocation (tag `avalon.attestation.revoke`, layout 1):
+ * network id, claim kind, issuer ref, signing key id (uuid), attestation id (uuid), reason code, the hash
+ * algorithm byte and the SHA-256 of the UTF-8 reason, so the reason text can be redacted later. Must stay
+ * byte-for-byte identical to `avalon_protocol::achievements::revocation_signing_bytes`; checked against
+ * `conformance/vectors/attestation-signing.json`. Exported for that runner, not part of the public SDK surface. */
 export function revocationSigningBytes(
+  networkId: string,
   claimKind: 'achievement' | 'milestone',
   issuerRef: string,
+  signingKeyId: string,
   attestationId: string,
   reasonCode: string,
+  reason: string,
 ): Uint8Array {
-  return new TextEncoder().encode(`avalon:${claimKind}.revoked:v1:${issuerRef}:${attestationId}:${reasonCode}`)
+  return new Builder(tags.ATTESTATION_REVOKE, 1)
+    .str(networkId)
+    .str(claimKind)
+    .str(issuerRef)
+    .uuid(signingKeyId)
+    .uuid(attestationId)
+    .str(reasonCode)
+    .hashAlgo()
+    .hash(sha256(new TextEncoder().encode(reason)))
+    .finish()
 }
 
 export interface RevokeAttestationResult {
@@ -535,7 +550,15 @@ export async function revokeAttestation(
   const headers = await integratorAuthHeaders(serverUrl, issuerSlug, keyId, signingKey)
   const signature = ed25519Sign(
     signingKey,
-    revocationSigningBytes(claimKind, issuerRef, attestationId, reasonCode),
+    revocationSigningBytes(
+      (await getNodeStatus(serverUrl)).network_id,
+      claimKind,
+      issuerRef,
+      keyId,
+      attestationId,
+      reasonCode,
+      reason,
+    ),
   )
   const w = await request<components['schemas']['RevocationResponse']>(
     serverUrl,
