@@ -150,43 +150,79 @@ namespace Avalon.Sdk
             return signer.GenerateSignature();
         }
 
-        /// <summary>The exact bytes this integrator's key signs to authorize an attestation.
-        /// <paramref name="claimKind"/> is <c>"achievement"</c> for game issuers and
-        /// <c>"milestone"</c> for app/service issuers, folded into the signed bytes so a
-        /// signature minted under one claim vocabulary can never be replayed as the other.
-        /// This SDK builds these bytes itself rather than sharing source with the server;
-        /// <c>conformance/vectors/attestation-signing.json</c> is what keeps the two in
-        /// step.</summary>
-        private static byte[] AttestationSigningBytes(
-            string claimKind, string issuerRef, IdentityId subject, string achievement) =>
-            Encoding.UTF8.GetBytes($"avalon:{claimKind}.issued:v1:{issuerRef}:{subject}:{achievement}");
+        // Every attestation layout starts with the network, the claim kind ("achievement" for game
+        // issuers, "milestone" for app and service issuers), the issuer ref and the signing key's id.
+        private static SigningBytesBuilder AttestationHeader(
+            DomainTag tag, string networkId, string claimKind, string issuerRef, Guid signingKeyId) =>
+            new SigningBytesBuilder(tag, 1).Str(networkId).Str(claimKind).Str(issuerRef).Uuid(signingKeyId);
 
-        /// <summary>The exact bytes this integrator's key signs to authorize a bulk issuance:
-        /// one signature over the whole ordered list, each ref length-prefixed
-        /// big-endian so two different orderings or splits of the same refs can never sign
-        /// identically. Checked against the same shared vectors as
-        /// <see cref="AttestationSigningBytes"/>.</summary>
+        /// <summary>The exact bytes this integrator's key signs to issue one attestation (tag
+        /// <c>avalon.attestation.issue</c>): the header, the subject, the claim's global id and
+        /// <paramref name="issuedAtMicros"/>. <c>conformance/vectors/attestation-signing.json</c> keeps
+        /// this in step with the server.</summary>
+        private static byte[] AttestationSigningBytes(
+            string networkId, string claimKind, string issuerRef, Guid signingKeyId, IdentityId subject, string achievement, long issuedAtMicros) =>
+            AttestationHeader(DomainTags.AttestationIssue, networkId, claimKind, issuerRef, signingKeyId)
+                .Fixed(subject.ToBytes())
+                .Str(achievement)
+                .I64(issuedAtMicros)
+                .Finish();
+
+        /// <summary>The exact bytes this integrator's key signs for a bulk issuance (tag
+        /// <c>avalon.attestation.bulk_issue</c>): one signature over the whole ordered list, after the header,
+        /// the subject, one <paramref name="issuedAtMicros"/> and the claim count.</summary>
         private static byte[] BulkAttestationSigningBytes(
-            string claimKind, string issuerRef, IdentityId subject, IReadOnlyList<string> achievementRefs)
+            string networkId, string claimKind, string issuerRef, Guid signingKeyId, IdentityId subject,
+            IReadOnlyList<string> achievementRefs, long issuedAtMicros)
         {
-            var message = new List<byte>(
-                Encoding.UTF8.GetBytes($"avalon:{claimKind}.issued.bulk:v1:{issuerRef}:{subject}:"));
-            message.AddRange(BitConverter.GetBytes((uint)achievementRefs.Count).Reverse());
+            var builder = AttestationHeader(DomainTags.AttestationBulkIssue, networkId, claimKind, issuerRef, signingKeyId)
+                .Fixed(subject.ToBytes())
+                .I64(issuedAtMicros)
+                .U32((uint)achievementRefs.Count);
             foreach (var achievementRef in achievementRefs)
             {
-                var bytes = Encoding.UTF8.GetBytes(achievementRef);
-                message.AddRange(BitConverter.GetBytes((uint)bytes.Length).Reverse());
-                message.AddRange(bytes);
+                builder.Str(achievementRef);
             }
-            return message.ToArray();
+            return builder.Finish();
         }
 
-        /// <summary>The exact bytes this integrator's key signs to authorize a revocation.
-        /// Checked against the same shared vectors as
-        /// <see cref="AttestationSigningBytes"/>.</summary>
+        /// <summary>The exact bytes this integrator's key signs to revoke an attestation (tag
+        /// <c>avalon.attestation.revoke</c>): the header, the attestation id, the reason code and the SHA-256 of
+        /// the UTF-8 reason, so the reason text can be redacted while the signature stays valid.</summary>
         private static byte[] RevocationSigningBytes(
-            string claimKind, string issuerRef, Guid attestationId, string reasonCode) =>
-            Encoding.UTF8.GetBytes($"avalon:{claimKind}.revoked:v1:{issuerRef}:{attestationId}:{reasonCode}");
+            string networkId, string claimKind, string issuerRef, Guid signingKeyId, Guid attestationId, string reasonCode, string reason)
+        {
+            byte[] reasonHash;
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            {
+                reasonHash = sha.ComputeHash(Encoding.UTF8.GetBytes(reason));
+            }
+            return AttestationHeader(DomainTags.AttestationRevoke, networkId, claimKind, issuerRef, signingKeyId)
+                .Uuid(attestationId)
+                .Str(reasonCode)
+                .HashAlgo(HashAlgo.Sha256)
+                .Hash(reasonHash)
+                .Finish();
+        }
+
+        private string? _networkId;
+
+        // Attestations sign the network id; the serving node's own is the one that verifies them.
+        internal async Task<string> NetworkIdAsync(CancellationToken ct)
+        {
+            if (_networkId != null)
+            {
+                return _networkId;
+            }
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{ServerUrl}/nodes/status");
+            using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw await ServerErrorAsync(response).ConfigureAwait(false);
+            }
+            _networkId = (await ReadJsonAsync<NodeStatus>(response, ct).ConfigureAwait(false)).NetworkId;
+            return _networkId;
+        }
 
         /// <summary>POST /integrations/{slug}/challenge — an ephemeral, single-use
         /// challenge proving this integrator's key is making this HTTP call right now.</summary>
@@ -246,7 +282,9 @@ namespace Avalon.Sdk
 
             var issuerRef = $"game:{IntegratorSlug}";
             var achievement = $"game:{IntegratorSlug}:achievement:{key}";
-            var signingBytes = AttestationSigningBytes("achievement", issuerRef, OwnIdentityId, achievement);
+            var issuedAtMicros = LedgerEntry.TimestampMicros(DateTimeOffset.UtcNow);
+            var signingBytes = AttestationSigningBytes(
+                await NetworkIdAsync(ct).ConfigureAwait(false), "achievement", issuerRef, keyId, OwnIdentityId, achievement, issuedAtMicros);
             var signature = SignWithIssuerKey(signingBytes);
 
             using var request = new HttpRequestMessage(
@@ -264,6 +302,7 @@ namespace Avalon.Sdk
                 {
                     KeyId = keyId,
                     Signature = Convert.ToBase64String(signature),
+                    IssuedAtMicros = issuedAtMicros,
                 }),
                 Encoding.UTF8, "application/json");
 
@@ -315,7 +354,8 @@ namespace Avalon.Sdk
                 throw new MissingIssuerCredentialsException();
             }
 
-            var signingBytes = RevocationSigningBytes(claimKind, issuerRef, attestationId, reasonCode);
+            var signingBytes = RevocationSigningBytes(
+                await NetworkIdAsync(ct).ConfigureAwait(false), claimKind, issuerRef, keyId, attestationId, reasonCode, reason);
             var signature = SignWithIssuerKey(signingBytes);
 
             using var request = new HttpRequestMessage(HttpMethod.Post, $"{ServerUrl}/attestations/{attestationId}/revoke");
@@ -503,7 +543,9 @@ namespace Avalon.Sdk
 
             var issuerRef = $"{category}:{IntegratorSlug}";
             var achievement = $"{category}:{IntegratorSlug}:milestone:{key}";
-            var signingBytes = AttestationSigningBytes("milestone", issuerRef, OwnIdentityId, achievement);
+            var issuedAtMicros = LedgerEntry.TimestampMicros(DateTimeOffset.UtcNow);
+            var signingBytes = AttestationSigningBytes(
+                await NetworkIdAsync(ct).ConfigureAwait(false), "milestone", issuerRef, keyId, OwnIdentityId, achievement, issuedAtMicros);
             var signature = SignWithIssuerKey(signingBytes);
 
             using var request = new HttpRequestMessage(
@@ -518,6 +560,7 @@ namespace Avalon.Sdk
                 {
                     KeyId = keyId,
                     Signature = Convert.ToBase64String(signature),
+                    IssuedAtMicros = issuedAtMicros,
                 }),
                 Encoding.UTF8, "application/json");
 
@@ -593,11 +636,8 @@ namespace Avalon.Sdk
         /// <c>new HttpRequestMessage(HttpMethod.Post, $"...")</c> call site (matching this
         /// SDK's, and `scripts/check-sdk-coverage.py`'s, existing "literal path per route"
         /// convention) while sharing the signing-bytes/body-building logic.
-        /// <paramref name="claimKind"/> is folded into the domain-tagged signing bytes
-        /// (<c>avalon:&lt;claim_kind&gt;.issued.bulk:v1:...</c>) exactly as
-        /// <c>bulk_attestation_signing_bytes</c> requires, with each achievement ref
-        /// length-prefixed so two different orderings (or a key containing delimiter-like
-        /// bytes) can never sign identically.</summary>
+        /// <paramref name="claimKind"/> is part of the signed header, and each achievement ref is
+        /// length-prefixed, so two different orderings can never sign identically.</summary>
         private async Task<HttpContent> PrepareBulkIssueContentAsync(
             string claimKind, string issuerNamespace, IReadOnlyList<BulkClaim> claims, CancellationToken ct)
         {
@@ -617,7 +657,9 @@ namespace Avalon.Sdk
                 achievementRefs.Add($"{issuerNamespace}:{IntegratorSlug}:{claimKind}:{claim.Key}");
             }
 
-            var signingBytes = BulkAttestationSigningBytes(claimKind, issuerRef, OwnIdentityId, achievementRefs);
+            var issuedAtMicros = LedgerEntry.TimestampMicros(DateTimeOffset.UtcNow);
+            var signingBytes = BulkAttestationSigningBytes(
+                await NetworkIdAsync(ct).ConfigureAwait(false), claimKind, issuerRef, keyId, OwnIdentityId, achievementRefs, issuedAtMicros);
             var signature = SignWithIssuerKey(signingBytes);
 
             return new StringContent(
@@ -625,6 +667,7 @@ namespace Avalon.Sdk
                 {
                     key_id = keyId,
                     signature = Convert.ToBase64String(signature),
+                    issued_at_micros = issuedAtMicros,
                     claims = claims.Select(c => new { key = c.Key, evidence = c.Evidence }).ToList(),
                 }),
                 Encoding.UTF8, "application/json");

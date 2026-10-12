@@ -318,7 +318,8 @@ namespace Avalon.Sdk
             string integratorKeyId = "test-integrator-key",
             string? integratorSlug = null,
             byte[]? signingKey = null,
-            Profile? profile = null)
+            Profile? profile = null,
+            string? networkId = null)
         {
             var id = identityId ?? IdentityId.RandomForTests();
             return new Session(
@@ -330,7 +331,10 @@ namespace Avalon.Sdk
                 token,
                 integratorKeyId,
                 integratorSlug,
-                signingKey);
+                signingKey)
+            {
+                _networkId = networkId,
+            };
         }
 
         /// <summary>
