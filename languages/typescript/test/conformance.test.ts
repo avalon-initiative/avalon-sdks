@@ -55,6 +55,7 @@ import {
   verifyCosignedTreeHead,
   verifyWitnessAnnounce,
   witnessAnnounceMessage,
+  witnessSigningMessage,
 } from '../src/network/witness.js'
 import { diversityPrefixForUrl, selectKnownList } from '../src/network/knownListRules.js'
 import { selfCertifyingId, shardCheck, verifySelfCertifyingTreeHead } from '../src/network/selfCertifying.js'
@@ -271,18 +272,36 @@ describe('conformance: Signed Tree Head signing', () => {
     expect(doc.supportedIn).toContain('typescript')
   })
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const head = (input: any): SignedTreeHeadResponse =>
+    ({
+      tree_size: input.treeSize,
+      root_hash: input.rootHashHex,
+      network_id: input.networkId,
+      signing_key_id: input.signingKeyId,
+      created_at: new Date(input.createdAtUnixSeconds * 1000).toISOString(),
+    }) as SignedTreeHeadResponse
+
   for (const vector of doc.vectors) {
     it(`matches the shared vector: ${vector.name}`, () => {
       const { input, expected } = vector
-      const bytes = signingMessage({
-        tree_size: input.treeSize,
-        root_hash: input.rootHashHex,
-        network_id: input.networkId,
-        created_at: new Date(input.createdAtUnixSeconds * 1000).toISOString(),
-      } as SignedTreeHeadResponse)
+      const bytes = signingMessage(head(input))
 
       expect(bytesToHex(bytes)).toBe(expected.signingBytesHex)
       expect(verify(publicKey, bytes, hexToBytes(expected.signatureHex))).toBe(true)
+    })
+  }
+
+  for (const vector of doc.rejectedVectors) {
+    it(`rejects: ${vector.name}`, () => {
+      expect(vector.expected.error).toBe('invalid_root_hash')
+      expect(() => signingMessage(head(vector.input))).toThrow()
+    })
+  }
+
+  for (const vector of doc.readRejectVectors) {
+    it(`cannot read: ${vector.name}`, () => {
+      expectReject(vector)
     })
   }
 })
@@ -298,7 +317,7 @@ describe('conformance: witness-cosigned tree head', () => {
       tree_size: raw.sth.treeSize,
       root_hash: raw.sth.rootHashHex,
       network_id: doc.networkId,
-      signing_key_id: 'author',
+      signing_key_id: raw.sth.signingKeyId,
       signature: raw.sth.signatureHex,
       created_at: iso(raw.sth.createdAtUnixSeconds),
       protocol_version: 'v1',
@@ -311,11 +330,25 @@ describe('conformance: witness-cosigned tree head', () => {
         root_hash: sth.root_hash,
         network_id: sth.network_id,
         author_created_at: sth.created_at,
+        author_key_id: sth.signing_key_id,
+        author_signature: sth.signature,
         witness_key_id: c.witnessKeyId,
         observed_at: iso(c.observedAtUnixSeconds),
         signature: c.signatureHex,
+        ...(c.envelope && {
+          layout_version: c.envelope.layoutVersion,
+          rules_version: c.envelope.rulesVersion,
+          hash_algo: c.envelope.hashAlgo,
+          extensions: c.envelope.extensions,
+        }),
       })),
     }
+  }
+
+  for (const v of doc.readRejectVectors) {
+    it(`cannot read: ${v.name}`, () => {
+      expectReject(v)
+    })
   }
 
   const known = (ids: string[]): KnownWitness[] => ids.map((id) => ({ witnessKeyId: id, key: keys[id] }))
@@ -327,6 +360,17 @@ describe('conformance: witness-cosigned tree head', () => {
       const cutoff = new Date(input.freshnessCutoffUnixSeconds * 1000)
       const now = new Date(input.nowUnixSeconds * 1000)
       const list = known(input.knownList)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const heads = [input, input.headA, input.headB].filter((h: any) => h?.sth)
+      for (const raw of heads) {
+        const built = toHead(raw)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        raw.cosignatures.forEach((c: any, i: number) => {
+          if (c.signingBytesHex === undefined || c.envelope) return
+          const key = keys[c.witnessKeyId]
+          expect(bytesToHex(witnessSigningMessage(built.cosignatures[i], key))).toBe(c.signingBytesHex)
+        })
+      }
       if (input.headA) {
         const a = toHead(input.headA)
         const b = toHead(input.headB)
@@ -346,6 +390,11 @@ describe('conformance: witness-cosigned tree head', () => {
 
 describe('conformance: witness announce proofs', () => {
   const doc = loadVector('witness-announce.json')
+  for (const vector of doc.readRejectVectors) {
+    it(`cannot read: ${vector.name}`, () => {
+      expectReject(vector)
+    })
+  }
   for (const vector of doc.vectors) {
     it(vector.name, () => {
       const { baseUrl, witnessKeyId, announcedAt, proofHex, now, messageHex } = vector.input
@@ -762,8 +811,18 @@ function rebuild(tag: string, reader: Reader, types: string[], values: unknown[]
   return builder.finish()
 }
 
+// Reads `v.input.messageHex` as `v.input.read` and asserts it fails with `v.expected`.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rejectCode(v: any): SigningBytesError {
+function expectReject(v: any): void {
+  const error = rejectError(v)
+  expect(error.code).toBe(v.expected.error)
+  if (v.expected.what !== undefined) expect(error.what).toBe(v.expected.what)
+  const detail = v.expected.required ?? v.expected.value
+  if (detail !== undefined) expect(error.value).toBe(detail)
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rejectError(v: any): SigningBytesError {
   const message = hexToBytes(v.input.messageHex)
   const thrown = catchError(() => {
     const reader = new Reader(tagByName(v.input.tag), message)
@@ -801,7 +860,7 @@ describe('conformance: structured-signing-bytes.json', () => {
   expect(doc.rejectVectors.length).toBeGreaterThan(0)
   for (const v of doc.rejectVectors) {
     it(`rejects: ${v.name}`, () => {
-      expect(rejectCode(v).code).toBe(v.expected.error)
+      expectReject(v)
     })
   }
 })
@@ -837,11 +896,7 @@ describe('conformance: envelope.json', () => {
   expect(doc.rejectVectors.length).toBeGreaterThan(0)
   for (const v of doc.rejectVectors) {
     it(`rejects: ${v.name}`, () => {
-      const error = rejectCode(v)
-      expect(error.code).toBe(v.expected.error)
-      if (v.expected.what !== undefined) expect(error.what).toBe(v.expected.what)
-      const detail = v.expected.required ?? v.expected.value
-      if (detail !== undefined) expect(error.value).toBe(detail)
+      expectReject(v)
     })
   }
 

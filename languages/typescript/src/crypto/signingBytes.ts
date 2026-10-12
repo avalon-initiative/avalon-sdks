@@ -258,6 +258,13 @@ export class Builder {
     this.chunks = [tag.bytes, be(layout, 2), be(rules, 4)]
   }
 
+  /** A builder under a stored or received envelope's header and extensions; write its `hash_algo` with `hashAlgo`. */
+  static withEnvelope(tag: DomainTag, envelope: Envelope): Builder {
+    const builder = new Builder(tag, envelope.layoutVersion, envelope.rulesVersion)
+    for (const e of envelope.extensions) builder.extension(e.type, e.critical, e.value)
+    return builder
+  }
+
   private push(chunk: Uint8Array): this {
     this.chunks.push(chunk)
     return this
@@ -444,26 +451,83 @@ export class Reader {
 
   /** Reads the extensions region, which must be all that remains, and returns its entries (unknown non-critical kept). */
   finish(): Extension[] {
-    const max = maxExtensionBytes(this.rulesVersion)
-    const count = Number(this.takeUint(2))
-    const entries: Extension[] = []
-    let total = 0
-    for (let i = 0; i < count; i += 1) {
-      const type = Number(this.takeUint(2))
-      const flags = this.u8()
-      if ((flags & ~CRITICAL_FLAG) !== 0) {
-        throw new SigningBytesError('extension_reserved_flags', `extension flags ${flags} set a reserved bit`)
-      }
-      const len = Number(this.takeUint(4))
-      total += EXTENSION_ENTRY_HEADER + len
-      if (total > max) throw new SigningBytesError('extensions_too_large', 'extensions exceed the size bound')
-      entries.push({ type, critical: (flags & CRITICAL_FLAG) !== 0, value: this.take(len).slice() })
-    }
-    checkExtensions(entries, this.rulesVersion)
+    const entries = parseExtensions((len) => this.take(len), this.rulesVersion)
     if (this.rest.length !== 0) {
       throw new SigningBytesError('trailing_bytes', 'bytes remain after the last field')
     }
     requireUnderstood(entries)
     return entries
   }
+}
+
+// Reads a whole region through `take`: per entry the reserved flags and running size, then order and duplicates.
+function parseExtensions(take: (len: number) => Uint8Array, rulesVersion: number): Extension[] {
+  const uint = (width: number): number => Number(take(width).reduce((acc, b) => (acc << 8n) | BigInt(b), 0n))
+  const max = maxExtensionBytes(rulesVersion)
+  const count = uint(2)
+  const entries: Extension[] = []
+  let total = 0
+  for (let i = 0; i < count; i += 1) {
+    const type = uint(2)
+    const flags = uint(1)
+    if ((flags & ~CRITICAL_FLAG) !== 0) {
+      throw new SigningBytesError('extension_reserved_flags', `extension flags ${flags} set a reserved bit`)
+    }
+    const len = uint(4)
+    total += EXTENSION_ENTRY_HEADER + len
+    if (total > max) throw new SigningBytesError('extensions_too_large', 'extensions exceed the size bound')
+    entries.push({ type, critical: (flags & CRITICAL_FLAG) !== 0, value: take(len).slice() })
+  }
+  checkExtensions(entries, rulesVersion)
+  return entries
+}
+
+/** The header values of a stored or received message: what a signature covers besides its fields. */
+export interface Envelope {
+  layoutVersion: number
+  rulesVersion: number
+  hashAlgo: number
+  extensions: Extension[]
+}
+
+/** What this SDK authors for `tag`: its newest layout, the current rules version, SHA-256, no extensions. */
+export function currentEnvelope(tag: DomainTag): Envelope {
+  return { layoutVersion: layoutVersions(tag).max, rulesVersion: RULES_VERSION, hashAlgo: HASH_ALGO_SHA256, extensions: [] }
+}
+
+/** An envelope as it travels in JSON: plain integers and the extensions region as lowercase hex. */
+export interface EnvelopeWire {
+  layout_version?: number
+  rules_version?: number
+  hash_algo?: number
+  /** Hex of the extensions region; absent or `0000` when there are none. */
+  extensions?: string
+}
+
+/** Rebuilds an envelope from wire values (absent ones default to `tag`'s current envelope), checking every
+ * part against this SDK's ranges; throws `SigningBytesError` (`needs_newer_version` for anything above). */
+export function envelopeFromWire(tag: DomainTag, wire: EnvelopeWire): Envelope {
+  const base = currentEnvelope(tag)
+  const layoutVersion = wire.layout_version ?? base.layoutVersion
+  const rulesVersion = wire.rules_version ?? base.rulesVersion
+  checkLayout(tag, layoutVersion)
+  checkRules(rulesVersion)
+  const region = wire.extensions === undefined ? new Uint8Array(2) : decodeLowerHex(wire.extensions)
+  let rest = region
+  const extensions = parseExtensions((len) => {
+    if (rest.length < len) throw new SigningBytesError('truncated', 'message ends before the field does')
+    const head = rest.subarray(0, len)
+    rest = rest.subarray(len)
+    return head
+  }, rulesVersion)
+  if (rest.length !== 0) throw new SigningBytesError('trailing_bytes', 'bytes remain after the extensions')
+  requireUnderstood(extensions)
+  return { layoutVersion, rulesVersion, hashAlgo: checkHashAlgo(wire.hash_algo ?? base.hashAlgo), extensions }
+}
+
+function decodeLowerHex(text: string): Uint8Array {
+  if (typeof text !== 'string' || text.length % 2 !== 0 || !/^[0-9a-f]*$/.test(text)) {
+    throw new TypeError('not lowercase hex')
+  }
+  return Uint8Array.from(text.match(/../g) ?? [], (h) => parseInt(h, 16))
 }
