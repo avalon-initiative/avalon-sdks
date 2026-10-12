@@ -274,8 +274,10 @@ namespace Avalon.Sdk
             string token,
             string integratorKeyId,
             string? integratorSlug,
-            byte[]? signingKey)
+            byte[]? signingKey,
+            NetworkIdSource? networkIds = null)
         {
+            _networkIds = networkIds ?? new NetworkIdSource(null, null);
             IdentityValue = identity;
             ProfileValue = profile;
             OwnIdentityId = identity.Id;
@@ -319,7 +321,8 @@ namespace Avalon.Sdk
             string? integratorSlug = null,
             byte[]? signingKey = null,
             Profile? profile = null,
-            string? networkId = null)
+            string? networkId = null,
+            Func<CancellationToken, Task<NetworkTrustStatus>>? verifyNetwork = null)
         {
             var id = identityId ?? IdentityId.RandomForTests();
             return new Session(
@@ -331,10 +334,8 @@ namespace Avalon.Sdk
                 token,
                 integratorKeyId,
                 integratorSlug,
-                signingKey)
-            {
-                _networkId = networkId,
-            };
+                signingKey,
+                new NetworkIdSource(networkId, verifyNetwork));
         }
 
         /// <summary>

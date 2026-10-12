@@ -214,6 +214,50 @@ namespace Avalon.Sdk
             new NetworkTrustStatus(NetworkTrustStatusKind.Unreachable, null, null, detail);
     }
 
+    /// <summary>Thrown before anything is signed or sent when a signed action needs a network id and none was declared
+    /// or verified: <see cref="Status"/> is the verification outcome (never <see cref="NetworkTrustStatusKind.Verified"/>).</summary>
+    public sealed class NetworkNotVerifiedException : Exception
+    {
+        public NetworkNotVerifiedException(NetworkTrustStatus status)
+            : base($"the server's network could not be verified ({status.Kind}); declare AvalonConfig.NetworkId or fix verification")
+        {
+            Status = status;
+        }
+
+        public NetworkTrustStatus Status { get; }
+    }
+
+    /// <summary>Where a session gets the network id its signatures bind: the caller-declared one, else the id of the
+    /// pinned trust-anchor entry the server's tree head verified against, resolved once and cached. Never the node's own claim.</summary>
+    internal sealed class NetworkIdSource
+    {
+        private readonly Func<CancellationToken, Task<NetworkTrustStatus>>? _verify;
+        private string? _id;
+
+        public NetworkIdSource(string? declared, Func<CancellationToken, Task<NetworkTrustStatus>>? verify)
+        {
+            _id = declared;
+            _verify = verify;
+        }
+
+        public async Task<string> ResolveAsync(CancellationToken ct)
+        {
+            if (_id != null)
+            {
+                return _id;
+            }
+            var status = _verify == null
+                ? NetworkTrustStatus.Unreachable("no network id declared and no verification available")
+                : await _verify(ct).ConfigureAwait(false);
+            if (status.Kind != NetworkTrustStatusKind.Verified)
+            {
+                throw new NetworkNotVerifiedException(status);
+            }
+            _id = status.Entry!.NetworkId;
+            return _id;
+        }
+    }
+
     /// <summary>One of the three real deployment tiers a caller can declare intent for without
     /// spelling out an exact network_id — resolved against whichever pinned entry the server's
     /// STH actually verified against, never guessed from the server URL alone. Deliberately only
@@ -617,7 +661,7 @@ namespace Avalon.Sdk
             var cache = new KnownListCache();
             var found = await DiscoverRankedCoreAsync(target, http, null, ct, witnessPolicy, cache).ConfigureAwait(false);
             var client = new AvalonClient(
-                new AvalonConfig(found.ServerUrl, config.IntegratorCredentialKeyId, config.IntegratorSlug, config.SigningKey),
+                new AvalonConfig(found.ServerUrl, config.IntegratorCredentialKeyId, config.IntegratorSlug, config.SigningKey, found.Entry.NetworkId),
                 http);
             client._knownLists = cache;
             return client;

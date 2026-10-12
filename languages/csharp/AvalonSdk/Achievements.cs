@@ -205,24 +205,10 @@ namespace Avalon.Sdk
                 .Finish();
         }
 
-        private string? _networkId;
+        private readonly NetworkIdSource _networkIds;
 
-        // Attestations sign the network id; the serving node's own is the one that verifies them.
-        internal async Task<string> NetworkIdAsync(CancellationToken ct)
-        {
-            if (_networkId != null)
-            {
-                return _networkId;
-            }
-            using var request = new HttpRequestMessage(HttpMethod.Get, $"{ServerUrl}/nodes/status");
-            using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-            {
-                throw await ServerErrorAsync(response).ConfigureAwait(false);
-            }
-            _networkId = (await ReadJsonAsync<NodeStatus>(response, ct).ConfigureAwait(false)).NetworkId;
-            return _networkId;
-        }
+        // Attestations sign the network id: declared, or verified; never the node's own claim.
+        internal Task<string> NetworkIdAsync(CancellationToken ct) => _networkIds.ResolveAsync(ct);
 
         /// <summary>POST /integrations/{slug}/challenge — an ephemeral, single-use
         /// challenge proving this integrator's key is making this HTTP call right now.</summary>
@@ -276,6 +262,7 @@ namespace Avalon.Sdk
                 throw new MissingIssuerCredentialsException();
             }
 
+            var networkId = await NetworkIdAsync(ct).ConfigureAwait(false);
             var challenge = await RequestChallengeAsync(IntegratorSlug, ct).ConfigureAwait(false);
             var nonce = Convert.FromBase64String(challenge.Nonce);
             var challengeSignature = SignWithIssuerKey(nonce);
@@ -284,7 +271,7 @@ namespace Avalon.Sdk
             var achievement = $"game:{IntegratorSlug}:achievement:{key}";
             var issuedAtMicros = LedgerEntry.TimestampMicros(DateTimeOffset.UtcNow);
             var signingBytes = AttestationSigningBytes(
-                await NetworkIdAsync(ct).ConfigureAwait(false), "achievement", issuerRef, keyId, OwnIdentityId, achievement, issuedAtMicros);
+                networkId, "achievement", issuerRef, keyId, OwnIdentityId, achievement, issuedAtMicros);
             var signature = SignWithIssuerKey(signingBytes);
 
             using var request = new HttpRequestMessage(
@@ -537,6 +524,7 @@ namespace Avalon.Sdk
                 throw new MissingIssuerCredentialsException();
             }
 
+            var networkId = await NetworkIdAsync(ct).ConfigureAwait(false);
             var challenge = await RequestChallengeAsync(IntegratorSlug, ct).ConfigureAwait(false);
             var nonce = Convert.FromBase64String(challenge.Nonce);
             var challengeSignature = SignWithIssuerKey(nonce);
@@ -545,7 +533,7 @@ namespace Avalon.Sdk
             var achievement = $"{category}:{IntegratorSlug}:milestone:{key}";
             var issuedAtMicros = LedgerEntry.TimestampMicros(DateTimeOffset.UtcNow);
             var signingBytes = AttestationSigningBytes(
-                await NetworkIdAsync(ct).ConfigureAwait(false), "milestone", issuerRef, keyId, OwnIdentityId, achievement, issuedAtMicros);
+                networkId, "milestone", issuerRef, keyId, OwnIdentityId, achievement, issuedAtMicros);
             var signature = SignWithIssuerKey(signingBytes);
 
             using var request = new HttpRequestMessage(

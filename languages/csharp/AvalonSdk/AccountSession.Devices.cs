@@ -107,9 +107,8 @@ namespace Avalon.Sdk
             }).ConfigureAwait(false);
         }
 
-        // Key events sign the network id; the serving node's own is the one that verifies them.
-        private async Task<string> NetworkIdAsync(CancellationToken ct) =>
-            _networkId ??= (await GetAsync<NodeStatus>("/nodes/status", ct).ConfigureAwait(false)).NetworkId;
+        // Key events sign the network id: declared, or verified; never the node's own claim.
+        private Task<string> NetworkIdAsync(CancellationToken ct) => _networkIds.ResolveAsync(ct);
 
         /// <summary>Runs <paramref name="send"/> at the first chained position (seq 1, no prev hash); on a stale
         /// position it runs once more at the returned head, and a second stale answer is surfaced.</summary>
