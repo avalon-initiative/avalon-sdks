@@ -97,7 +97,7 @@ describe('Builder and Reader', () => {
     expect(codeOf(() => new Reader(tags.CONFORMANCE, ok).finish())).toBe('trailing_bytes')
     const bad = new Builder(tags.CONFORMANCE, 1).bytes(new Uint8Array([0xff])).finish()
     expect(codeOf(() => new Reader(tags.CONFORMANCE, bad).str())).toBe('invalid_utf8')
-    const huge = new Uint8Array([...tags.CONFORMANCE.bytes, 0, 1, 0xff, 0xff, 0xff, 0xff, 0x78])
+    const huge = new Uint8Array([...tags.CONFORMANCE.bytes, 0, 1, 0, 0, 0, 1, 0xff, 0xff, 0xff, 0xff, 0x78])
     expect(codeOf(() => new Reader(tags.CONFORMANCE, huge).bytes())).toBe('truncated')
   })
 })
