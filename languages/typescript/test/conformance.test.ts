@@ -25,7 +25,16 @@ import {
   signingKeyRevokedSigningBytes,
   verify,
 } from '../src/crypto/signing.js'
-import { ALL_TAGS, Builder, Reader, SigningBytesError, tags, type DomainTag } from '../src/crypto/signingBytes.js'
+import {
+  ALL_TAGS,
+  Builder,
+  Reader,
+  SigningBytesError,
+  maxExtensionBytes,
+  tags,
+  type DomainTag,
+  type Extension,
+} from '../src/crypto/signingBytes.js'
 import { CanonicalPayloadError, canonicalize, canonicalizeStr, parseStrict } from '../src/canonicalPayload.js'
 import {
   EntryHashError,
@@ -630,114 +639,214 @@ function fieldBytes(field: any): Uint8Array {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildMessage(input: any): Uint8Array {
+  const builder = new Builder(tagByName(input.tag), input.layoutVersion, input.rulesVersion)
+  for (const f of input.fields) {
+    switch (f.type) {
+      case 'str':
+        builder.str(toUtf8(fieldBytes(f)))
+        break
+      case 'bytes':
+        builder.bytes(fieldBytes(f))
+        break
+      case 'key':
+        builder.key(fieldBytes(f))
+        break
+      case 'signature':
+        builder.signature(fieldBytes(f))
+        break
+      case 'hash':
+        builder.hash(fieldBytes(f))
+        break
+      case 'fixed':
+        builder.fixed(fieldBytes(f), 4)
+        break
+      case 'uuid':
+        builder.uuid(f.value)
+        break
+      case 'hash_algo':
+        builder.hashAlgo(Number(f.value))
+        break
+      case 'u8':
+      case 'u16':
+      case 'u32':
+      case 'u64':
+      case 'i64':
+        builder[f.type as 'u8'](BigInt(f.value))
+        break
+      default:
+        throw new Error(`unknown field type ${f.type}`)
+    }
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const e of input.extensions ?? []) builder.extension(e.type, e.critical, hexToBytes(e.valueHex))
+  return builder.finish()
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function expectSigningBytes(message: Uint8Array, expected: any): void {
+  if (expected.signingBytesHex !== undefined) {
+    expect(bytesToHex(message)).toBe(expected.signingBytesHex)
+  } else {
+    expect(message.length).toBe(expected.signingBytesLength)
+    expect(bytesToHex(sha256(message))).toBe(expected.signingBytesSha256Hex)
+  }
+}
+
+// Reads the given field types in order; returns the values read, then the extensions.
+function readFields(reader: Reader, types: string[]): unknown[] {
+  return types.map((ty) => {
+    switch (ty) {
+      case 'str':
+        return reader.str()
+      case 'bytes':
+        return reader.bytes()
+      case 'key':
+        return reader.key()
+      case 'signature':
+        return reader.signature()
+      case 'hash':
+        return reader.hash()
+      case 'fixed':
+        return reader.fixed(4)
+      case 'hash_algo':
+        return reader.hashAlgo()
+      case 'uuid':
+        return reader.uuid()
+      case 'u8':
+      case 'u16':
+      case 'u32':
+      case 'u64':
+      case 'i64':
+        return reader[ty]()
+      default:
+        throw new Error(`unknown read type ${ty}`)
+    }
+  })
+}
+
+// Rebuilds a read message from the values read, to prove the extensions survive byte for byte.
+function rebuild(tag: string, reader: Reader, types: string[], values: unknown[], extensions: Extension[]): Uint8Array {
+  const builder = new Builder(tagByName(tag), reader.layoutVersion, reader.rulesVersion)
+  types.forEach((ty, i) => {
+    const v = values[i]
+    switch (ty) {
+      case 'str':
+        builder.str(v as string)
+        break
+      case 'bytes':
+        builder.bytes(v as Uint8Array)
+        break
+      case 'key':
+        builder.key(v as Uint8Array)
+        break
+      case 'signature':
+        builder.signature(v as Uint8Array)
+        break
+      case 'hash':
+        builder.hash(v as Uint8Array)
+        break
+      case 'hash_algo':
+        builder.hashAlgo(v as number)
+        break
+      case 'uuid':
+        builder.uuid(v as string)
+        break
+      default:
+        builder[ty as 'u8'](v as bigint)
+    }
+  })
+  for (const e of extensions) builder.extension(e.type, e.critical, e.value)
+  return builder.finish()
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rejectCode(v: any): SigningBytesError {
+  const message = hexToBytes(v.input.messageHex)
+  const thrown = catchError(() => {
+    const reader = new Reader(tagByName(v.input.tag), message)
+    readFields(reader, v.input.read)
+    reader.finish()
+  })
+  expect(thrown).toBeInstanceOf(SigningBytesError)
+  return thrown as SigningBytesError
+}
+
 describe('conformance: structured-signing-bytes.json', () => {
   const doc = loadVector('structured-signing-bytes.json')
 
   for (const v of doc.vectors) {
     it(`builds and reads back: ${v.name}`, () => {
-      const tag = tagByName(v.input.tag)
-      const builder = new Builder(tag, v.input.version)
-      for (const f of v.input.fields) {
-        switch (f.type) {
-          case 'str':
-            builder.str(toUtf8(fieldBytes(f)))
-            break
-          case 'bytes':
-            builder.bytes(fieldBytes(f))
-            break
-          case 'key':
-            builder.key(fieldBytes(f))
-            break
-          case 'hash':
-            builder.hash(fieldBytes(f))
-            break
-          case 'fixed':
-            builder.fixed(fieldBytes(f), 4)
-            break
-          case 'uuid':
-            builder.uuid(f.value)
-            break
-          case 'u8':
-          case 'u16':
-          case 'u32':
-          case 'u64':
-          case 'i64':
-            builder[f.type as 'u8'](BigInt(f.value))
-            break
-          default:
-            throw new Error(`unknown field type ${f.type}`)
-        }
-      }
-      const message = builder.finish()
+      const message = buildMessage(v.input)
+      expectSigningBytes(message, v.expected)
 
-      if (v.expected.signingBytesHex !== undefined) {
-        expect(bytesToHex(message)).toBe(v.expected.signingBytesHex)
-      } else {
-        expect(message.length).toBe(v.expected.signingBytesLength)
-        expect(bytesToHex(sha256(message))).toBe(v.expected.signingBytesSha256Hex)
-      }
-
-      const reader = new Reader(tag, message)
-      expect(reader.version).toBe(v.input.version)
-      for (const f of v.input.fields) {
-        switch (f.type) {
-          case 'str':
-            expect(reader.str()).toBe(toUtf8(fieldBytes(f)))
-            break
-          case 'bytes':
-            expect(reader.bytes()).toEqual(fieldBytes(f))
-            break
-          case 'key':
-            expect(reader.key()).toEqual(fieldBytes(f))
-            break
-          case 'hash':
-            expect(reader.hash()).toEqual(fieldBytes(f))
-            break
-          case 'fixed':
-            expect(reader.fixed(4)).toEqual(fieldBytes(f))
-            break
-          case 'uuid':
-            expect(reader.uuid()).toBe(f.value)
-            break
-          case 'u8':
-          case 'u16':
-          case 'u32':
-            expect(String(reader[f.type as 'u8']())).toBe(f.value)
-            break
-          case 'u64':
-          case 'i64':
-            expect(reader[f.type as 'u64']().toString()).toBe(f.value)
-            break
-          default:
-            throw new Error(`unknown field type ${f.type}`)
-        }
-      }
-      reader.finish()
+      const reader = new Reader(tagByName(v.input.tag), message)
+      expect(reader.layoutVersion).toBe(v.input.layoutVersion)
+      const types = v.input.fields.map((f: { type: string }) => f.type)
+      const values = readFields(reader, types)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      v.input.fields.forEach((f: any, i: number) => {
+        const got = values[i]
+        if (f.type === 'str') expect(got).toBe(toUtf8(fieldBytes(f)))
+        else if (f.type === 'uuid') expect(got).toBe(f.value)
+        else if (['u8', 'u16', 'u32', 'u64', 'i64'].includes(f.type)) expect(String(got)).toBe(f.value)
+        else expect(got).toEqual(fieldBytes(f))
+      })
+      expect(reader.finish()).toEqual([])
     })
   }
 
   expect(doc.rejectVectors.length).toBeGreaterThan(0)
   for (const v of doc.rejectVectors) {
     it(`rejects: ${v.name}`, () => {
+      expect(rejectCode(v).code).toBe(v.expected.error)
+    })
+  }
+})
+
+describe('conformance: envelope.json', () => {
+  const doc = loadVector('envelope.json')
+
+  for (const v of doc.buildVectors) {
+    it(`builds: ${v.name}`, () => {
+      expectSigningBytes(buildMessage(v.input), v.expected)
+    })
+  }
+
+  for (const v of doc.readVectors) {
+    it(`reads: ${v.name}`, () => {
       const message = hexToBytes(v.input.messageHex)
-      const read = (): void => {
-        const reader = new Reader(tagByName(v.input.tag), message)
-        for (const ty of v.input.read) {
-          if (ty === 'str') reader.str()
-          else if (ty === 'bytes') reader.bytes()
-          else if (ty === 'u32') reader.u32()
-          else throw new Error(`unknown read type ${ty}`)
-        }
-        reader.finish()
-      }
-      let code: string | undefined
-      try {
-        read()
-      } catch (error) {
-        if (!(error instanceof SigningBytesError)) throw error
-        code = error.code
-      }
-      expect(code).toBe(v.expected.error)
+      const reader = new Reader(tagByName(v.input.tag), message)
+      expect(reader.layoutVersion).toBe(v.expected.layoutVersion)
+      expect(reader.rulesVersion).toBe(v.expected.rulesVersion)
+      const values = readFields(reader, v.input.read)
+      const extensions = reader.finish()
+      expect(
+        extensions.map((e) => ({ type: e.type, critical: e.critical, valueHex: bytesToHex(e.value) })),
+      ).toEqual(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        v.expected.extensions.map((e: any) => ({ type: e.type, critical: e.critical, valueHex: e.valueHex })),
+      )
+      const rebuilt = rebuild(v.input.tag, reader, v.input.read, values, extensions)
+      expect(bytesToHex(rebuilt)).toBe(v.expected.rebuiltHex)
+    })
+  }
+
+  expect(doc.rejectVectors.length).toBeGreaterThan(0)
+  for (const v of doc.rejectVectors) {
+    it(`rejects: ${v.name}`, () => {
+      const error = rejectCode(v)
+      expect(error.code).toBe(v.expected.error)
+      if (v.expected.what !== undefined) expect(error.what).toBe(v.expected.what)
+      const detail = v.expected.required ?? v.expected.value
+      if (detail !== undefined) expect(error.value).toBe(detail)
+    })
+  }
+
+  for (const v of doc.capVectors) {
+    it(`cap: ${v.name}`, () => {
+      expect(maxExtensionBytes(v.input.rulesVersion)).toBe(v.expected.maxExtensionBytes)
     })
   }
 })
