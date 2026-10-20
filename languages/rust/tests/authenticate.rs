@@ -20,6 +20,7 @@ use base64::Engine;
 use ed25519_dalek::{Signer, SigningKey};
 use passkey_authenticator::{Authenticator, MemoryStore, MockUserValidationMethod};
 use passkey_client::{Client, DefaultClientData, Origin};
+use passkey_crypto::AvailableBackend;
 use passkey_types::ctap2::Aaguid;
 use passkey_types::webauthn::{CredentialCreationOptions, CredentialRequestOptions};
 use serde_json::json;
@@ -51,7 +52,7 @@ async fn register_and_login(http: &reqwest::Client, base: &str, display_name: &s
     // once, hence times(2).
     let store = MemoryStore::new();
     let user_mock = MockUserValidationMethod::verified_user(2);
-    let authenticator = Authenticator::new(Aaguid::new_empty(), store, user_mock);
+    let authenticator = Authenticator::new(Aaguid::new_empty(), store, user_mock, AvailableBackend);
     let mut client = Client::new(authenticator).allows_insecure_localhost(true);
 
     let start: serde_json::Value = http
