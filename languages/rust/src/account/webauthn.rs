@@ -18,6 +18,7 @@ use base64::Engine;
 use coset::{CborSerializable, CoseKey};
 use passkey_authenticator::{Authenticator, MemoryStore, MockUserValidationMethod};
 use passkey_client::{Client, DefaultClientData, Origin};
+use passkey_crypto::AvailableBackend;
 use passkey_types::ctap2::Aaguid;
 use passkey_types::webauthn::{CredentialCreationOptions, CredentialRequestOptions};
 use passkey_types::Passkey;
@@ -100,10 +101,11 @@ fn webauthn_origin() -> Result<url::Url, SdkError> {
         .map_err(|e| SdkError::Protocol(format!("invalid AVALON_WEBAUTHN_ORIGIN: {e}")))
 }
 
-fn virtual_authenticator() -> Authenticator<MemoryStore, MockUserValidationMethod> {
+fn virtual_authenticator() -> Authenticator<MemoryStore, MockUserValidationMethod, AvailableBackend>
+{
     let store = MemoryStore::new();
     let user_mock = MockUserValidationMethod::verified_user(1);
-    Authenticator::new(Aaguid::new_empty(), store, user_mock)
+    Authenticator::new(Aaguid::new_empty(), store, user_mock, AvailableBackend)
 }
 
 /// Drives a full registration ceremony against `creation_options` and
@@ -152,7 +154,7 @@ pub(crate) async fn login_ceremony(
     let mut store = MemoryStore::new();
     store.insert(Vec::from(passkey.credential_id.clone()), passkey);
     let user_mock = MockUserValidationMethod::verified_user(1);
-    let authenticator = Authenticator::new(Aaguid::new_empty(), store, user_mock);
+    let authenticator = Authenticator::new(Aaguid::new_empty(), store, user_mock, AvailableBackend);
     let mut client = Client::new(authenticator).allows_insecure_localhost(true);
 
     client
