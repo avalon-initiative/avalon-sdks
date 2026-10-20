@@ -29,9 +29,10 @@ hex = "0.4"
 sha2 = "0.11"
 ed25519-dalek = { version = "3.0.0", features = ["rand_core", "serde"] }
 url = { version = "2", features = ["serde"] }
-passkey-types = "0.5"
-passkey-client = "0.5"
-passkey-authenticator = { version = "0.5", features = ["testable"] }
+passkey-types = "0.6"
+passkey-crypto = "0.1"
+passkey-client = "0.6"
+passkey-authenticator = { version = "0.6", features = ["testable"] }
 wiremock = "0.6"
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "time", "migrate", "macros"] }
 syn = { version = "3", features = ["full"] }

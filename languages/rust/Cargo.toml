@@ -47,6 +47,7 @@ sha2.workspace = true
 # for `avalon create-identity`/`avalon login`, now a runtime dependency of
 # this crate rather than only a dev-dependency of its own tests.
 passkey-types.workspace = true
+passkey-crypto.workspace = true
 passkey-client.workspace = true
 passkey-authenticator.workspace = true
 coset = "0.4"
