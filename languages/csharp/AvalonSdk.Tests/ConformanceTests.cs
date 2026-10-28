@@ -393,6 +393,7 @@ public class ConformanceTests
     private static readonly Dictionary<string, string> NoRunner = new()
     {
         ["identity-chain.json"] = "identity chain resolution is protocol-side only",
+        ["name-binding.json"] = "no SDK verifies name binding claims yet; supportedIn is empty",
         ["node-request.json"] = "node-to-node route, not in OpenAPI; supportedIn is empty",
     };
 

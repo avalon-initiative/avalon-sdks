@@ -1574,6 +1574,10 @@ const NO_RUNNER: &[(&str, &str)] = &[
         "identity chain resolution is protocol-side only",
     ),
     (
+        "name-binding.json",
+        "no SDK verifies name binding claims yet; supportedIn is empty",
+    ),
+    (
         "node-request.json",
         "node-to-node route, not in OpenAPI; supportedIn is empty",
     ),

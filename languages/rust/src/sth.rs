@@ -18,7 +18,7 @@
 //! server-side concern, and this crate never reads one from the
 //! environment.
 
-use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use time::OffsetDateTime;
 
 use crate::signing_bytes::{tags, Builder, HashAlgo, SigningBytesError};
@@ -146,8 +146,7 @@ pub fn verify_tree_head(verifying_key: &VerifyingKey, sth: &SignedTreeHead) -> b
     let Ok(signature_array) = <[u8; 64]>::try_from(signature_bytes.as_slice()) else {
         return false;
     };
-    let signature = Signature::from_bytes(&signature_array);
-    verifying_key.verify(&message, &signature).is_ok()
+    crate::identity_signing::verify_strict(verifying_key, &message, &signature_array)
 }
 
 #[cfg(test)]

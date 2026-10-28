@@ -8,7 +8,7 @@
 import type { SignedTreeHeadResponse } from '../types.js'
 import { getLatestSth } from '../ledger.js'
 import { signingMessage } from './sthMessage.js'
-import { strictHexToBytes, verifyCofactorless } from './strictEd25519.js'
+import { strictHexToBytes, verifyStrict } from './strictEd25519.js'
 import type { TrustAnchorEntry } from './trustAnchors.js'
 
 /**
@@ -24,7 +24,7 @@ export function verifyTreeHead(verifyKeyHex: string, sth: SignedTreeHeadResponse
     const signature = strictHexToBytes(sth.signature)
     if (!verifyKey || verifyKey.length !== 32) return false
     if (!signature || signature.length !== 64) return false
-    return verifyCofactorless(verifyKey, signingMessage(sth), signature)
+    return verifyStrict(verifyKey, signingMessage(sth), signature)
   } catch {
     // A malformed created_at or tree_size, or anything else attacker-influenced input could
     // throw on, fails closed.
