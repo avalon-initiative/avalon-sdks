@@ -878,7 +878,7 @@ namespace Avalon.Sdk
             try
             {
                 var message = SthSigningMessage(wire);
-                return StrictEd25519.Verify(keyBytes, message, signatureBytes);
+                return StrictEd25519.VerifyStrict(keyBytes, message, signatureBytes);
             }
             catch (Exception)
             {

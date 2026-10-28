@@ -294,6 +294,17 @@ def extract_csharp_calls() -> set[tuple[str, str]]:
 # design choice — not a gap this check should flag. Keep this list tiny and
 # always cite the source that makes it "documented," not just "observed."
 INTENTIONAL_GAPS: dict[tuple[str, str], dict] = {
+    ("GET", "/ledger/entries"): {
+        "sdks": [
+            "rust (languages/rust)",
+            "csharp (languages/csharp)",
+            "typescript (languages/typescript)",
+        ],
+        "reason": (
+            "Bulk ledger entry read, mirror-facing; the SDKs add it together "
+            "with proof verification in avalon-sdks #86."
+        ),
+    },
     ("POST", "/identities/register/start"): {
         "sdks": ["csharp (languages/csharp)"],
         "reason": (

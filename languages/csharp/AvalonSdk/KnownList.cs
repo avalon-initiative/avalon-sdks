@@ -152,10 +152,7 @@ namespace Avalon.Sdk
                     return false;
                 }
                 var message = WitnessAnnounceMessage(baseUrl, witnessKeyId, announcedAt);
-                var signer = new Ed25519Signer();
-                signer.Init(false, new Ed25519PublicKeyParameters(key, 0));
-                signer.BlockUpdate(message, 0, message.Length);
-                return signer.VerifySignature(signature);
+                return StrictEd25519.VerifyStrict(key, message, signature);
             }
             catch (Exception)
             {

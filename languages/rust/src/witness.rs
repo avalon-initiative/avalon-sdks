@@ -4,7 +4,7 @@
 
 use std::collections::BTreeSet;
 
-use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use serde::Deserialize;
 use time::OffsetDateTime;
 
@@ -194,7 +194,7 @@ pub fn verify_witness_cosignature(key: &VerifyingKey, cosig: &WitnessCosignature
     let Ok(array) = <[u8; 64]>::try_from(bytes.as_slice()) else {
         return false;
     };
-    key.verify(&message, &Signature::from_bytes(&array)).is_ok()
+    crate::identity_signing::verify_strict(key, &message, &array)
 }
 
 /// How far `announced_at` may differ from the verifier's clock for an advert proof to verify.
@@ -245,8 +245,7 @@ pub fn verify_witness_announce(
     else {
         return false;
     };
-    key.verify(&message, &Signature::from_bytes(&signature))
-        .is_ok()
+    crate::identity_signing::verify_strict(&key, &message, &signature)
 }
 
 /// Cosignatures needed for a known list of `list_size`: 0 for an empty list, else `n/2 + 1`.

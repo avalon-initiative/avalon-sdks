@@ -2010,6 +2010,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ledger/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /ledger/entries?since_seq={n}&limit={m}&subject={id}` — the
+         *     bulk entries endpoint, the read path a mirror needs to hold real
+         *     ledger content rather than only verify STHs. Public, unauthenticated,
+         *     same rationale as every other endpoint in this module (see module
+         *     docs).
+         * @description Returns entries with `seq` strictly greater than `since_seq`, oldest
+         *     first, capped at [`MAX_ENTRIES_LIMIT`] rows regardless of what `limit`
+         *     asks for. When `subject` is given, pre-filters to that subject's own
+         *     entries — same pagination/ordering semantics, just scoped, so an
+         *     integrator that only cares about one of its own users doesn't have to
+         *     replay the whole ledger to find their entries. A subject with no
+         *     entries yet returns an empty list, not an error. **Not itself a
+         *     verified read** — see
+         *     [`avalon_chain::PostgresSettlementProvider::list_entries_since`]'s doc
+         *     comment: a caller that needs to trust this content (a mirror
+         *     backfilling) must independently verify each entry against a
+         *     signature-checked STH via `GET /ledger/proof/inclusion` before
+         *     accepting it. Filtering by `subject` never changes an entry's
+         *     hash-chain position — inclusion proofs for a filtered row still verify
+         *     against the same global tree.
+         *
+         *     Issue #520: falls back to this node's own `mirrored_entries` when it has
+         *     no locally-authored entries — see [`latest_sth`]'s doc comment for the
+         *     "never blended" rationale shared by every handler in this module.
+         */
+        get: operations["list_entries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me": {
         parameters: {
             query?: never;
@@ -3729,6 +3771,17 @@ export interface components {
             /** Format: int64 */
             used_bytes?: number | null;
         };
+        /** @description An [`Envelope`] as it travels in JSON and sits in stored rows: plain integers and hex. */
+        EnvelopeWire: {
+            /** @description Hex of the extensions region; `0000` when there are none. */
+            extensions: string;
+            /** Format: int32 */
+            hash_algo: number;
+            /** Format: int32 */
+            layout_version: number;
+            /** Format: int32 */
+            rules_version: number;
+        };
         EventResponse: {
             /** Format: uuid */
             channel_id?: string | null;
@@ -4198,6 +4251,31 @@ export interface components {
             libp2p_peer_id?: string | null;
             protocol_version: string;
             roles: string[];
+        };
+        LedgerEntryResponse: components["schemas"]["EnvelopeWire"] & {
+            /** Format: uuid */
+            batch_id: string;
+            entry_hash: string;
+            /** Format: uuid */
+            event_id: string;
+            /** Format: date-time */
+            event_timestamp: string;
+            issuer: string;
+            kind: string;
+            /**
+             * @description `None` if this row's payload has been pruned — same
+             *     meaning as `avalon_chain::LedgerEntryView::payload_pruned`.
+             */
+            payload?: unknown;
+            /** @description Hex SHA-256 of the canonical payload; the entry hash commits to it, so a pruned row verifies. */
+            payload_hash: string;
+            payload_pruned: boolean;
+            prev_hash: string;
+            /** Format: int64 */
+            seq: number;
+            subject: string;
+            /** Format: int32 */
+            version: number;
         };
         ListIntegratorsResponse: {
             integrators: components["schemas"]["IntegratorSummary"][];
@@ -8279,6 +8357,44 @@ export interface operations {
             };
         };
     };
+    list_entries: {
+        parameters: {
+            query?: {
+                since_seq?: number;
+                limit?: number;
+                /**
+                 * @description #364: pre-filter to one subject's own entries, e.g.
+                 *     `identity:<uuid>` — the exact same `subject` string
+                 *     `LedgerEntryResponse::subject` echoes back. `None` (the default)
+                 *     keeps this endpoint's original unfiltered, mirror-facing behavior.
+                 */
+                subject?: string;
+                shard_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Entries with seq greater than since_seq, oldest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LedgerEntryResponse"][];
+                };
+            };
+            /** @description INVALID_ENTRIES_QUERY: negative since_seq or non-positive limit */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     me: {
         parameters: {
             query?: never;
@@ -9563,4 +9679,4 @@ export interface operations {
 }
 
 // Issue #735: the info.version this file's types were generated from.
-export const OPENAPI_SCHEMA_VERSION = "0.13.3" as const
+export const OPENAPI_SCHEMA_VERSION = "0.14.0" as const

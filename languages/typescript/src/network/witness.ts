@@ -1,9 +1,9 @@
 // Witness cosignature primitives and cosigned tree head verification. Mirrors
 // the protocol crate's witness and cosigned_sth modules; malformed input fails closed.
-import { ed25519 } from '@noble/curves/ed25519.js'
 import { Builder, envelopeFromWire, tags } from '../crypto/signingBytes.js'
 import type { CosignedTreeHead, KnownWitness, SignedTreeHeadResponse, WitnessCosignature } from '../types.js'
 import { hexBytes, unixSecondsFromRfc3339 } from './sthMessage.js'
+import { verifyStrict } from './strictEd25519.js'
 import { verifyTreeHead } from './verifyNetwork.js'
 
 function hexToBytes(hex: string): Uint8Array | null {
@@ -48,7 +48,7 @@ export function verifyWitnessCosignature(keyHex: string, cosig: WitnessCosignatu
     const key = hexToBytes(keyHex)
     const signature = hexToBytes(cosig.signature)
     if (!key || key.length !== 32 || !signature || signature.length !== 64) return false
-    return ed25519.verify(signature, witnessSigningMessage(cosig, keyHex), key)
+    return verifyStrict(key, witnessSigningMessage(cosig, keyHex), signature)
   } catch {
     return false
   }
@@ -194,7 +194,7 @@ export function verifyWitnessAnnounce(
     const key = hexToBytes(witnessKeyId)
     const proof = hexToBytes(proofHex)
     if (!key || key.length !== 32 || !proof || proof.length !== 64) return false
-    return ed25519.verify(proof, witnessAnnounceMessage(baseUrl, witnessKeyId, announcedAt), key)
+    return verifyStrict(key, witnessAnnounceMessage(baseUrl, witnessKeyId, announcedAt), proof)
   } catch {
     return false
   }

@@ -1071,6 +1071,7 @@ describe('conformance: shard sibling routing', () => {
 // Vector files with no runner in this SDK yet, each with the reason it is skipped.
 const NO_RUNNER: Record<string, string> = {
   'identity-chain.json': 'identity chain resolution is protocol-side only',
+  'name-binding.json': 'no SDK verifies name binding claims yet; supportedIn is empty',
   'node-request.json': 'node-to-node route, not in OpenAPI; supportedIn is empty',
 }
 

@@ -1190,6 +1190,30 @@ namespace Avalon.Sdk.Generated
 
     }
 
+    /// <summary>
+    /// An [`Envelope`] as it travels in JSON and sits in stored rows: plain integers and hex.
+    /// </summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class EnvelopeWire
+    {
+
+        /// <summary>
+        /// Hex of the extensions region; `0000` when there are none.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("extensions")]
+        public string Extensions { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("hash_algo")]
+        public int HashAlgo { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("layout_version")]
+        public int LayoutVersion { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("rules_version")]
+        public int RulesVersion { get; set; } = default!;
+
+    }
+
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class EventResponse
     {
@@ -2160,6 +2184,67 @@ namespace Avalon.Sdk.Generated
 
         [System.Text.Json.Serialization.JsonPropertyName("roles")]
         public System.Collections.Generic.ICollection<string> Roles { get; set; } = new System.Collections.ObjectModel.Collection<string>();
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.7.1.0 (NJsonSchema v11.6.1.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class LedgerEntryResponse : EnvelopeWire
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("batch_id")]
+        public System.Guid BatchId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("entry_hash")]
+        public string EntryHash { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("event_id")]
+        public System.Guid EventId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("event_timestamp")]
+        public System.DateTimeOffset EventTimestamp { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("issuer")]
+        public string Issuer { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("kind")]
+        public string Kind { get; set; } = default!;
+
+        /// <summary>
+        /// `None` if this row's payload has been pruned — same
+        /// <br/>meaning as `avalon_chain::LedgerEntryView::payload_pruned`.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("payload")]
+        public object? Payload { get; set; } = default!;
+
+        /// <summary>
+        /// Hex SHA-256 of the canonical payload; the entry hash commits to it, so a pruned row verifies.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("payload_hash")]
+        public string PayloadHash { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("payload_pruned")]
+        public bool PayloadPruned { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("prev_hash")]
+        public string PrevHash { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("seq")]
+        public long Seq { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("subject")]
+        public string Subject { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("version")]
+        public int Version { get; set; } = default!;
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
 
     }
 
@@ -4737,6 +4822,6 @@ namespace Avalon.Sdk
         /// <summary>Issue #735/#725: the docs/generated/openapi.json `info.version`
         /// this file's generated types were produced from — generated straight from
         /// the same schema file, so it can't drift by construction.</summary>
-        public const string OpenApiSchemaVersion = "0.13.3";
+        public const string OpenApiSchemaVersion = "0.14.0";
     }
 }
